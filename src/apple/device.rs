@@ -5,8 +5,8 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::apple::asc_api::{AscClient, DeviceAttributes, Resource};
-use crate::apple::auth::resolve_api_key_auth;
+use crate::apple::auth::{EnsureUserAuthRequest, ensure_portal_authenticated};
+use crate::apple::portal::{PortalClient, PortalDevice, PortalDeviceClass};
 use crate::cli::{
     DevicePlatform, ImportDevicesArgs, ListDevicesArgs, RegisterDeviceArgs, RemoveDeviceArgs,
 };
@@ -46,7 +46,7 @@ pub fn list_devices(app: &AppContext, args: &ListDevicesArgs) -> Result<()> {
 }
 
 pub fn register_device(app: &AppContext, args: &RegisterDeviceArgs) -> Result<()> {
-    let client = asc_client(app)?;
+    let mut client = portal_client(app)?;
     let imported = if args.current_machine {
         current_machine_device(args.platform)?
     } else {
@@ -64,23 +64,24 @@ pub fn register_device(app: &AppContext, args: &RegisterDeviceArgs) -> Result<()
             platform: platform_value(args.platform).to_owned(),
         }
     };
+    let device_class = platform_device_class(args.platform);
 
-    if let Some(existing) = client.find_device_by_udid(&imported.udid)? {
+    if let Some(existing) = client.find_device_by_udid(&imported.udid, device_class)? {
         println!(
             "reused\t{}\t{}\t{}\t{}",
             existing.id,
-            existing.attributes.platform,
-            existing.attributes.udid,
-            existing.attributes.name
+            device_platform_label(&existing),
+            existing.udid,
+            existing.name
         );
     } else {
-        let created = client.create_device(&imported.name, &imported.udid, &imported.platform)?;
+        let created = client.create_device(&imported.name, &imported.udid, device_class)?;
         println!(
             "created\t{}\t{}\t{}\t{}",
             created.id,
-            created.attributes.platform,
-            created.attributes.udid,
-            created.attributes.name
+            device_platform_label(&created),
+            created.udid,
+            created.name
         );
     }
 
@@ -89,7 +90,7 @@ pub fn register_device(app: &AppContext, args: &RegisterDeviceArgs) -> Result<()
 }
 
 pub fn import_devices(app: &AppContext, args: &ImportDevicesArgs) -> Result<()> {
-    let client = asc_client(app)?;
+    let mut client = portal_client(app)?;
     let file = match &args.file {
         Some(file) => file.clone(),
         None if app.interactive => {
@@ -101,14 +102,18 @@ pub fn import_devices(app: &AppContext, args: &ImportDevicesArgs) -> Result<()> 
     let mut created_count = 0usize;
     let devices = load_import_file(&file)?;
     for device in devices {
-        if client.find_device_by_udid(&device.udid)?.is_none() {
-            let created = client.create_device(&device.name, &device.udid, &device.platform)?;
+        let device_class = imported_platform_device_class(&device.platform)?;
+        if client
+            .find_device_by_udid(&device.udid, device_class)?
+            .is_none()
+        {
+            let created = client.create_device(&device.name, &device.udid, device_class)?;
             println!(
                 "created\t{}\t{}\t{}\t{}",
                 created.id,
-                created.attributes.platform,
-                created.attributes.udid,
-                created.attributes.name
+                device_platform_label(&created),
+                created.udid,
+                created.name
             );
             created_count += 1;
         }
@@ -122,14 +127,13 @@ pub fn import_devices(app: &AppContext, args: &ImportDevicesArgs) -> Result<()> 
 }
 
 pub fn remove_device(app: &AppContext, args: &RemoveDeviceArgs) -> Result<()> {
-    let client = asc_client(app)?;
-    let target_id = if let Some(id) = &args.id {
-        id.clone()
+    let mut client = portal_client(app)?;
+    let target = if let Some(id) = &args.id {
+        find_registered_device_by_id(&mut client, id)?
+            .with_context(|| format!("no Apple device found for id `{id}`"))?
     } else if let Some(udid) = &args.udid {
-        let Some(device) = client.find_device_by_udid(udid)? else {
-            bail!("no Apple device found for UDID `{udid}`");
-        };
-        device.id
+        find_registered_device_by_udid(&mut client, udid)?
+            .with_context(|| format!("no Apple device found for UDID `{udid}`"))?
     } else if app.interactive {
         let cache = refresh_cache(app)?;
         if cache.devices.is_empty() {
@@ -141,24 +145,37 @@ pub fn remove_device(app: &AppContext, args: &RemoveDeviceArgs) -> Result<()> {
             .map(|device| format!("{} [{}] {}", device.name, device.platform, device.udid))
             .collect::<Vec<_>>();
         let index = prompt_select("Select a device to remove", &labels)?;
-        cache.devices[index].id.clone()
+        find_registered_device_by_id(&mut client, &cache.devices[index].id)?
+            .context("selected Apple device no longer exists")?
     } else {
         bail!("pass --id or --udid");
     };
 
-    client.delete_device(&target_id)?;
-    println!("removed\t{target_id}");
+    client.delete_device(
+        &target.id,
+        device_class_for_cached_platform(&target.platform),
+    )?;
+    println!("removed\t{}", target.id);
     let _ = refresh_cache(app)?;
     Ok(())
 }
 
 pub fn refresh_cache(app: &AppContext) -> Result<DeviceCache> {
-    let client = asc_client(app)?;
-    let devices = client
-        .list_devices()?
-        .into_iter()
-        .map(cached_device_from_resource)
-        .collect::<Vec<_>>();
+    let mut client = portal_client(app)?;
+    let mut devices = Vec::new();
+    for class in [
+        PortalDeviceClass::Iphone,
+        PortalDeviceClass::Tvos,
+        PortalDeviceClass::Watch,
+        PortalDeviceClass::Mac,
+    ] {
+        devices.extend(
+            client
+                .list_devices(class, true)?
+                .into_iter()
+                .map(cached_device_from_portal),
+        );
+    }
     let mut devices = devices;
     devices.sort_by(|left, right| {
         left.platform
@@ -243,10 +260,18 @@ fn current_machine_device(platform: DevicePlatform) -> Result<ImportedDevice> {
     })
 }
 
-fn asc_client(app: &AppContext) -> Result<AscClient> {
-    let auth = resolve_api_key_auth(app)?
-        .context("device management requires App Store Connect API key auth; set ORBIT_ASC_API_KEY_PATH, ORBIT_ASC_KEY_ID, and ORBIT_ASC_ISSUER_ID")?;
-    AscClient::new(auth)
+fn portal_client(app: &AppContext) -> Result<PortalClient> {
+    let auth = ensure_portal_authenticated(
+        app,
+        EnsureUserAuthRequest {
+            prompt_for_missing: app.interactive,
+            ..Default::default()
+        },
+    )?;
+    let team_id = auth.user.team_id.clone().context(
+        "device management requires an Apple Developer team selection; log in again and choose a team if prompted",
+    )?;
+    PortalClient::from_session(&auth.session, team_id)
 }
 
 fn load_cached_or_remote_devices(app: &AppContext, refresh: bool) -> Result<DeviceCache> {
@@ -262,16 +287,14 @@ fn load_cached_or_remote_devices(app: &AppContext, refresh: bool) -> Result<Devi
     }
 }
 
-fn cached_device_from_resource(resource: Resource<DeviceAttributes>) -> CachedDevice {
+fn cached_device_from_portal(device: PortalDevice) -> CachedDevice {
+    let platform = device_platform_label(&device);
     CachedDevice {
-        id: resource.id,
-        name: resource.attributes.name,
-        udid: resource.attributes.udid,
-        platform: resource.attributes.platform,
-        status: resource
-            .attributes
-            .status
-            .unwrap_or_else(|| "UNKNOWN".to_owned()),
+        id: device.id,
+        name: device.name,
+        udid: device.udid,
+        platform,
+        status: device.status.unwrap_or_else(|| "UNKNOWN".to_owned()),
     }
 }
 
@@ -281,4 +304,77 @@ fn platform_value(platform: DevicePlatform) -> &'static str {
         DevicePlatform::MacOs => "MAC_OS",
         DevicePlatform::Universal => "UNIVERSAL",
     }
+}
+
+fn platform_device_class(platform: DevicePlatform) -> PortalDeviceClass {
+    match platform {
+        DevicePlatform::Ios => PortalDeviceClass::Iphone,
+        DevicePlatform::MacOs | DevicePlatform::Universal => PortalDeviceClass::Mac,
+    }
+}
+
+fn imported_platform_device_class(platform: &str) -> Result<PortalDeviceClass> {
+    match platform {
+        "IOS" => Ok(PortalDeviceClass::Iphone),
+        "MAC_OS" | "UNIVERSAL" => Ok(PortalDeviceClass::Mac),
+        "TVOS" => Ok(PortalDeviceClass::Tvos),
+        "WATCH" | "WATCHOS" => Ok(PortalDeviceClass::Watch),
+        other => bail!("unsupported imported device platform `{other}`"),
+    }
+}
+
+fn device_platform_label(device: &PortalDevice) -> String {
+    if let Some(platform) = &device.platform {
+        return platform.clone();
+    }
+    match device.device_class.as_deref() {
+        Some("mac") => "MAC_OS".to_owned(),
+        Some("tvOS") => "TVOS".to_owned(),
+        Some("watch") => "WATCH".to_owned(),
+        _ => "IOS".to_owned(),
+    }
+}
+
+fn device_class_for_cached_platform(platform: &str) -> PortalDeviceClass {
+    match platform {
+        "MAC_OS" | "UNIVERSAL" => PortalDeviceClass::Mac,
+        "TVOS" => PortalDeviceClass::Tvos,
+        "WATCH" | "WATCHOS" => PortalDeviceClass::Watch,
+        _ => PortalDeviceClass::Iphone,
+    }
+}
+
+fn find_registered_device_by_udid(
+    client: &mut PortalClient,
+    udid: &str,
+) -> Result<Option<CachedDevice>> {
+    for class in [
+        PortalDeviceClass::Iphone,
+        PortalDeviceClass::Tvos,
+        PortalDeviceClass::Watch,
+        PortalDeviceClass::Mac,
+    ] {
+        if let Some(device) = client.find_device_by_udid(udid, class)? {
+            return Ok(Some(cached_device_from_portal(device)));
+        }
+    }
+    Ok(None)
+}
+
+fn find_registered_device_by_id(
+    client: &mut PortalClient,
+    id: &str,
+) -> Result<Option<CachedDevice>> {
+    for class in [
+        PortalDeviceClass::Iphone,
+        PortalDeviceClass::Tvos,
+        PortalDeviceClass::Watch,
+        PortalDeviceClass::Mac,
+    ] {
+        let devices = client.list_devices(class, true)?;
+        if let Some(device) = devices.into_iter().find(|device| device.id == id) {
+            return Ok(Some(cached_device_from_portal(device)));
+        }
+    }
+    Ok(None)
 }

@@ -1,0 +1,40 @@
+{
+  "name": "ExampleMacApp",
+  "version": "0.1.0",
+  "platform": "apple",
+  "platforms": {
+    "macos": {
+      "deployment_target": "14.0",
+      "profiles": {
+        "development": {
+          "configuration": "debug",
+          "distribution": "development"
+        },
+        "release": {
+          "configuration": "release",
+          "distribution": "developer-id"
+        },
+        "app-store": {
+          "configuration": "release",
+          "distribution": "mac-app-store"
+        }
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "ExampleMacApp",
+      "kind": "app",
+      "bundle_id": "dev.orbit.examples.macos",
+      "platforms": [
+        "macos"
+      ],
+      "sources": [
+        "Sources/App"
+      ],
+      "resources": [
+        "Resources"
+      ]
+    }
+  ]
+}

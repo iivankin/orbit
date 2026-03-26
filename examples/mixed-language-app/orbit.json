@@ -1,0 +1,29 @@
+{
+  "name": "ExampleMixedLanguageApp",
+  "version": "0.1.0",
+  "platform": "apple",
+  "platforms": {
+    "ios": {
+      "deployment_target": "18.0",
+      "profiles": {
+        "development": {
+          "configuration": "debug",
+          "distribution": "development"
+        }
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "ExampleMixedLanguageApp",
+      "kind": "app",
+      "bundle_id": "dev.orbit.examples.mixed",
+      "platforms": [
+        "ios"
+      ],
+      "sources": [
+        "Sources/App"
+      ]
+    }
+  ]
+}

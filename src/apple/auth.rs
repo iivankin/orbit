@@ -44,6 +44,12 @@ pub struct UserAuthWithPassword {
     pub password: String,
 }
 
+#[derive(Debug, Clone)]
+pub struct PortalAuth {
+    pub user: UserAuth,
+    pub session: StoredAppleSession,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ApiKeyAuth {
     pub api_key_path: PathBuf,
@@ -63,6 +69,7 @@ pub enum SubmitAuth {
     AppleId {
         apple_id: String,
         password: String,
+        team_id: Option<String>,
         provider_id: Option<String>,
     },
 }
@@ -230,13 +237,23 @@ pub fn resolve_submit_auth(project: &ProjectContext) -> Result<SubmitAuth> {
     let user = ensure_user_authenticated(app, project_user_auth_request(project, app.interactive))?;
     persist_project_auth_selection(project, &user)?;
 
-    let user = resolve_user_auth_with_password(app)?
-        .context("submit requires App Store Connect API key auth or Apple ID credentials")?;
+    let password = resolve_submit_password(app, &user)?;
     Ok(SubmitAuth::AppleId {
-        apple_id: user.user.apple_id,
-        password: user.password,
-        provider_id: user.user.provider_id,
+        apple_id: user.apple_id,
+        password,
+        team_id: user.team_id,
+        provider_id: user.provider_id,
     })
+}
+
+pub fn ensure_portal_authenticated(
+    app: &AppContext,
+    request: EnsureUserAuthRequest,
+) -> Result<PortalAuth> {
+    let user = ensure_user_authenticated(app, request)?;
+    let session = load_user_session(&user.apple_id)?
+        .with_context(|| format!("missing Apple session for `{}` after login", user.apple_id))?;
+    Ok(PortalAuth { user, session })
 }
 
 pub fn resolve_api_key_auth(app: &AppContext) -> Result<Option<ApiKeyAuth>> {
@@ -305,6 +322,24 @@ fn resolve_user_auth_with_password(app: &AppContext) -> Result<Option<UserAuthWi
         })?,
     };
     Ok(Some(UserAuthWithPassword { user, password }))
+}
+
+fn resolve_submit_password(app: &AppContext, user: &UserAuth) -> Result<String> {
+    if let Some(password) = env_string([
+        "ORBIT_APPLE_APP_SPECIFIC_PASSWORD",
+        "EXPO_APPLE_APP_SPECIFIC_PASSWORD",
+    ]) {
+        return Ok(password);
+    }
+    resolve_user_auth_with_password(app)?
+        .filter(|credentials| credentials.user.apple_id == user.apple_id)
+        .map(|credentials| credentials.password)
+        .with_context(|| {
+            format!(
+                "submit requires an App Store Connect API key or Apple ID credentials for `{}`",
+                user.apple_id
+            )
+        })
 }
 
 fn load_state(app: &AppContext) -> Result<AuthState> {

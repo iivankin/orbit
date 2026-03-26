@@ -1,19 +1,16 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use base64::Engine;
-use base64::engine::general_purpose::STANDARD;
-use plist::Value;
 use serde::{Deserialize, Serialize};
 
-use crate::apple::asc_api::{
-    AscClient, BundleIdAttributes, BundleIdCapabilityAttributes, JsonApiDocument,
-    ProfileAttributes, RelationshipData, Resource,
+use crate::apple::auth::{EnsureUserAuthRequest, ensure_portal_authenticated};
+use crate::apple::capabilities::capability_plan_from_entitlements;
+use crate::apple::portal::{
+    PortalAppId, PortalClient, PortalDeviceClass, PortalProfilePlatform, PortalProvisioningProfile,
 };
-use crate::apple::auth::resolve_api_key_auth;
 use crate::cli::SigningSyncArgs;
 use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, ProfileManifest, TargetManifest};
@@ -60,6 +57,12 @@ pub struct SigningMaterial {
     pub entitlements_path: Option<PathBuf>,
 }
 
+#[derive(Debug, Clone)]
+pub struct PackageSigningMaterial {
+    pub signing_identity: String,
+    pub keychain_path: PathBuf,
+}
+
 pub fn sync_signing(project: &ProjectContext, args: &SigningSyncArgs) -> Result<()> {
     let target = resolve_signing_target(project, args.target.as_deref())?;
     let platform = project.manifest.resolve_platform_for_target(target, None)?;
@@ -75,7 +78,11 @@ pub fn sync_signing(project: &ProjectContext, args: &SigningSyncArgs) -> Result<
         profile.distribution,
         DistributionKind::Development | DistributionKind::AdHoc
     ) {
-        Some(select_device_udids(project, profile.distribution)?)
+        Some(select_device_udids(
+            project,
+            profile.distribution,
+            platform,
+        )?)
     } else {
         None
     };
@@ -149,30 +156,41 @@ pub fn prepare_signing(
     profile: &ProfileManifest,
     device_udids: Option<Vec<String>>,
 ) -> Result<SigningMaterial> {
-    let auth = resolve_api_key_auth(&project.app)?
-        .context("signing requires App Store Connect API key auth; set ORBIT_ASC_API_KEY_PATH, ORBIT_ASC_KEY_ID, and ORBIT_ASC_ISSUER_ID")?;
-    let client = AscClient::new(auth)?;
+    let auth = ensure_portal_authenticated(
+        &project.app,
+        EnsureUserAuthRequest {
+            team_id: project.manifest.team_id.clone(),
+            provider_id: project.manifest.provider_id.clone(),
+            prompt_for_missing: project.app.interactive,
+            ..Default::default()
+        },
+    )?;
+    let team_id = auth.user.team_id.clone().context(
+        "signing requires an Apple Developer team selection; log in again and choose a team if prompted",
+    )?;
+    let mut client = PortalClient::from_session(&auth.session, team_id)?;
     let mut state = load_state(project)?;
 
-    let bundle_id = ensure_bundle_id(&client, project, target, platform)?;
-    sync_capabilities(&client, &bundle_id, project, target)?;
+    let bundle_id = ensure_bundle_id(&mut client, project, target, platform)?;
+    sync_capabilities(&mut client, project, target, platform, &bundle_id)?;
 
     let certificate_type = certificate_type(platform, profile)?;
-    let certificate = ensure_certificate(&client, project, &mut state, certificate_type)?;
+    let certificate = ensure_certificate(&mut client, project, &mut state, certificate_type)?;
     let profile_type = profile_type(platform, profile)?;
     let device_ids = if matches!(
         profile.distribution,
         DistributionKind::Development | DistributionKind::AdHoc
     ) {
         let selected_udids = device_udids.unwrap_or_default();
-        resolve_device_ids(&client, &selected_udids)?
+        resolve_device_ids(&mut client, platform, &selected_udids)?
     } else {
         Vec::new()
     };
     let provisioning_profile = ensure_profile(
-        &client,
+        &mut client,
         project,
         &mut state,
+        platform,
         &bundle_id,
         profile_type,
         &certificate,
@@ -190,6 +208,34 @@ pub fn prepare_signing(
             .entitlements
             .as_ref()
             .map(|path| project.root.join(path)),
+    })
+}
+
+pub fn prepare_package_signing(
+    project: &ProjectContext,
+    profile: &ProfileManifest,
+) -> Result<PackageSigningMaterial> {
+    let auth = ensure_portal_authenticated(
+        &project.app,
+        EnsureUserAuthRequest {
+            team_id: project.manifest.team_id.clone(),
+            provider_id: project.manifest.provider_id.clone(),
+            prompt_for_missing: project.app.interactive,
+            ..Default::default()
+        },
+    )?;
+    let team_id = auth.user.team_id.clone().context(
+        "installer signing requires an Apple Developer team selection; log in again and choose a team if prompted",
+    )?;
+    let mut client = PortalClient::from_session(&auth.session, team_id)?;
+    let mut state = load_state(project)?;
+    let certificate_type = installer_certificate_type(profile)?;
+    let certificate = ensure_certificate(&mut client, project, &mut state, certificate_type)?;
+    let signing_identity = import_certificate_into_keychain(project, &certificate)?;
+    save_state(project, &state)?;
+    Ok(PackageSigningMaterial {
+        signing_identity,
+        keychain_path: project.app.global_paths.keychain_path.clone(),
     })
 }
 
@@ -216,72 +262,119 @@ pub fn sign_bundle(bundle_path: &Path, material: &SigningMaterial) -> Result<()>
 }
 
 fn ensure_bundle_id(
-    client: &AscClient,
+    client: &mut PortalClient,
     project: &ProjectContext,
     target: &TargetManifest,
     platform: ApplePlatform,
-) -> Result<JsonApiDocument<BundleIdAttributes>> {
-    if let Some(bundle_id) = client.find_bundle_id(&target.bundle_id)? {
+) -> Result<PortalAppId> {
+    if let Some(bundle_id) =
+        client.find_app_by_bundle_id(&target.bundle_id, matches!(platform, ApplePlatform::Macos))?
+    {
         return Ok(bundle_id);
     }
 
-    let created = client.create_bundle_id(
+    client.create_app(
         &format!("@orbit/{}", project.manifest.name),
         &target.bundle_id,
-        bundle_id_platform(platform),
-    )?;
-    Ok(JsonApiDocument {
-        data: created,
-        included: Vec::new(),
-    })
+        matches!(platform, ApplePlatform::Macos),
+    )
 }
 
 fn sync_capabilities(
-    client: &AscClient,
-    bundle_id: &JsonApiDocument<BundleIdAttributes>,
+    client: &mut PortalClient,
     project: &ProjectContext,
     target: &TargetManifest,
+    platform: ApplePlatform,
+    bundle_id: &PortalAppId,
 ) -> Result<()> {
     let Some(entitlements_path) = &target.entitlements else {
         return Ok(());
     };
-    let desired = desired_capabilities(&project.root.join(entitlements_path))?;
-    let protected = HashSet::from(["GAME_CENTER", "IN_APP_PURCHASE"]);
-    let mut existing = HashMap::new();
-    for resource in &bundle_id.included {
-        if resource.resource_type != "bundleIdCapabilities" {
-            continue;
-        }
-        let attributes: BundleIdCapabilityAttributes =
-            serde_json::from_value(resource.attributes.clone())
-                .context("failed to parse bundle ID capability")?;
-        existing.insert(attributes.capability_type.clone(), resource.id.clone());
+    let plan = capability_plan_from_entitlements(&project.root.join(entitlements_path))?;
+
+    for service in &plan.services {
+        client.update_app_service(&bundle_id.id, service)?;
     }
 
-    for capability in desired
-        .iter()
-        .filter(|capability| !existing.contains_key(*capability))
-    {
-        let _ = client.create_bundle_capability(&bundle_id.data.id, capability)?;
+    if !plan.app_groups.is_empty() {
+        if platform == ApplePlatform::Macos {
+            bail!("App Groups capability syncing is not implemented for macOS targets yet");
+        }
+        let existing = client.list_app_groups()?;
+        let mut group_ids = Vec::new();
+        for group in &plan.app_groups {
+            let id = if let Some(existing_group) = existing
+                .iter()
+                .find(|candidate| candidate.identifier == *group)
+            {
+                existing_group.id.clone()
+            } else {
+                let name = identifier_name("App Group", group);
+                client.create_app_group(&name, group)?.id
+            };
+            group_ids.push(id);
+        }
+        client.assign_app_groups(&bundle_id.id, &group_ids)?;
     }
 
-    for (capability, id) in existing {
-        if desired.contains(&capability) || protected.contains(capability.as_str()) {
-            continue;
+    if !plan.merchant_ids.is_empty() {
+        let existing = client.list_merchants(platform == ApplePlatform::Macos)?;
+        let mut merchant_ids = Vec::new();
+        for merchant in &plan.merchant_ids {
+            let id = if let Some(existing_merchant) = existing
+                .iter()
+                .find(|candidate| candidate.identifier == *merchant)
+            {
+                existing_merchant.id.clone()
+            } else {
+                let name = identifier_name("Merchant ID", merchant);
+                client
+                    .create_merchant(&name, merchant, platform == ApplePlatform::Macos)?
+                    .id
+            };
+            merchant_ids.push(id);
         }
-        let _ = client.delete_bundle_capability(&id);
+        client.assign_merchants(
+            &bundle_id.id,
+            &merchant_ids,
+            platform == ApplePlatform::Macos,
+        )?;
+    }
+
+    if !plan.cloud_containers.is_empty() {
+        if platform == ApplePlatform::Macos {
+            bail!("iCloud container syncing is not implemented for macOS targets yet");
+        }
+        let existing = client.list_cloud_containers()?;
+        let mut container_ids = Vec::new();
+        for container in &plan.cloud_containers {
+            let id = if let Some(existing_container) = existing
+                .iter()
+                .find(|candidate| candidate.identifier == *container)
+            {
+                existing_container.id.clone()
+            } else {
+                let name = identifier_name("iCloud Container", container);
+                client.create_cloud_container(&name, container)?.id
+            };
+            container_ids.push(id);
+        }
+        client.assign_cloud_containers(&bundle_id.id, &container_ids)?;
     }
 
     Ok(())
 }
 
 fn ensure_certificate(
-    client: &AscClient,
+    client: &mut PortalClient,
     project: &ProjectContext,
     state: &mut SigningState,
     certificate_type: &str,
 ) -> Result<ManagedCertificate> {
-    let remote_certificates = client.list_certificates(certificate_type)?;
+    let remote_certificates = client.list_certificates(
+        &[certificate_type],
+        is_macos_certificate_type(certificate_type),
+    )?;
     for remote in &remote_certificates {
         if let Some(local) = state
             .certificates
@@ -322,15 +415,16 @@ fn ensure_certificate(
 
     let csr_pem = fs::read_to_string(&csr_path)
         .with_context(|| format!("failed to read {}", csr_path.display()))?;
-    let remote = client.create_certificate(certificate_type, &csr_pem)?;
-    let certificate_content = remote
-        .attributes
-        .certificate_content
-        .clone()
-        .context("created certificate did not include certificateContent")?;
-    let certificate_bytes = STANDARD
-        .decode(certificate_content)
-        .context("failed to decode certificateContent")?;
+    let remote = client.create_certificate(
+        certificate_type,
+        &csr_pem,
+        is_macos_certificate_type(certificate_type),
+    )?;
+    let certificate_bytes = client.download_certificate(
+        &remote.id,
+        certificate_type,
+        is_macos_certificate_type(certificate_type),
+    )?;
     fs::write(&certificate_der_path, &certificate_bytes)
         .with_context(|| format!("failed to write {}", certificate_der_path.display()))?;
 
@@ -358,11 +452,10 @@ fn ensure_certificate(
     ]);
     crate::util::run_command(&mut openssl_pkcs12)?;
 
-    let serial_number = remote
-        .attributes
-        .serial_number
-        .clone()
-        .context("created certificate did not include a serial number")?;
+    let serial_number = match remote.serial_number.clone() {
+        Some(serial_number) => serial_number,
+        None => read_certificate_serial(&certificate_der_path)?,
+    };
     let password_account = format!("{}-{serial_number}", remote.id);
     store_p12_password(&password_account, &p12_password)?;
 
@@ -370,7 +463,7 @@ fn ensure_certificate(
         id: remote.id,
         certificate_type: certificate_type.to_owned(),
         serial_number,
-        display_name: remote.attributes.display_name.clone(),
+        display_name: remote.name.clone(),
         private_key_path,
         certificate_der_path,
         p12_path,
@@ -381,63 +474,50 @@ fn ensure_certificate(
 }
 
 fn ensure_profile(
-    client: &AscClient,
+    client: &mut PortalClient,
     project: &ProjectContext,
     state: &mut SigningState,
-    bundle_id: &JsonApiDocument<BundleIdAttributes>,
+    platform: ApplePlatform,
+    bundle_id: &PortalAppId,
     profile_type: &str,
     certificate: &ManagedCertificate,
     device_ids: &[String],
 ) -> Result<ManagedProfile> {
-    let profiles = client.list_profiles(profile_type)?;
-    let bundle_identifier = &bundle_id.data.attributes.identifier;
+    let portal_platform = portal_profile_platform(platform);
+    let profiles = client.list_profiles(portal_platform)?;
+    let bundle_identifier = &bundle_id.identifier;
     let mut remote_profile_ids = HashSet::new();
     let mut stale_orbit_profiles = Vec::new();
 
-    for profile in profiles.data {
+    for profile in profiles {
         remote_profile_ids.insert(profile.id.clone());
-        let Some(bundle_link) = profile
-            .relationships
-            .get("bundleId")
-            .and_then(|relationship| match &relationship.data {
-                Some(RelationshipData::One(link)) => Some(link.id.as_str()),
-                _ => None,
-            })
-        else {
+        let Some(app) = &profile.app else {
             continue;
         };
-        if bundle_link != bundle_id.data.id {
+        if app.id != bundle_id.id {
             continue;
         }
 
         let certificate_links = profile
-            .relationships
-            .get("certificates")
-            .and_then(|relationship| match &relationship.data {
-                Some(RelationshipData::Many(links)) => {
-                    Some(links.iter().map(|link| link.id.clone()).collect::<Vec<_>>())
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
+            .certificates
+            .iter()
+            .map(|certificate| certificate.id.clone())
+            .collect::<Vec<_>>();
         let device_links = profile
-            .relationships
-            .get("devices")
-            .and_then(|relationship| match &relationship.data {
-                Some(RelationshipData::Many(links)) => {
-                    Some(links.iter().map(|link| link.id.clone()).collect::<Vec<_>>())
-                }
-                _ => None,
-            })
-            .unwrap_or_default();
+            .devices
+            .iter()
+            .map(|device| device.id.clone())
+            .collect::<Vec<_>>();
 
         let matches_certificate = certificate_links.contains(&certificate.id);
         let matches_devices = canonical_ids(&device_links) == canonical_ids(device_ids);
 
         if matches_certificate && matches_devices {
             let managed = persist_profile(
+                client,
                 project,
                 state,
+                portal_platform,
                 profile_type,
                 bundle_identifier,
                 certificate,
@@ -460,13 +540,14 @@ fn ensure_profile(
 
     for profile_id in stale_orbit_profiles {
         client
-            .delete_profile(&profile_id)
+            .delete_profile(portal_platform, &profile_id)
             .with_context(|| format!("failed to repair provisioning profile `{profile_id}`"))?;
         state.profiles.retain(|profile| profile.id != profile_id);
     }
     cleanup_stale_profile_state(state, bundle_identifier, profile_type, &remote_profile_ids);
 
     let remote = client.create_profile(
+        portal_platform,
         &format!(
             "*[orbit] {} {} {}",
             bundle_identifier,
@@ -474,13 +555,15 @@ fn ensure_profile(
             crate::util::timestamp_slug()
         ),
         profile_type,
-        &bundle_id.data.id,
+        &bundle_id.id,
         &[certificate.id.clone()],
         device_ids,
     )?;
     persist_profile(
+        client,
         project,
         state,
+        portal_platform,
         profile_type,
         bundle_identifier,
         certificate,
@@ -490,24 +573,19 @@ fn ensure_profile(
 }
 
 fn persist_profile(
+    client: &mut PortalClient,
     project: &ProjectContext,
     state: &mut SigningState,
+    platform: PortalProfilePlatform,
     profile_type: &str,
     bundle_identifier: &str,
     certificate: &ManagedCertificate,
     device_ids: &[String],
-    remote: Resource<ProfileAttributes>,
+    remote: PortalProvisioningProfile,
 ) -> Result<ManagedProfile> {
     let profiles_dir = project.app.global_paths.data_dir.join("profiles");
     ensure_dir(&profiles_dir)?;
-    let profile_content = remote
-        .attributes
-        .profile_content
-        .clone()
-        .context("profile response did not include profileContent")?;
-    let profile_bytes = STANDARD
-        .decode(profile_content)
-        .context("failed to decode profileContent")?;
+    let profile_bytes = client.download_profile(platform, &remote.id)?;
     let profile_path = profiles_dir.join(format!("{}-{}.mobileprovision", remote.id, profile_type));
     fs::write(&profile_path, profile_bytes)
         .with_context(|| format!("failed to write {}", profile_path.display()))?;
@@ -518,7 +596,7 @@ fn persist_profile(
         profile_type: profile_type.to_owned(),
         bundle_id: bundle_identifier.to_owned(),
         path: profile_path,
-        uuid: remote.attributes.uuid.clone(),
+        uuid: remote.uuid.clone(),
         certificate_ids: vec![certificate.id.clone()],
         device_ids: device_ids.to_vec(),
     };
@@ -526,16 +604,24 @@ fn persist_profile(
     Ok(profile)
 }
 
-fn resolve_device_ids(client: &AscClient, udids: &[String]) -> Result<Vec<String>> {
+fn resolve_device_ids(
+    client: &mut PortalClient,
+    platform: ApplePlatform,
+    udids: &[String],
+) -> Result<Vec<String>> {
+    let class = device_class_for_platform(platform);
     if udids.is_empty() {
-        let devices = client.list_devices()?;
-        return Ok(devices.into_iter().map(|device| device.id).collect());
+        return Ok(client
+            .list_devices(class, false)?
+            .into_iter()
+            .map(|device| device.id)
+            .collect());
     }
 
     let mut device_ids = Vec::new();
     for udid in udids {
         let device = client
-            .find_device_by_udid(udid)?
+            .find_device_by_udid(udid, class)?
             .with_context(|| format!("device `{udid}` is not registered with Apple"))?;
         device_ids.push(device.id);
     }
@@ -545,22 +631,25 @@ fn resolve_device_ids(client: &AscClient, udids: &[String]) -> Result<Vec<String
 fn select_device_udids(
     project: &ProjectContext,
     distribution: DistributionKind,
+    platform: ApplePlatform,
 ) -> Result<Vec<String>> {
     let cache = crate::apple::device::refresh_cache(&project.app)?;
-    if cache.devices.is_empty() {
-        bail!("no registered Apple devices found; run `orbit apple device register` first");
+    let devices = cache
+        .devices
+        .into_iter()
+        .filter(|device| device_matches_platform(&device.platform, platform))
+        .collect::<Vec<_>>();
+    if devices.is_empty() {
+        bail!(
+            "no registered Apple devices found for {platform}; run `orbit apple device register` first"
+        );
     }
 
     if !project.app.interactive {
-        return Ok(cache
-            .devices
-            .into_iter()
-            .map(|device| device.udid)
-            .collect());
+        return Ok(devices.into_iter().map(|device| device.udid).collect());
     }
 
-    let labels = cache
-        .devices
+    let labels = devices
         .iter()
         .map(|device| format!("{} ({})", device.name, device.udid))
         .collect::<Vec<_>>();
@@ -576,12 +665,40 @@ fn select_device_udids(
         }
         return Ok(selections
             .into_iter()
-            .map(|index| cache.devices[index].udid.clone())
+            .map(|index| devices[index].udid.clone())
             .collect());
     }
 
     let index = prompt_select("Select a device to provision", &labels)?;
-    Ok(vec![cache.devices[index].udid.clone()])
+    Ok(vec![devices[index].udid.clone()])
+}
+
+fn device_class_for_platform(platform: ApplePlatform) -> PortalDeviceClass {
+    match platform {
+        ApplePlatform::Ios | ApplePlatform::Visionos => PortalDeviceClass::Iphone,
+        ApplePlatform::Tvos => PortalDeviceClass::Tvos,
+        ApplePlatform::Watchos => PortalDeviceClass::Watch,
+        ApplePlatform::Macos => PortalDeviceClass::Mac,
+    }
+}
+
+fn device_matches_platform(device_platform: &str, platform: ApplePlatform) -> bool {
+    match platform {
+        ApplePlatform::Ios | ApplePlatform::Visionos => device_platform == "IOS",
+        ApplePlatform::Tvos => device_platform == "TVOS",
+        ApplePlatform::Watchos => device_platform == "WATCH" || device_platform == "WATCHOS",
+        ApplePlatform::Macos => device_platform == "MAC_OS" || device_platform == "UNIVERSAL",
+    }
+}
+
+fn portal_profile_platform(platform: ApplePlatform) -> PortalProfilePlatform {
+    match platform {
+        ApplePlatform::Ios => PortalProfilePlatform::Ios,
+        ApplePlatform::Tvos => PortalProfilePlatform::Tvos,
+        ApplePlatform::Watchos => PortalProfilePlatform::Watchos,
+        ApplePlatform::Visionos => PortalProfilePlatform::Visionos,
+        ApplePlatform::Macos => PortalProfilePlatform::Macos,
+    }
 }
 
 fn is_orbit_managed_profile(
@@ -611,94 +728,25 @@ fn cleanup_stale_profile_state(
     });
 }
 
-fn desired_capabilities(path: &Path) -> Result<HashSet<String>> {
-    let value = Value::from_file(path)
-        .with_context(|| format!("failed to parse entitlements {}", path.display()))?;
-    let dictionary = value
-        .into_dictionary()
-        .context("entitlements file must contain a top-level dictionary")?;
-
-    let mut capabilities = HashSet::new();
-    for (key, value) in &dictionary {
-        match key.as_str() {
-            "aps-environment" => {
-                validate_push_environment(value)?;
-                capabilities.insert("PUSH_NOTIFICATIONS".to_owned());
-            }
-            "com.apple.developer.applesignin" => {
-                validate_string_array(key, value)?;
-                capabilities.insert("APPLE_ID_AUTH".to_owned());
-            }
-            "com.apple.security.application-groups" => {
-                validate_prefixed_array(key, value, "group.")?;
-                capabilities.insert("APP_GROUPS".to_owned());
-            }
-            "com.apple.developer.in-app-payments" => {
-                validate_prefixed_array(key, value, "merchant.")?;
-                capabilities.insert("APPLE_PAY".to_owned());
-            }
-            "com.apple.developer.icloud-container-identifiers" => {
-                validate_prefixed_array(key, value, "iCloud.")?;
-                capabilities.insert("ICLOUD".to_owned());
-            }
-            "com.apple.developer.networking.networkextension" => {
-                validate_string_array(key, value)?;
-                capabilities.insert("NETWORK_EXTENSIONS".to_owned());
-            }
-            "com.apple.developer.associated-domains" => {
-                validate_string_array(key, value)?;
-                capabilities.insert("ASSOCIATED_DOMAINS".to_owned());
-            }
-            _ => {}
-        }
-    }
-
-    Ok(capabilities)
-}
-
-fn validate_push_environment(value: &Value) -> Result<()> {
-    let Some(environment) = value.as_string() else {
-        bail!("`aps-environment` must be a string");
-    };
-    match environment {
-        "development" | "production" => Ok(()),
-        other => bail!("`aps-environment` must be `development` or `production`, got `{other}`"),
-    }
-}
-
-fn validate_string_array(key: &str, value: &Value) -> Result<()> {
-    let Some(values) = value.as_array() else {
-        bail!("`{key}` must be an array");
-    };
-    if values.iter().all(|item| item.as_string().is_some()) {
-        Ok(())
-    } else {
-        bail!("`{key}` must contain only strings")
-    }
-}
-
-fn validate_prefixed_array(key: &str, value: &Value, prefix: &str) -> Result<()> {
-    validate_string_array(key, value)?;
-    let values = value.as_array().expect("validated array");
-    if values.iter().all(|item| {
-        item.as_string()
-            .is_some_and(|value| value.starts_with(prefix))
-    }) {
-        Ok(())
-    } else {
-        bail!("`{key}` must contain only values prefixed with `{prefix}`")
-    }
-}
-
 fn certificate_type(platform: ApplePlatform, profile: &ProfileManifest) -> Result<&'static str> {
     match (platform, profile.distribution) {
-        (ApplePlatform::Ios, DistributionKind::Development) => Ok("IOS_DEVELOPMENT"),
-        (ApplePlatform::Ios, DistributionKind::AdHoc | DistributionKind::AppStore) => {
-            Ok("IOS_DISTRIBUTION")
-        }
-        (ApplePlatform::Macos, DistributionKind::Development) => Ok("MAC_APP_DEVELOPMENT"),
-        (ApplePlatform::Macos, DistributionKind::MacAppStore) => Ok("MAC_APP_DISTRIBUTION"),
-        (ApplePlatform::Macos, DistributionKind::DeveloperId) => Ok("DEVELOPER_ID_APPLICATION"),
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::Development,
+        ) => Ok("83Q87W3TGH"),
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::AdHoc | DistributionKind::AppStore,
+        ) => Ok("WXV89964HE"),
+        (ApplePlatform::Macos, DistributionKind::Development) => Ok("749Y1QAGU7"),
+        (ApplePlatform::Macos, DistributionKind::MacAppStore) => Ok("HXZEUKP0FP"),
+        (ApplePlatform::Macos, DistributionKind::DeveloperId) => Ok("W0EURJRMC5"),
         _ => bail!(
             "signing is not implemented for {platform} with {:?}",
             profile.distribution
@@ -708,21 +756,74 @@ fn certificate_type(platform: ApplePlatform, profile: &ProfileManifest) -> Resul
 
 fn profile_type(platform: ApplePlatform, profile: &ProfileManifest) -> Result<&'static str> {
     match (platform, profile.distribution) {
-        (ApplePlatform::Ios, DistributionKind::Development) => Ok("IOS_APP_DEVELOPMENT"),
-        (ApplePlatform::Ios, DistributionKind::AdHoc) => Ok("IOS_APP_ADHOC"),
-        (ApplePlatform::Ios, DistributionKind::AppStore) => Ok("IOS_APP_STORE"),
-        (ApplePlatform::Macos, DistributionKind::Development) => Ok("MAC_APP_DEVELOPMENT"),
-        (ApplePlatform::Macos, DistributionKind::MacAppStore) => Ok("MAC_APP_STORE"),
-        (ApplePlatform::Macos, DistributionKind::DeveloperId) => Ok("MAC_APP_DIRECT"),
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::Development,
+        ) => Ok("limited"),
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::AdHoc,
+        ) => Ok("adhoc"),
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::AppStore,
+        ) => Ok("store"),
+        (ApplePlatform::Macos, DistributionKind::Development) => Ok("limited"),
+        (ApplePlatform::Macos, DistributionKind::MacAppStore) => Ok("store"),
+        (ApplePlatform::Macos, DistributionKind::DeveloperId) => Ok("direct"),
         _ => bail!("provisioning profiles are not implemented for {platform}"),
     }
 }
 
-fn bundle_id_platform(platform: ApplePlatform) -> &'static str {
-    match platform {
-        ApplePlatform::Macos => "MAC_OS",
-        _ => "IOS",
+fn installer_certificate_type(profile: &ProfileManifest) -> Result<&'static str> {
+    match profile.distribution {
+        DistributionKind::MacAppStore => Ok("2PQI8IDXNH"),
+        DistributionKind::DeveloperId => Ok("OYVN2GW35E"),
+        _ => bail!(
+            "installer signing is not implemented for {:?}",
+            profile.distribution
+        ),
     }
+}
+
+fn identifier_name(prefix: &str, identifier: &str) -> String {
+    format!("{prefix} {identifier}")
+}
+
+fn is_macos_certificate_type(certificate_type: &str) -> bool {
+    matches!(
+        certificate_type,
+        "749Y1QAGU7" | "HXZEUKP0FP" | "2PQI8IDXNH" | "OYVN2GW35E" | "W0EURJRMC5"
+    )
+}
+
+fn read_certificate_serial(path: &Path) -> Result<String> {
+    let mut command = Command::new("openssl");
+    command.args([
+        "x509",
+        "-inform",
+        "DER",
+        "-in",
+        path.to_str()
+            .context("certificate path contains invalid UTF-8")?,
+        "-noout",
+        "-serial",
+    ]);
+    let output = crate::util::command_output(&mut command)?;
+    output
+        .trim()
+        .strip_prefix("serial=")
+        .map(ToOwned::to_owned)
+        .context("openssl did not return a certificate serial number")
 }
 
 fn load_state(project: &ProjectContext) -> Result<SigningState> {

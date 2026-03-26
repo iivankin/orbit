@@ -1,0 +1,33 @@
+{
+  "name": "ExampleTVApp",
+  "version": "0.1.0",
+  "platform": "apple",
+  "platforms": {
+    "tvos": {
+      "deployment_target": "18.0",
+      "profiles": {
+        "development": {
+          "configuration": "debug",
+          "distribution": "development"
+        },
+        "release": {
+          "configuration": "release",
+          "distribution": "app-store"
+        }
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "ExampleTVApp",
+      "kind": "app",
+      "bundle_id": "dev.orbit.examples.tvos",
+      "platforms": [
+        "tvos"
+      ],
+      "sources": [
+        "Sources/App"
+      ]
+    }
+  ]
+}

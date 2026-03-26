@@ -609,4 +609,28 @@ mod tests {
                 .contains("must be hosted by exactly one watch app target")
         );
     }
+
+    #[test]
+    fn loads_additional_platform_and_fixture_manifests() {
+        let fixture_paths = [
+            "examples/macos-app/orbit.json",
+            "examples/tvos-app/orbit.json",
+            "examples/visionos-app/orbit.json",
+            "examples/mixed-language-app/orbit.json",
+            "examples/compiled-resources-app/orbit.json",
+            "examples/swiftpm-multi-target-app/orbit.json",
+        ];
+
+        for path in fixture_paths {
+            let manifest = Manifest::load(&fixture(path)).unwrap();
+            assert!(
+                !manifest.targets.is_empty(),
+                "fixture `{path}` should contain at least one target"
+            );
+            assert!(
+                !manifest.platforms.is_empty(),
+                "fixture `{path}` should contain at least one platform"
+            );
+        }
+    }
 }

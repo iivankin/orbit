@@ -1,0 +1,33 @@
+{
+  "name": "ExampleVisionApp",
+  "version": "0.1.0",
+  "platform": "apple",
+  "platforms": {
+    "visionos": {
+      "deployment_target": "2.0",
+      "profiles": {
+        "development": {
+          "configuration": "debug",
+          "distribution": "development"
+        },
+        "release": {
+          "configuration": "release",
+          "distribution": "app-store"
+        }
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "ExampleVisionApp",
+      "kind": "app",
+      "bundle_id": "dev.orbit.examples.visionos",
+      "platforms": [
+        "visionos"
+      ],
+      "sources": [
+        "Sources/App"
+      ]
+    }
+  ]
+}

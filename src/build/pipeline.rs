@@ -39,6 +39,13 @@ struct BuiltTarget {
     bundle_path: PathBuf,
 }
 
+#[derive(Debug, Clone)]
+struct ProductLayout {
+    product_path: PathBuf,
+    binary_path: PathBuf,
+    module_output_path: Option<PathBuf>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct ExternalLinkInputs {
     module_search_paths: Vec<PathBuf>,
@@ -117,11 +124,16 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
     if args.device_id.is_some() && destination != DestinationKind::Device {
         bail!("--device-id can only be used together with a physical-device run");
     }
-    let selected_device = if destination == DestinationKind::Device {
-        Some(select_physical_device(project, args.device_id.as_deref())?)
-    } else {
-        None
-    };
+    let selected_device =
+        if destination == DestinationKind::Device && platform != ApplePlatform::Macos {
+            Some(select_physical_device(
+                project,
+                args.device_id.as_deref(),
+                platform,
+            )?)
+        } else {
+            None
+        };
     let request = BuildRequest {
         target_name: target.name.clone(),
         platform,
@@ -150,15 +162,19 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
         "Built {} for {}.",
         outcome.receipt.target, outcome.receipt.profile
     ));
-    match outcome.receipt.destination.as_str() {
-        "simulator" => run_on_simulator(project, &outcome.receipt),
-        "device" => run_on_device(
+    match (
+        outcome.receipt.platform,
+        outcome.receipt.destination.as_str(),
+    ) {
+        (ApplePlatform::Macos, _) => run_on_macos(&outcome.receipt),
+        (_, "simulator") => run_on_simulator(project, &outcome.receipt),
+        (_, "device") => run_on_device(
             selected_device
                 .as_ref()
                 .context("device run requested without a selected physical device")?,
             &outcome.receipt,
         ),
-        other => bail!("unsupported run destination `{other}`"),
+        (_, other) => bail!("unsupported run destination `{other}`"),
     }
 }
 
@@ -172,9 +188,11 @@ pub fn submit_artifact(project: &ProjectContext, args: &SubmitArgs) -> Result<()
         | ApplePlatform::Tvos
         | ApplePlatform::Visionos
         | ApplePlatform::Watchos => submit_with_altool(project, &receipt, args.wait),
-        ApplePlatform::Macos => {
-            bail!("macOS submit/notarization is not implemented yet")
-        }
+        ApplePlatform::Macos => match receipt.distribution {
+            DistributionKind::DeveloperId => submit_with_notarytool(project, &receipt, args.wait),
+            DistributionKind::MacAppStore => submit_with_altool(project, &receipt, args.wait),
+            other => bail!("macOS submit is not supported for {:?} builds", other),
+        },
     }
 }
 
@@ -254,13 +272,14 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
         .context("root target did not build")?;
     let artifact_path = export_artifact(
         project,
+        platform,
         root_target_built,
         &build_root,
         request.output.as_deref(),
         profile,
     )?;
 
-    let receipt = BuildReceipt::new(
+    let mut receipt = BuildReceipt::new(
         &root_target.name,
         platform,
         &request.profile_name,
@@ -270,6 +289,9 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
         root_target_built.bundle_path.clone(),
         artifact_path,
     );
+    if !matches!(root_target.kind, TargetKind::App | TargetKind::WatchApp) {
+        receipt.submit_eligible = false;
+    }
     let receipt_path = write_receipt(&project.project_paths.receipts_dir, &receipt)?;
 
     Ok(BuildOutcome {
@@ -288,9 +310,13 @@ fn compile_target(
 ) -> Result<BuiltTarget> {
     let target_dir = build_root.join(&target.name);
     let intermediates_dir = target_dir.join("intermediates");
-    let bundle_root = target_dir.join(bundle_directory_name(target));
+    let product = product_layout(&target_dir, &intermediates_dir, target, toolchain);
     ensure_dir(&intermediates_dir)?;
-    ensure_dir(&bundle_root)?;
+    if target.kind.is_bundle() {
+        ensure_dir(&product.product_path)?;
+    } else {
+        ensure_parent_dir(&product.product_path)?;
+    }
 
     let package_outputs =
         compile_swift_packages(project, toolchain, profile, &intermediates_dir, target)?;
@@ -299,8 +325,6 @@ fn compile_target(
     let c_objects =
         compile_c_family_sources(project, toolchain, profile, &intermediates_dir, target)?;
     let swift_sources = resolve_target_sources(project, target, &["swift"])?;
-    let executable_name = target.name.clone();
-    let executable_path = bundle_root.join(&executable_name);
 
     if !swift_sources.is_empty() {
         compile_swift_target(
@@ -311,16 +335,18 @@ fn compile_target(
             &package_outputs,
             &external_link_inputs,
             &c_objects,
-            &executable_name,
-            &executable_path,
+            &target.name,
+            &product.binary_path,
+            product.module_output_path.as_deref(),
         )?;
     } else if !c_objects.is_empty() {
         link_native_target(
             toolchain,
             profile,
+            target.kind,
             &external_link_inputs,
             &c_objects,
-            &executable_path,
+            &product.binary_path,
         )?;
     } else {
         bail!(
@@ -329,14 +355,24 @@ fn compile_target(
         );
     }
 
-    write_info_plist(project, toolchain, target, &bundle_root, profile_name)?;
-    process_resources(project, toolchain, target, &bundle_root)?;
-    embed_external_payloads(&external_link_inputs, &bundle_root)?;
+    if needs_info_plist(target.kind) {
+        write_info_plist(
+            project,
+            toolchain,
+            target,
+            &product.product_path,
+            profile_name,
+        )?;
+    }
+    if target.kind.is_bundle() {
+        process_resources(project, toolchain, target, &product.product_path)?;
+        embed_external_payloads(&external_link_inputs, &product.product_path)?;
+    }
 
     Ok(BuiltTarget {
         target_name: target.name.clone(),
         target_kind: target.kind,
-        bundle_path: bundle_root,
+        bundle_path: product.product_path,
     })
 }
 
@@ -464,11 +500,11 @@ fn validate_run_distribution(profile: &ProfileManifest) -> Result<()> {
 
 fn validate_run_platform(platform: ApplePlatform) -> Result<()> {
     match platform {
-        ApplePlatform::Ios => Ok(()),
-        ApplePlatform::Macos
+        ApplePlatform::Ios
+        | ApplePlatform::Macos
         | ApplePlatform::Tvos
-        | ApplePlatform::Visionos
-        | ApplePlatform::Watchos => bail!("`orbit run` is currently implemented for iOS targets"),
+        | ApplePlatform::Visionos => Ok(()),
+        ApplePlatform::Watchos => bail!("`orbit run` is not implemented for watchOS targets"),
     }
 }
 
@@ -588,18 +624,39 @@ fn compile_swift_target(
     external_link_inputs: &ExternalLinkInputs,
     object_files: &[PathBuf],
     module_name: &str,
-    executable_path: &Path,
+    product_path: &Path,
+    module_output_path: Option<&Path>,
 ) -> Result<()> {
     let mut command = toolchain.swiftc();
     command.arg("-parse-as-library");
     command.arg("-target").arg(&toolchain.target_triple);
     command.arg("-module-name").arg(module_name);
-    command.arg("-o").arg(executable_path);
     if matches!(profile.configuration.as_str(), "debug") {
         command.args(["-Onone", "-g"]);
     } else {
         command.arg("-O");
     }
+    match target_kind {
+        TargetKind::StaticLibrary => {
+            command.arg("-emit-library");
+            command.arg("-static");
+        }
+        TargetKind::DynamicLibrary | TargetKind::Framework => {
+            command.arg("-emit-library");
+        }
+        _ => {}
+    }
+    if matches!(
+        target_kind,
+        TargetKind::StaticLibrary | TargetKind::DynamicLibrary | TargetKind::Framework
+    ) {
+        command.arg("-emit-module");
+        if let Some(module_output_path) = module_output_path {
+            ensure_parent_dir(module_output_path)?;
+            command.arg("-emit-module-path").arg(module_output_path);
+        }
+    }
+    command.arg("-o").arg(product_path);
     if matches!(
         target_kind,
         TargetKind::AppExtension | TargetKind::WatchExtension | TargetKind::WidgetExtension
@@ -627,24 +684,55 @@ fn compile_swift_target(
 fn link_native_target(
     toolchain: &Toolchain,
     profile: &ProfileManifest,
+    target_kind: TargetKind,
     external_link_inputs: &ExternalLinkInputs,
     object_files: &[PathBuf],
-    executable_path: &Path,
+    product_path: &Path,
 ) -> Result<()> {
-    let mut command = toolchain.clang(false);
-    command.arg("-target").arg(&toolchain.target_triple);
-    command.arg("-isysroot").arg(&toolchain.sdk_path);
-    command.arg("-o").arg(executable_path);
-    if matches!(profile.configuration.as_str(), "debug") {
-        command.arg("-g");
-    } else {
-        command.arg("-O2");
+    match target_kind {
+        TargetKind::StaticLibrary => {
+            let mut command = toolchain.libtool();
+            command.arg("-static");
+            command.arg("-o").arg(product_path);
+            for object_file in object_files {
+                command.arg(object_file);
+            }
+            run_command(&mut command)
+        }
+        TargetKind::DynamicLibrary | TargetKind::Framework => {
+            let mut command = toolchain.clang(false);
+            command.arg("-target").arg(&toolchain.target_triple);
+            command.arg("-isysroot").arg(&toolchain.sdk_path);
+            command.arg("-dynamiclib");
+            command.arg("-o").arg(product_path);
+            if matches!(profile.configuration.as_str(), "debug") {
+                command.arg("-g");
+            } else {
+                command.arg("-O2");
+            }
+            apply_external_link_inputs(&mut command, external_link_inputs);
+            for object_file in object_files {
+                command.arg(object_file);
+            }
+            run_command(&mut command)
+        }
+        _ => {
+            let mut command = toolchain.clang(false);
+            command.arg("-target").arg(&toolchain.target_triple);
+            command.arg("-isysroot").arg(&toolchain.sdk_path);
+            command.arg("-o").arg(product_path);
+            if matches!(profile.configuration.as_str(), "debug") {
+                command.arg("-g");
+            } else {
+                command.arg("-O2");
+            }
+            apply_external_link_inputs(&mut command, external_link_inputs);
+            for object_file in object_files {
+                command.arg(object_file);
+            }
+            run_command(&mut command)
+        }
     }
-    apply_external_link_inputs(&mut command, external_link_inputs);
-    for object_file in object_files {
-        command.arg(object_file);
-    }
-    run_command(&mut command)
 }
 
 fn bundle_directory_name(target: &TargetManifest) -> String {
@@ -653,8 +741,50 @@ fn bundle_directory_name(target: &TargetManifest) -> String {
         TargetKind::AppExtension | TargetKind::WatchExtension | TargetKind::WidgetExtension => {
             format!("{}.appex", target.name)
         }
-        _ => target.name.clone(),
+        TargetKind::Framework => format!("{}.framework", target.name),
+        TargetKind::StaticLibrary => format!("lib{}.a", target.name),
+        TargetKind::DynamicLibrary => format!("lib{}.dylib", target.name),
+        TargetKind::Executable => target.name.clone(),
     }
+}
+
+fn product_layout(
+    target_dir: &Path,
+    intermediates_dir: &Path,
+    target: &TargetManifest,
+    toolchain: &Toolchain,
+) -> ProductLayout {
+    let product_path = target_dir.join(bundle_directory_name(target));
+    let module_output_path = match target.kind {
+        TargetKind::Framework => Some(
+            product_path
+                .join("Modules")
+                .join(format!("{}.swiftmodule", target.name))
+                .join(format!("{}.swiftmodule", toolchain.target_triple)),
+        ),
+        TargetKind::StaticLibrary | TargetKind::DynamicLibrary => {
+            Some(intermediates_dir.join(format!("{}.swiftmodule", target.name)))
+        }
+        _ => None,
+    };
+    let binary_path = match target.kind {
+        TargetKind::App
+        | TargetKind::AppExtension
+        | TargetKind::WatchApp
+        | TargetKind::WatchExtension
+        | TargetKind::WidgetExtension
+        | TargetKind::Framework => product_path.join(&target.name),
+        _ => product_path.clone(),
+    };
+    ProductLayout {
+        product_path,
+        binary_path,
+        module_output_path,
+    }
+}
+
+fn needs_info_plist(target_kind: TargetKind) -> bool {
+    target_kind.is_bundle()
 }
 
 fn write_info_plist(
@@ -761,11 +891,18 @@ fn write_info_plist(
             }
             plist.insert("NSExtension".to_owned(), Value::Dictionary(extension));
         }
-        _ => {
-            bail!(
-                "target kind `{}` is not implemented yet",
-                target.kind.bundle_extension()
-            )
+        TargetKind::Framework => {
+            plist.insert(
+                "CFBundlePackageType".to_owned(),
+                Value::String("FMWK".to_owned()),
+            );
+            plist.insert(
+                "MinimumOSVersion".to_owned(),
+                Value::String(toolchain.deployment_target.clone()),
+            );
+        }
+        TargetKind::StaticLibrary | TargetKind::DynamicLibrary | TargetKind::Executable => {
+            bail!("non-bundle targets do not write Info.plist files")
         }
     }
 
@@ -868,6 +1005,9 @@ fn process_resources(
     bundle_root: &Path,
 ) -> Result<()> {
     let mut asset_catalogs = Vec::new();
+    let mut interface_jobs = Vec::new();
+    let mut strings_jobs = Vec::new();
+    let mut core_data_jobs = Vec::new();
     let mut copy_jobs = Vec::new();
 
     for resource in &target.resources {
@@ -883,12 +1023,24 @@ fn process_resources(
             &resource_path,
             &resource_path,
             &mut asset_catalogs,
+            &mut interface_jobs,
+            &mut strings_jobs,
+            &mut core_data_jobs,
             &mut copy_jobs,
         )?;
     }
 
     if !asset_catalogs.is_empty() {
         compile_asset_catalogs(toolchain, &asset_catalogs, bundle_root)?;
+    }
+    for (source, relative) in interface_jobs {
+        compile_interface_resource(toolchain, &source, &bundle_root.join(relative))?;
+    }
+    for (source, relative) in strings_jobs {
+        compile_strings_resource(&source, &bundle_root.join(relative))?;
+    }
+    for (source, relative) in core_data_jobs {
+        compile_core_data_model(&source, &bundle_root.join(relative))?;
     }
 
     for (source, relative) in copy_jobs {
@@ -907,6 +1059,9 @@ fn discover_resources(
     current: &Path,
     root: &Path,
     asset_catalogs: &mut Vec<PathBuf>,
+    interface_jobs: &mut Vec<(PathBuf, PathBuf)>,
+    strings_jobs: &mut Vec<(PathBuf, PathBuf)>,
+    core_data_jobs: &mut Vec<(PathBuf, PathBuf)>,
     copy_jobs: &mut Vec<(PathBuf, PathBuf)>,
 ) -> Result<()> {
     if current
@@ -917,12 +1072,68 @@ fn discover_resources(
         asset_catalogs.push(current.to_path_buf());
         return Ok(());
     }
+    if current
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("storyboard"))
+    {
+        interface_jobs.push((
+            current.to_path_buf(),
+            compiled_interface_relative(current, root, "storyboardc")?,
+        ));
+        return Ok(());
+    }
+    if current
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| extension.eq_ignore_ascii_case("xib"))
+    {
+        interface_jobs.push((
+            current.to_path_buf(),
+            compiled_interface_relative(current, root, "nib")?,
+        ));
+        return Ok(());
+    }
+    if current
+        .extension()
+        .and_then(OsStr::to_str)
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("xcdatamodel")
+                || extension.eq_ignore_ascii_case("xcdatamodeld")
+        })
+    {
+        core_data_jobs.push((
+            current.to_path_buf(),
+            compiled_interface_relative(
+                current,
+                root,
+                if current
+                    .extension()
+                    .and_then(OsStr::to_str)
+                    .is_some_and(|extension| extension.eq_ignore_ascii_case("xcdatamodeld"))
+                {
+                    "momd"
+                } else {
+                    "mom"
+                },
+            )?,
+        ));
+        return Ok(());
+    }
 
     if current.is_file() {
         let relative = current
             .strip_prefix(root)
             .map(Path::to_path_buf)
             .unwrap_or_else(|_| current.file_name().map(PathBuf::from).unwrap_or_default());
+        if current
+            .extension()
+            .and_then(OsStr::to_str)
+            .is_some_and(|extension| extension.eq_ignore_ascii_case("strings"))
+        {
+            strings_jobs.push((current.to_path_buf(), relative));
+            return Ok(());
+        }
         copy_jobs.push((current.to_path_buf(), relative));
         return Ok(());
     }
@@ -939,12 +1150,50 @@ fn discover_resources(
             continue;
         }
         if path.is_dir() {
-            discover_resources(&path, root, asset_catalogs, copy_jobs)?;
+            discover_resources(
+                &path,
+                root,
+                asset_catalogs,
+                interface_jobs,
+                strings_jobs,
+                core_data_jobs,
+                copy_jobs,
+            )?;
         } else {
             let relative = path
                 .strip_prefix(root)
                 .with_context(|| format!("failed to derive resource path for {}", path.display()))?
                 .to_path_buf();
+            if path
+                .extension()
+                .and_then(OsStr::to_str)
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("strings"))
+            {
+                strings_jobs.push((path, relative));
+                continue;
+            }
+            if path
+                .extension()
+                .and_then(OsStr::to_str)
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("storyboard"))
+            {
+                interface_jobs.push((
+                    path.clone(),
+                    compiled_interface_relative(&path, root, "storyboardc")?,
+                ));
+                continue;
+            }
+            if path
+                .extension()
+                .and_then(OsStr::to_str)
+                .is_some_and(|extension| extension.eq_ignore_ascii_case("xib"))
+            {
+                interface_jobs.push((
+                    path.clone(),
+                    compiled_interface_relative(&path, root, "nib")?,
+                ));
+                continue;
+            }
             copy_jobs.push((path, relative));
         }
     }
@@ -974,6 +1223,59 @@ fn compile_asset_catalogs(
     command_output(&mut command).map(|_| ())
 }
 
+fn compile_interface_resource(
+    toolchain: &Toolchain,
+    source: &Path,
+    destination: &Path,
+) -> Result<()> {
+    ensure_parent_dir(destination)?;
+    let mut command = Command::new("xcrun");
+    command.args(["--sdk", toolchain.sdk_name.as_str(), "ibtool"]);
+    command.arg("--compile").arg(destination);
+    command
+        .arg("--platform")
+        .arg(toolchain.actool_platform_name());
+    command
+        .arg("--minimum-deployment-target")
+        .arg(&toolchain.deployment_target);
+    for device in toolchain.actool_target_device() {
+        command.arg("--target-device").arg(device);
+    }
+    command.arg(source);
+    command_output(&mut command).map(|_| ())
+}
+
+fn compile_strings_resource(source: &Path, destination: &Path) -> Result<()> {
+    ensure_parent_dir(destination)?;
+    let mut command = Command::new("plutil");
+    command.args(["-convert", "binary1", "-o"]);
+    command.arg(destination);
+    command.arg(source);
+    run_command(&mut command)
+}
+
+fn compile_core_data_model(source: &Path, destination: &Path) -> Result<()> {
+    ensure_parent_dir(destination)?;
+    let mut command = Command::new("xcrun");
+    command.arg("momc");
+    command.arg(source);
+    command.arg(destination);
+    run_command(&mut command)
+}
+
+fn compiled_interface_relative(
+    source: &Path,
+    root: &Path,
+    output_extension: &str,
+) -> Result<PathBuf> {
+    let relative = source
+        .strip_prefix(root)
+        .with_context(|| format!("failed to derive resource path for {}", source.display()))?;
+    let mut destination = relative.to_path_buf();
+    destination.set_extension(output_extension);
+    Ok(destination)
+}
+
 fn embed_dependencies(
     _project: &ProjectContext,
     root_target: &TargetManifest,
@@ -994,7 +1296,11 @@ fn embed_dependencies(
                 .file_name()
                 .context("dependency bundle name missing")?,
         );
-        copy_dir_recursive(&built.bundle_path, &destination)?;
+        if built.bundle_path.is_dir() {
+            copy_dir_recursive(&built.bundle_path, &destination)?;
+        } else {
+            copy_file(&built.bundle_path, &destination)?;
+        }
     }
     Ok(())
 }
@@ -1023,22 +1329,25 @@ fn embedded_dependency_root(
 
 fn export_artifact(
     project: &ProjectContext,
+    platform: ApplePlatform,
     built_target: &BuiltTarget,
     _build_root: &Path,
     explicit_output: Option<&Path>,
     profile: &ProfileManifest,
 ) -> Result<PathBuf> {
+    if !matches!(
+        built_target.target_kind,
+        TargetKind::App | TargetKind::WatchApp
+    ) {
+        return export_non_app_artifact(project, built_target, explicit_output);
+    }
     match profile.distribution {
         DistributionKind::Development => {
             if let Some(output) = explicit_output {
                 let output = resolve_path(&project.root, output);
                 if built_target.bundle_path != output {
-                    if output.exists() {
-                        fs::remove_dir_all(&output).with_context(|| {
-                            format!("failed to clear existing output {}", output.display())
-                        })?;
-                    }
-                    copy_dir_recursive(&built_target.bundle_path, &output)?;
+                    remove_existing_path(&output)?;
+                    copy_product(&built_target.bundle_path, &output)?;
                     return Ok(output);
                 }
             }
@@ -1053,12 +1362,7 @@ fn export_artifact(
             });
             let artifact_path = resolve_path(&project.root, &artifact_name);
             if artifact_path.exists() {
-                fs::remove_file(&artifact_path).with_context(|| {
-                    format!(
-                        "failed to remove existing artifact {}",
-                        artifact_path.display()
-                    )
-                })?;
+                remove_existing_path(&artifact_path)?;
             }
             let payload_dir = tempdir()?;
             let payload_root = payload_dir.path().join("Payload");
@@ -1069,7 +1373,7 @@ fn export_artifact(
                     .file_name()
                     .context("bundle file name missing")?,
             );
-            copy_dir_recursive(&built_target.bundle_path, &bundle_destination)?;
+            copy_product(&built_target.bundle_path, &bundle_destination)?;
             let mut command = Command::new("ditto");
             command.args([
                 "-c",
@@ -1086,13 +1390,129 @@ fn export_artifact(
             Ok(artifact_path)
         }
         DistributionKind::DeveloperId | DistributionKind::MacAppStore => {
-            bail!("macOS export is not implemented yet")
+            export_macos_artifact(project, platform, built_target, explicit_output, profile)
         }
     }
 }
 
+fn export_macos_artifact(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    built_target: &BuiltTarget,
+    explicit_output: Option<&Path>,
+    profile: &ProfileManifest,
+) -> Result<PathBuf> {
+    if platform != ApplePlatform::Macos {
+        bail!("macOS artifact export was requested for non-macOS platform `{platform}`");
+    }
+    let artifact_name = explicit_output.map(Path::to_path_buf).unwrap_or_else(|| {
+        project.project_paths.artifacts_dir.join(format!(
+            "{}-{:?}.pkg",
+            built_target.target_name, profile.distribution
+        ))
+    });
+    let artifact_path = resolve_path(&project.root, &artifact_name);
+    remove_existing_path(&artifact_path)?;
+
+    let signing = crate::apple::signing::prepare_package_signing(project, profile)?;
+    let mut command = Command::new("productbuild");
+    command.arg("--component");
+    command.arg(&built_target.bundle_path);
+    command.arg("/Applications");
+    command.arg("--sign").arg(&signing.signing_identity);
+    command.arg("--keychain").arg(&signing.keychain_path);
+    command.arg("--timestamp");
+    command.arg(&artifact_path);
+    run_command(&mut command)?;
+    Ok(artifact_path)
+}
+
+fn export_non_app_artifact(
+    project: &ProjectContext,
+    built_target: &BuiltTarget,
+    explicit_output: Option<&Path>,
+) -> Result<PathBuf> {
+    let output = explicit_output.map(Path::to_path_buf).unwrap_or_else(|| {
+        project.project_paths.artifacts_dir.join(
+            built_target
+                .bundle_path
+                .file_name()
+                .unwrap_or_else(|| OsStr::new(built_target.target_name.as_str())),
+        )
+    });
+    let output = resolve_path(&project.root, &output);
+    if output != built_target.bundle_path {
+        remove_existing_path(&output)?;
+        copy_product(&built_target.bundle_path, &output)?;
+        return Ok(output);
+    }
+    Ok(built_target.bundle_path.clone())
+}
+
+fn remove_existing_path(path: &Path) -> Result<()> {
+    if !path.exists() {
+        return Ok(());
+    }
+    if path.is_dir() {
+        fs::remove_dir_all(path).with_context(|| format!("failed to remove {}", path.display()))?;
+    } else {
+        fs::remove_file(path).with_context(|| format!("failed to remove {}", path.display()))?;
+    }
+    Ok(())
+}
+
+fn copy_product(source: &Path, destination: &Path) -> Result<()> {
+    if source.is_dir() {
+        copy_dir_recursive(source, destination)
+    } else {
+        copy_file(source, destination)
+    }
+}
+
+fn run_on_macos(receipt: &BuildReceipt) -> Result<()> {
+    let executable = macos_executable_path(receipt)?;
+    println!(
+        "Launching {} on the local Mac. Orbit will stay attached until the process exits; press Ctrl-C to stop.",
+        receipt.bundle_id
+    );
+
+    let mut command = Command::new(&executable);
+    if let Some(bundle_root) = receipt.bundle_path.parent() {
+        command.current_dir(bundle_root);
+    }
+    run_command(&mut command)
+}
+
+fn macos_executable_path(receipt: &BuildReceipt) -> Result<PathBuf> {
+    let standard_bundle_binary = receipt
+        .bundle_path
+        .join("Contents")
+        .join("MacOS")
+        .join(&receipt.target);
+    if standard_bundle_binary.exists() {
+        return Ok(standard_bundle_binary);
+    }
+
+    let legacy_bundle_binary = receipt.bundle_path.join(&receipt.target);
+    if legacy_bundle_binary.exists() {
+        return Ok(legacy_bundle_binary);
+    }
+
+    if receipt.bundle_path.is_file() {
+        return Ok(receipt.bundle_path.clone());
+    }
+    if receipt.artifact_path.is_file() {
+        return Ok(receipt.artifact_path.clone());
+    }
+
+    bail!(
+        "failed to find a runnable macOS executable inside {}",
+        receipt.bundle_path.display()
+    )
+}
+
 fn run_on_simulator(project: &ProjectContext, receipt: &BuildReceipt) -> Result<()> {
-    let device = select_simulator_device(project)?;
+    let device = select_simulator_device(project, receipt.platform)?;
     if !device.is_booted() {
         let mut boot = Command::new("xcrun");
         boot.args(["simctl", "boot", &device.udid]);
@@ -1174,7 +1594,10 @@ fn run_on_device(device: &PhysicalDevice, receipt: &BuildReceipt) -> Result<()> 
     run_command(&mut launch)
 }
 
-fn select_simulator_device(project: &ProjectContext) -> Result<SimulatorDevice> {
+fn select_simulator_device(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+) -> Result<SimulatorDevice> {
     let output = command_output(Command::new("xcrun").args([
         "simctl",
         "list",
@@ -1183,11 +1606,21 @@ fn select_simulator_device(project: &ProjectContext) -> Result<SimulatorDevice> 
         "--json",
     ]))?;
     let devices: SimctlList = serde_json::from_str(&output)?;
-    let mut flattened = devices.devices.into_values().flatten().collect::<Vec<_>>();
-    flattened.sort_by(|left, right| left.name.cmp(&right.name));
+    let mut flattened = devices
+        .devices
+        .into_iter()
+        .filter(|(runtime, _)| simulator_runtime_matches_platform(runtime, platform))
+        .flat_map(|(_, devices)| devices)
+        .collect::<Vec<_>>();
+    flattened.sort_by(|left, right| {
+        right
+            .is_booted()
+            .cmp(&left.is_booted())
+            .then_with(|| left.name.cmp(&right.name))
+    });
 
     if flattened.is_empty() {
-        bail!("no available simulators were found");
+        bail!("no available {platform} simulators were found");
     }
 
     let display = flattened
@@ -1203,13 +1636,30 @@ fn select_simulator_device(project: &ProjectContext) -> Result<SimulatorDevice> 
 }
 
 fn submit_with_altool(project: &ProjectContext, receipt: &BuildReceipt, wait: bool) -> Result<()> {
+    ensure_submit_app_record(project, receipt)?;
+    run_altool_command(project, receipt, true, false)?;
+
+    let mut command = build_altool_command(project, receipt, false, wait)?;
+    let result = run_command(&mut command);
+    Ok(result?)
+}
+
+fn build_altool_command(
+    project: &ProjectContext,
+    receipt: &BuildReceipt,
+    validate_only: bool,
+    wait: bool,
+) -> Result<Command> {
     let auth = crate::apple::auth::resolve_submit_auth(project)?;
     let mut command = Command::new("xcrun");
-    let mut temp_root_guard = None;
     command.arg("altool");
-    command.arg("--upload-package");
+    command.arg(if validate_only {
+        "--validate-app"
+    } else {
+        "--upload-package"
+    });
     command.arg(&receipt.artifact_path);
-    if wait {
+    if wait && !validate_only {
         command.arg("--wait");
     }
 
@@ -1222,18 +1672,17 @@ fn submit_with_altool(project: &ProjectContext, receipt: &BuildReceipt, wait: bo
             let file_name = api_key_path
                 .file_name()
                 .context("API key path is missing a file name")?;
-            let temp_root = tempdir()?;
-            let private_keys_dir = temp_root.path().join("private_keys");
+            let private_keys_dir = project.app.global_paths.cache_dir.join("private_keys");
             ensure_dir(&private_keys_dir)?;
             copy_file(&api_key_path, &private_keys_dir.join(file_name))?;
             command.arg("--api-key").arg(key_id);
             command.arg("--api-issuer").arg(issuer_id);
             command.env("API_PRIVATE_KEYS_DIR", &private_keys_dir);
-            temp_root_guard = Some(temp_root);
         }
         crate::apple::auth::SubmitAuth::AppleId {
             apple_id,
             password,
+            team_id: _,
             provider_id,
         } => {
             command.arg("--username").arg(apple_id);
@@ -1245,13 +1694,135 @@ fn submit_with_altool(project: &ProjectContext, receipt: &BuildReceipt, wait: bo
         }
     }
 
-    let result = run_command(&mut command);
-    drop(temp_root_guard);
-    result
+    Ok(command)
+}
+
+fn run_altool_command(
+    project: &ProjectContext,
+    receipt: &BuildReceipt,
+    validate_only: bool,
+    wait: bool,
+) -> Result<()> {
+    let mut command = build_altool_command(project, receipt, validate_only, wait)?;
+    run_command(&mut command)
+}
+
+fn submit_with_notarytool(
+    project: &ProjectContext,
+    receipt: &BuildReceipt,
+    wait: bool,
+) -> Result<()> {
+    let auth = crate::apple::auth::resolve_submit_auth(project)?;
+    let mut command = Command::new("xcrun");
+    command.arg("notarytool");
+    command.arg("submit");
+    command.arg(&receipt.artifact_path);
+    command.arg("--output-format").arg("json");
+    if wait {
+        command.arg("--wait");
+    }
+
+    match auth {
+        crate::apple::auth::SubmitAuth::ApiKey {
+            key_id,
+            issuer_id,
+            api_key_path,
+        } => {
+            command.arg("--key").arg(api_key_path);
+            command.arg("--key-id").arg(key_id);
+            command.arg("--issuer").arg(issuer_id);
+        }
+        crate::apple::auth::SubmitAuth::AppleId {
+            apple_id,
+            password,
+            team_id,
+            provider_id: _,
+        } => {
+            let team_id = team_id.context(
+                "notarization with Apple ID requires a configured Apple Developer team ID",
+            )?;
+            command.arg("--apple-id").arg(apple_id);
+            command.arg("--password").arg("@env:ORBIT_NOTARY_PASSWORD");
+            command.arg("--team-id").arg(team_id);
+            command.env("ORBIT_NOTARY_PASSWORD", password);
+        }
+    }
+
+    let output = command_output(&mut command)?;
+    if wait {
+        let response: NotarySubmitResponse =
+            serde_json::from_str(&output).context("failed to parse notarytool submit response")?;
+        if !response.status.eq_ignore_ascii_case("accepted")
+            && !response.status.eq_ignore_ascii_case("success")
+        {
+            bail!(
+                "notarytool completed with status `{}` for submission {}",
+                response.status,
+                response.id
+            );
+        }
+        let mut staple = Command::new("xcrun");
+        staple.arg("stapler");
+        staple.arg("staple");
+        staple.arg(&receipt.artifact_path);
+        run_command(&mut staple)?;
+    }
+    Ok(())
+}
+
+fn ensure_submit_app_record(project: &ProjectContext, receipt: &BuildReceipt) -> Result<()> {
+    if !matches!(
+        receipt.distribution,
+        DistributionKind::AppStore | DistributionKind::MacAppStore
+    ) {
+        return Ok(());
+    }
+    let Some(api_key_auth) = crate::apple::auth::resolve_api_key_auth(&project.app)? else {
+        return Ok(());
+    };
+    let client = crate::apple::asc_api::AscClient::new(api_key_auth)?;
+    let bundle_id = client
+        .find_bundle_id(&receipt.bundle_id)?
+        .with_context(|| {
+            format!(
+                "missing App Store Connect bundle ID for `{}`",
+                receipt.bundle_id
+            )
+        })?;
+    if client.find_app_by_bundle_id(&bundle_id.data.id)?.is_some() {
+        return Ok(());
+    }
+
+    let app_name = receipt.target.clone();
+    let sku = app_store_sku(&receipt.bundle_id);
+    let _ = client.create_app_record(&app_name, &sku, "en-US", &bundle_id.data.id)?;
+    Ok(())
+}
+
+fn app_store_sku(bundle_id: &str) -> String {
+    let mut sku = bundle_id
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_uppercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    sku.truncate(255);
+    sku
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct NotarySubmitResponse {
+    id: String,
+    status: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
 struct SwiftPackageManifest {
+    name: String,
     products: Vec<SwiftPackageProduct>,
     targets: Vec<SwiftPackageTarget>,
 }
@@ -1266,6 +1837,30 @@ struct SwiftPackageProduct {
 struct SwiftPackageTarget {
     name: String,
     path: Option<String>,
+    #[serde(default)]
+    dependencies: Vec<SwiftPackageTargetDependency>,
+    #[serde(rename = "type", default)]
+    kind: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+#[serde(untagged)]
+enum SwiftPackageTargetDependency {
+    ByName {
+        #[serde(rename = "byName")]
+        by_name: (String, Option<serde_json::Value>),
+    },
+    Target {
+        target: (String, Option<serde_json::Value>),
+    },
+    Product {
+        product: (
+            String,
+            Option<String>,
+            Option<Vec<serde_json::Value>>,
+            Option<serde_json::Value>,
+        ),
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -1555,68 +2150,201 @@ fn compile_swift_package(
             )
         })?;
 
-    if product.targets.len() != 1 {
-        bail!(
-            "Swift package product `{}` must contain exactly one target for now",
-            dependency.product
-        );
-    }
-
-    let target_name = &product.targets[0];
-    let package_target = package
-        .targets
-        .iter()
-        .find(|target| &target.name == target_name)
-        .with_context(|| format!("missing Swift package target `{target_name}`"))?;
-
-    let source_root = package_target
-        .path
-        .as_ref()
-        .map(|path| package_root.join(path))
-        .unwrap_or_else(|| package_root.join("Sources").join(target_name));
-    let swift_sources = collect_files_with_extensions(&source_root, &["swift"])?;
-    if swift_sources.is_empty() {
-        bail!(
-            "Swift package target `{target_name}` under `{}` does not contain any Swift sources",
-            source_root.display()
-        );
-    }
-
+    let built_target_names = ordered_package_targets(&package, &product.targets)?;
     let module_dir = intermediates_dir
-        .join("swiftmodules")
-        .join(&dependency.product);
+        .join("swiftpackages")
+        .join(&dependency.product)
+        .join("modules");
     let library_dir = intermediates_dir
-        .join("swiftlibs")
-        .join(&dependency.product);
+        .join("swiftpackages")
+        .join(&dependency.product)
+        .join("libs");
     ensure_dir(&module_dir)?;
     ensure_dir(&library_dir)?;
 
-    let module_path = module_dir.join(format!("{}.swiftmodule", dependency.product));
-    let library_path = library_dir.join(format!("lib{}.a", dependency.product));
-    let mut command = toolchain.swiftc();
-    command.arg("-parse-as-library");
-    command.arg("-target").arg(&toolchain.target_triple);
-    command.arg("-emit-library");
-    command.arg("-static");
-    command.arg("-emit-module");
-    command.arg("-module-name").arg(&dependency.product);
-    command.arg("-o").arg(&library_path);
-    command.arg("-emit-module-path").arg(&module_path);
-    if matches!(profile.configuration.as_str(), "debug") {
-        command.args(["-Onone", "-g"]);
-    } else {
-        command.arg("-O");
+    let targets_by_name = package
+        .targets
+        .iter()
+        .map(|target| (target.name.as_str(), target))
+        .collect::<HashMap<_, _>>();
+    let mut built_libraries = Vec::new();
+
+    for target_name in &built_target_names {
+        let package_target = targets_by_name
+            .get(target_name.as_str())
+            .copied()
+            .with_context(|| format!("missing Swift package target `{target_name}`"))?;
+        let source_root = package_target
+            .path
+            .as_ref()
+            .map(|path| package_root.join(path))
+            .unwrap_or_else(|| package_root.join("Sources").join(target_name));
+        let swift_sources = collect_files_with_extensions(&source_root, &["swift"])?;
+        if swift_sources.is_empty() {
+            bail!(
+                "Swift package target `{target_name}` under `{}` does not contain any Swift sources",
+                source_root.display()
+            );
+        }
+
+        let library_name = swift_package_library_name(&package.name, target_name);
+        let module_path = module_dir.join(format!("{target_name}.swiftmodule"));
+        let library_path = library_dir.join(format!("lib{library_name}.a"));
+        let mut command = toolchain.swiftc();
+        command.arg("-parse-as-library");
+        command.arg("-target").arg(&toolchain.target_triple);
+        command.arg("-emit-library");
+        command.arg("-static");
+        command.arg("-emit-module");
+        command.arg("-module-name").arg(target_name);
+        command.arg("-o").arg(&library_path);
+        command.arg("-emit-module-path").arg(&module_path);
+        if matches!(profile.configuration.as_str(), "debug") {
+            command.args(["-Onone", "-g"]);
+        } else {
+            command.arg("-O");
+        }
+        command.arg("-I").arg(&module_dir);
+        command.arg("-L").arg(&library_dir);
+        for dependency_name in package_target_local_dependencies(package_target, &targets_by_name)?
+        {
+            command
+                .arg("-l")
+                .arg(swift_package_library_name(&package.name, &dependency_name));
+        }
+        for source in swift_sources {
+            command.arg(source);
+        }
+        run_command(&mut command)?;
+        built_libraries.push(library_name);
     }
-    for source in swift_sources {
-        command.arg(source);
-    }
-    run_command(&mut command)?;
 
     Ok(PackageBuildOutput {
         module_dir,
         library_dir,
-        link_libraries: vec![dependency.product.clone()],
+        link_libraries: built_libraries,
     })
+}
+
+fn ordered_package_targets(
+    package: &SwiftPackageManifest,
+    root_targets: &[String],
+) -> Result<Vec<String>> {
+    let targets_by_name = package
+        .targets
+        .iter()
+        .map(|target| (target.name.as_str(), target))
+        .collect::<HashMap<_, _>>();
+    let mut ordered = Vec::new();
+    let mut visiting = std::collections::BTreeSet::new();
+    let mut visited = std::collections::BTreeSet::new();
+
+    fn visit(
+        target_name: &str,
+        targets_by_name: &HashMap<&str, &SwiftPackageTarget>,
+        ordered: &mut Vec<String>,
+        visiting: &mut std::collections::BTreeSet<String>,
+        visited: &mut std::collections::BTreeSet<String>,
+    ) -> Result<()> {
+        if visited.contains(target_name) {
+            return Ok(());
+        }
+        if !visiting.insert(target_name.to_owned()) {
+            bail!("Swift package target dependency cycle detected at `{target_name}`");
+        }
+
+        let target = targets_by_name
+            .get(target_name)
+            .copied()
+            .with_context(|| format!("missing Swift package target `{target_name}`"))?;
+        validate_package_target_kind(target)?;
+        for dependency_name in package_target_local_dependencies(target, targets_by_name)? {
+            visit(
+                &dependency_name,
+                targets_by_name,
+                ordered,
+                visiting,
+                visited,
+            )?;
+        }
+
+        visiting.remove(target_name);
+        visited.insert(target_name.to_owned());
+        ordered.push(target_name.to_owned());
+        Ok(())
+    }
+
+    for target_name in root_targets {
+        visit(
+            target_name,
+            &targets_by_name,
+            &mut ordered,
+            &mut visiting,
+            &mut visited,
+        )?;
+    }
+
+    Ok(ordered)
+}
+
+fn validate_package_target_kind(target: &SwiftPackageTarget) -> Result<()> {
+    match target.kind.as_deref().unwrap_or("regular") {
+        "regular" => Ok(()),
+        other => bail!(
+            "Swift package target `{}` has unsupported kind `{other}`",
+            target.name
+        ),
+    }
+}
+
+fn package_target_local_dependencies(
+    target: &SwiftPackageTarget,
+    targets_by_name: &HashMap<&str, &SwiftPackageTarget>,
+) -> Result<Vec<String>> {
+    let mut dependencies = Vec::new();
+    for dependency in &target.dependencies {
+        match dependency {
+            SwiftPackageTargetDependency::ByName { by_name } => {
+                if targets_by_name.contains_key(by_name.0.as_str()) {
+                    dependencies.push(by_name.0.clone());
+                }
+            }
+            SwiftPackageTargetDependency::Target { target } => {
+                dependencies.push(target.0.clone());
+            }
+            SwiftPackageTargetDependency::Product { product } => {
+                bail!(
+                    "Swift package target `{}` depends on external product `{}`; Orbit only supports local package target graphs for now",
+                    target.name,
+                    product.0
+                );
+            }
+        }
+    }
+    dependencies.sort();
+    dependencies.dedup();
+    Ok(dependencies)
+}
+
+fn swift_package_library_name(package_name: &str, target_name: &str) -> String {
+    format!(
+        "{}_{}",
+        sanitize_library_name_component(package_name),
+        sanitize_library_name_component(target_name)
+    )
+}
+
+fn sanitize_library_name_component(value: &str) -> String {
+    value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1670,6 +2398,7 @@ struct PhysicalHardwareProperties {
 fn select_physical_device(
     project: &ProjectContext,
     requested_identifier: Option<&str>,
+    platform: ApplePlatform,
 ) -> Result<PhysicalDevice> {
     let output_path = tempfile::NamedTempFile::new()?;
     let mut list = Command::new("xcrun");
@@ -1691,7 +2420,7 @@ fn select_physical_device(
         .result
         .devices
         .into_iter()
-        .filter(|device| device.hardware_properties.platform == "iOS")
+        .filter(|device| physical_device_matches_platform(device, platform))
         .collect::<Vec<_>>();
 
     if let Some(identifier) = requested_identifier {
@@ -1702,11 +2431,11 @@ fn select_physical_device(
                     || device.hardware_properties.udid == identifier
                     || device.device_properties.name == identifier
             })
-            .with_context(|| format!("no connected iOS device matched `{identifier}`"));
+            .with_context(|| format!("no connected {platform} device matched `{identifier}`"));
     }
 
     if physical.is_empty() {
-        bail!("no connected iOS devices were found through `devicectl`");
+        bail!("no connected {platform} devices were found through `devicectl`");
     }
 
     if !project.app.interactive || physical.len() == 1 {
@@ -1726,6 +2455,33 @@ fn select_physical_device(
     Ok(physical.remove(index))
 }
 
+fn simulator_runtime_matches_platform(runtime_identifier: &str, platform: ApplePlatform) -> bool {
+    match platform {
+        ApplePlatform::Ios => runtime_identifier.contains(".SimRuntime.iOS-"),
+        ApplePlatform::Tvos => runtime_identifier.contains(".SimRuntime.tvOS-"),
+        ApplePlatform::Visionos => {
+            runtime_identifier.contains(".SimRuntime.xrOS-")
+                || runtime_identifier.contains(".SimRuntime.visionOS-")
+        }
+        ApplePlatform::Watchos => runtime_identifier.contains(".SimRuntime.watchOS-"),
+        ApplePlatform::Macos => runtime_identifier.contains(".SimRuntime.macOS-"),
+    }
+}
+
+fn physical_device_matches_platform(device: &PhysicalDevice, platform: ApplePlatform) -> bool {
+    let platform_name = device.hardware_properties.platform.as_str();
+    match platform {
+        ApplePlatform::Ios => platform_name.eq_ignore_ascii_case("iOS"),
+        ApplePlatform::Tvos => platform_name.eq_ignore_ascii_case("tvOS"),
+        ApplePlatform::Visionos => {
+            platform_name.eq_ignore_ascii_case("visionOS")
+                || platform_name.eq_ignore_ascii_case("xrOS")
+        }
+        ApplePlatform::Watchos => platform_name.eq_ignore_ascii_case("watchOS"),
+        ApplePlatform::Macos => platform_name.eq_ignore_ascii_case("macOS"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -1734,9 +2490,10 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        ApplePlatform, DestinationKind, ExtensionManifest, TargetKind, Toolchain,
-        XcframeworkLibrary, embedded_dependency_root, extension_plist, json_to_plist,
-        merge_extension_attributes, select_xcframework_library,
+        ApplePlatform, DestinationKind, ExtensionManifest, SwiftPackageManifest,
+        SwiftPackageProduct, SwiftPackageTarget, SwiftPackageTargetDependency, TargetKind,
+        Toolchain, XcframeworkLibrary, embedded_dependency_root, extension_plist, json_to_plist,
+        merge_extension_attributes, ordered_package_targets, select_xcframework_library,
     };
 
     #[test]
@@ -1855,5 +2612,35 @@ mod tests {
 
         let selected = select_xcframework_library(&toolchain, &slices).unwrap();
         assert_eq!(selected.library_identifier, "ios-arm64_x86_64-simulator");
+    }
+
+    #[test]
+    fn orders_swift_package_targets_by_local_dependencies() {
+        let package = SwiftPackageManifest {
+            name: "FeaturePackage".to_owned(),
+            products: vec![SwiftPackageProduct {
+                name: "Feature".to_owned(),
+                targets: vec!["Feature".to_owned()],
+            }],
+            targets: vec![
+                SwiftPackageTarget {
+                    name: "Core".to_owned(),
+                    path: None,
+                    dependencies: Vec::new(),
+                    kind: Some("regular".to_owned()),
+                },
+                SwiftPackageTarget {
+                    name: "Feature".to_owned(),
+                    path: None,
+                    dependencies: vec![SwiftPackageTargetDependency::ByName {
+                        by_name: ("Core".to_owned(), None),
+                    }],
+                    kind: Some("regular".to_owned()),
+                },
+            ],
+        };
+
+        let ordered = ordered_package_targets(&package, &["Feature".to_owned()]).unwrap();
+        assert_eq!(ordered, vec!["Core".to_owned(), "Feature".to_owned()]);
     }
 }

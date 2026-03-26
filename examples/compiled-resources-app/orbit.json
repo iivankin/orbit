@@ -1,0 +1,32 @@
+{
+  "name": "ExampleCompiledResourcesApp",
+  "version": "0.1.0",
+  "platform": "apple",
+  "platforms": {
+    "ios": {
+      "deployment_target": "18.0",
+      "profiles": {
+        "development": {
+          "configuration": "debug",
+          "distribution": "development"
+        }
+      }
+    }
+  },
+  "targets": [
+    {
+      "name": "ExampleCompiledResourcesApp",
+      "kind": "app",
+      "bundle_id": "dev.orbit.examples.resources",
+      "platforms": [
+        "ios"
+      ],
+      "sources": [
+        "Sources/App"
+      ],
+      "resources": [
+        "Resources"
+      ]
+    }
+  ]
+}

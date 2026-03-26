@@ -126,6 +126,14 @@ pub struct ProfileAttributes {
     pub expiration_date: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct AppAttributes {
+    pub name: String,
+    pub sku: String,
+    #[serde(rename = "primaryLocale")]
+    pub primary_locale: String,
+}
+
 #[derive(Debug, Serialize)]
 struct AscClaims<'a> {
     iss: &'a str,
@@ -407,6 +415,50 @@ impl AscClient {
 
     pub fn delete_profile(&self, id: &str) -> Result<()> {
         self.delete(&format!("/v1/profiles/{id}"))
+    }
+
+    pub fn find_app_by_bundle_id(
+        &self,
+        bundle_id_id: &str,
+    ) -> Result<Option<Resource<AppAttributes>>> {
+        let response: JsonApiListDocument<AppAttributes> = self.get(
+            "/v1/apps",
+            &[
+                ("limit", "200".to_owned()),
+                ("filter[bundleId]", bundle_id_id.to_owned()),
+                ("fields[apps]", "name,sku,primaryLocale,bundleId".to_owned()),
+            ],
+        )?;
+        Ok(response.data.into_iter().next())
+    }
+
+    pub fn create_app_record(
+        &self,
+        name: &str,
+        sku: &str,
+        primary_locale: &str,
+        bundle_id_id: &str,
+    ) -> Result<Resource<AppAttributes>> {
+        let request = serde_json::json!({
+            "data": {
+                "type": "apps",
+                "attributes": {
+                    "name": name,
+                    "sku": sku,
+                    "primaryLocale": primary_locale,
+                },
+                "relationships": {
+                    "bundleId": {
+                        "data": {
+                            "type": "bundleIds",
+                            "id": bundle_id_id,
+                        }
+                    }
+                }
+            }
+        });
+        let response: JsonApiDocument<AppAttributes> = self.post("/v1/apps", &request)?;
+        Ok(response.data)
     }
 
     fn get<T>(&self, path: &str, query: &[(&str, String)]) -> Result<T>
