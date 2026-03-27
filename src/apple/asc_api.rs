@@ -10,6 +10,9 @@ use serde::Serialize;
 use serde::de::DeserializeOwned;
 
 use crate::apple::auth::ApiKeyAuth;
+use crate::apple::capabilities::{
+    RemoteCapability, RemoteCapabilityOption, RemoteCapabilitySetting,
+};
 
 const ASC_BASE_URL: &str = "https://api.appstoreconnect.apple.com";
 
@@ -95,6 +98,22 @@ pub struct BundleIdAttributes {
 pub struct BundleIdCapabilityAttributes {
     #[serde(rename = "capabilityType")]
     pub capability_type: String,
+    #[serde(default)]
+    pub settings: Vec<CapabilitySetting>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CapabilitySetting {
+    pub key: String,
+    #[serde(default)]
+    pub options: Vec<CapabilityOption>,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+pub struct CapabilityOption {
+    pub key: String,
+    #[serde(default)]
+    pub enabled: bool,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -132,6 +151,12 @@ pub struct AppAttributes {
     pub sku: String,
     #[serde(rename = "primaryLocale")]
     pub primary_locale: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct MerchantIdAttributes {
+    pub name: String,
+    pub identifier: String,
 }
 
 #[derive(Debug, Serialize)]
@@ -271,12 +296,14 @@ impl AscClient {
         &self,
         bundle_id_id: &str,
         capability_type: &str,
+        settings: &[CapabilitySetting],
     ) -> Result<Resource<BundleIdCapabilityAttributes>> {
         let request = serde_json::json!({
             "data": {
                 "type": "bundleIdCapabilities",
                 "attributes": {
                     "capabilityType": capability_type,
+                    "settings": settings,
                 },
                 "relationships": {
                     "bundleId": {
@@ -290,6 +317,31 @@ impl AscClient {
         });
         let response: JsonApiDocument<BundleIdCapabilityAttributes> =
             self.post("/v1/bundleIdCapabilities", &request)?;
+        Ok(response.data)
+    }
+
+    pub fn update_bundle_capability(
+        &self,
+        id: &str,
+        capability_type: &str,
+        settings: &[CapabilitySetting],
+    ) -> Result<Resource<BundleIdCapabilityAttributes>> {
+        let request = serde_json::json!({
+            "data": {
+                "id": id,
+                "type": "bundleIdCapabilities",
+                "attributes": {
+                    "capabilityType": capability_type,
+                    "settings": settings,
+                }
+            }
+        });
+        let response: JsonApiDocument<BundleIdCapabilityAttributes> = self.request(
+            Method::PATCH,
+            &format!("/v1/bundleIdCapabilities/{id}"),
+            &[],
+            Some(&request),
+        )?;
         Ok(response.data)
     }
 
@@ -332,6 +384,10 @@ impl AscClient {
         let response: JsonApiDocument<CertificateAttributes> =
             self.post("/v1/certificates", &request)?;
         Ok(response.data)
+    }
+
+    pub fn delete_certificate(&self, id: &str) -> Result<()> {
+        self.delete(&format!("/v1/certificates/{id}"))
     }
 
     pub fn list_profiles(
@@ -415,6 +471,44 @@ impl AscClient {
 
     pub fn delete_profile(&self, id: &str) -> Result<()> {
         self.delete(&format!("/v1/profiles/{id}"))
+    }
+
+    pub fn find_merchant_id(
+        &self,
+        identifier: &str,
+    ) -> Result<Option<Resource<MerchantIdAttributes>>> {
+        let response: JsonApiListDocument<MerchantIdAttributes> = self.get(
+            "/v1/merchantIds",
+            &[
+                ("limit", "200".to_owned()),
+                ("filter[identifier]", identifier.to_owned()),
+                ("fields[merchantIds]", "name,identifier".to_owned()),
+            ],
+        )?;
+        Ok(response.data.into_iter().next())
+    }
+
+    pub fn create_merchant_id(
+        &self,
+        name: &str,
+        identifier: &str,
+    ) -> Result<Resource<MerchantIdAttributes>> {
+        let request = serde_json::json!({
+            "data": {
+                "type": "merchantIds",
+                "attributes": {
+                    "name": name,
+                    "identifier": identifier,
+                }
+            }
+        });
+        let response: JsonApiDocument<MerchantIdAttributes> =
+            self.post("/v1/merchantIds", &request)?;
+        Ok(response.data)
+    }
+
+    pub fn delete_merchant_id(&self, id: &str) -> Result<()> {
+        self.delete(&format!("/v1/merchantIds/{id}"))
     }
 
     pub fn find_app_by_bundle_id(
@@ -534,6 +628,42 @@ impl AscClient {
         header.kid = Some(self.auth.key_id.clone());
         encode(&header, &claims, &encoding_key).context("failed to mint App Store Connect JWT")
     }
+}
+
+pub fn remote_capabilities_from_included(
+    included: &[IncludedResource],
+) -> Result<Vec<RemoteCapability>> {
+    included
+        .iter()
+        .filter(|resource| resource.resource_type == "bundleIdCapabilities")
+        .cloned()
+        .map(parse_remote_capability)
+        .collect()
+}
+
+fn parse_remote_capability(resource: IncludedResource) -> Result<RemoteCapability> {
+    let attributes: BundleIdCapabilityAttributes = serde_json::from_value(resource.attributes)
+        .context("failed to parse App Store Connect bundle capability attributes")?;
+    Ok(RemoteCapability {
+        id: resource.id,
+        capability_type: attributes.capability_type,
+        enabled: None,
+        settings: attributes
+            .settings
+            .into_iter()
+            .map(|setting| RemoteCapabilitySetting {
+                key: setting.key,
+                options: setting
+                    .options
+                    .into_iter()
+                    .map(|option| RemoteCapabilityOption {
+                        key: option.key,
+                        enabled: option.enabled,
+                    })
+                    .collect(),
+            })
+            .collect(),
+    })
 }
 
 fn build_url(path: &str, query: &[(&str, String)]) -> Result<Url> {

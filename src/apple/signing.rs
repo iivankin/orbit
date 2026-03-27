@@ -4,13 +4,20 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
+use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
+use crate::apple::asc_api::{
+    AscClient, BundleIdAttributes, CapabilityOption, CapabilitySetting, Resource,
+    remote_capabilities_from_included,
+};
 use crate::apple::auth::{
-    EnsureUserAuthRequest, ensure_portal_authenticated, resolve_user_auth_metadata,
+    EnsureUserAuthRequest, ensure_portal_authenticated, resolve_api_key_auth,
+    resolve_user_auth_metadata,
 };
 use crate::apple::capabilities::{
-    CapabilityRelationships, CapabilityUpdate, capability_sync_plan_from_entitlements,
+    CapabilityRelationships, CapabilityUpdate, RemoteCapability,
+    capability_sync_plan_from_entitlements,
 };
 use crate::apple::portal::{
     PortalAppId, PortalClient, PortalDeviceClass, PortalProfilePlatform, PortalProvisioningProfile,
@@ -27,6 +34,48 @@ use crate::util::{
 };
 
 const P12_PASSWORD_SERVICE: &str = "dev.orbit.cli.codesign-p12";
+const ASC_SUPPORTED_CAPABILITIES: &[&str] = &[
+    "ACCESS_WIFI_INFORMATION",
+    "APPLE_ID_AUTH",
+    "APP_GROUPS",
+    "APPLE_PAY",
+    "ASSOCIATED_DOMAINS",
+    "AUTOFILL_CREDENTIAL_PROVIDER",
+    "CLASSKIT",
+    "COREMEDIA_HLS_LOW_LATENCY",
+    "DATA_PROTECTION",
+    "GAME_CENTER",
+    "HEALTHKIT",
+    "HOMEKIT",
+    "HOT_SPOT",
+    "ICLOUD",
+    "IN_APP_PURCHASE",
+    "INTER_APP_AUDIO",
+    "MAPS",
+    "MULTIPATH",
+    "NETWORK_CUSTOM_PROTOCOL",
+    "NETWORK_EXTENSIONS",
+    "NFC_TAG_READING",
+    "PERSONAL_VPN",
+    "PUSH_NOTIFICATIONS",
+    "SIRIKIT",
+    "SYSTEM_EXTENSION_INSTALL",
+    "USER_MANAGEMENT",
+    "WALLET",
+    "WIRELESS_ACCESSORY_CONFIGURATION",
+];
+const ASC_SETTING_ICLOUD_VERSION: &str = "ICLOUD_VERSION";
+const ASC_SETTING_DATA_PROTECTION: &str = "DATA_PROTECTION_PERMISSION_LEVEL";
+const ASC_SETTING_APPLE_ID_AUTH: &str = "APPLE_ID_AUTH_APP_CONSENT";
+const ASC_OPTION_OFF: &str = "OFF";
+const ASC_OPTION_ON: &str = "ON";
+const ASC_OPTION_ICLOUD_XCODE_6: &str = "XCODE_6";
+const ASC_OPTION_APPLE_ID_PRIMARY_CONSENT: &str = "PRIMARY_APP_CONSENT";
+const ASC_OPTION_DATA_PROTECTION_COMPLETE: &str = "COMPLETE_PROTECTION";
+const ASC_OPTION_DATA_PROTECTION_PROTECTED_UNLESS_OPEN: &str = "PROTECTED_UNLESS_OPEN";
+const ASC_OPTION_DATA_PROTECTION_PROTECTED_UNTIL_FIRST_USER_AUTH: &str =
+    "PROTECTED_UNTIL_FIRST_USER_AUTH";
+const ASC_OPTION_PUSH_BROADCAST: &str = "PUSH_NOTIFICATION_FEATURE_BROADCAST";
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
 struct SigningState {
@@ -65,6 +114,14 @@ struct ManagedProfile {
     uuid: Option<String>,
     certificate_ids: Vec<String>,
     device_ids: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct AscCapabilityMutation {
+    remote_id: Option<String>,
+    capability_type: String,
+    settings: Vec<CapabilitySetting>,
+    delete: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -374,6 +431,10 @@ pub fn prepare_signing(
     profile: &ProfileManifest,
     device_udids: Option<Vec<String>>,
 ) -> Result<SigningMaterial> {
+    if resolve_api_key_auth(&project.app)?.is_some() {
+        return prepare_signing_with_api_key(project, target, platform, profile, device_udids);
+    }
+
     let auth = ensure_portal_authenticated(
         &project.app,
         EnsureUserAuthRequest {
@@ -441,6 +502,10 @@ pub fn prepare_package_signing(
     project: &ProjectContext,
     profile: &ProfileManifest,
 ) -> Result<PackageSigningMaterial> {
+    if resolve_api_key_auth(&project.app)?.is_some() {
+        return prepare_package_signing_with_api_key(project, profile);
+    }
+
     let auth = ensure_portal_authenticated(
         &project.app,
         EnsureUserAuthRequest {
@@ -463,6 +528,585 @@ pub fn prepare_package_signing(
         signing_identity,
         keychain_path: project.app.global_paths.keychain_path.clone(),
     })
+}
+
+fn prepare_signing_with_api_key(
+    project: &ProjectContext,
+    target: &TargetManifest,
+    platform: ApplePlatform,
+    profile: &ProfileManifest,
+    device_udids: Option<Vec<String>>,
+) -> Result<SigningMaterial> {
+    let client = AscClient::new(
+        resolve_api_key_auth(&project.app)?
+            .context("App Store Connect API key auth is not configured")?,
+    )?;
+    let team_id = resolve_api_key_team_id(project)?;
+    let mut state = load_state(project, &team_id)?;
+
+    let bundle_id = ensure_bundle_id_with_api_key(&client, project, target, platform)?;
+    sync_capabilities_with_api_key(&client, project, target, &bundle_id)?;
+
+    let certificate_type = asc_certificate_type(platform, profile)?;
+    let certificate =
+        ensure_certificate_with_api_key(&client, project, &mut state, certificate_type)?;
+    let profile_type = asc_profile_type(platform, profile)?;
+    let device_ids = if matches!(
+        profile.distribution,
+        DistributionKind::Development | DistributionKind::AdHoc
+    ) {
+        let selected_udids = device_udids.unwrap_or_default();
+        resolve_device_ids_with_api_key(&client, platform, &selected_udids)?
+    } else {
+        Vec::new()
+    };
+    let provisioning_profile = ensure_profile_with_api_key(
+        &client,
+        project,
+        &mut state,
+        &bundle_id,
+        profile_type,
+        &certificate,
+        &device_ids,
+    )?;
+
+    let signing_identity = import_certificate_into_keychain(project, &certificate)?;
+    save_state(project, &team_id, &state)?;
+
+    Ok(SigningMaterial {
+        signing_identity,
+        keychain_path: project.app.global_paths.keychain_path.clone(),
+        provisioning_profile_path: provisioning_profile.path,
+        entitlements_path: target
+            .entitlements
+            .as_ref()
+            .map(|path| project.root.join(path)),
+    })
+}
+
+fn prepare_package_signing_with_api_key(
+    project: &ProjectContext,
+    profile: &ProfileManifest,
+) -> Result<PackageSigningMaterial> {
+    let client = AscClient::new(
+        resolve_api_key_auth(&project.app)?
+            .context("App Store Connect API key auth is not configured")?,
+    )?;
+    let team_id = resolve_api_key_team_id(project)?;
+    let mut state = load_state(project, &team_id)?;
+    let certificate_type = asc_installer_certificate_type(profile)?;
+    let certificate =
+        ensure_certificate_with_api_key(&client, project, &mut state, certificate_type)?;
+    let signing_identity = import_certificate_into_keychain(project, &certificate)?;
+    save_state(project, &team_id, &state)?;
+    Ok(PackageSigningMaterial {
+        signing_identity,
+        keychain_path: project.app.global_paths.keychain_path.clone(),
+    })
+}
+
+fn resolve_api_key_team_id(project: &ProjectContext) -> Result<String> {
+    resolve_local_team_id_if_known(project)?.context(
+        "API key signing state is scoped by Apple team; set `team_id` in orbit.json or export ORBIT_APPLE_TEAM_ID for CI runs",
+    )
+}
+
+fn ensure_bundle_id_with_api_key(
+    client: &AscClient,
+    project: &ProjectContext,
+    target: &TargetManifest,
+    platform: ApplePlatform,
+) -> Result<Resource<BundleIdAttributes>> {
+    if let Some(bundle_id) = client
+        .find_bundle_id(&target.bundle_id)?
+        .map(|document| document.data)
+    {
+        return Ok(bundle_id);
+    }
+
+    client.create_bundle_id(
+        &format!("@orbit/{}", project.manifest.name),
+        &target.bundle_id,
+        asc_bundle_id_platform(platform),
+    )
+}
+
+fn sync_capabilities_with_api_key(
+    client: &AscClient,
+    project: &ProjectContext,
+    target: &TargetManifest,
+    bundle_id: &Resource<BundleIdAttributes>,
+) -> Result<()> {
+    let Some(entitlements_path) = &target.entitlements else {
+        return Ok(());
+    };
+    let remote_bundle = client
+        .find_bundle_id(&bundle_id.attributes.identifier)?
+        .with_context(|| {
+            format!(
+                "bundle identifier `{}` exists in App Store Connect but could not be reloaded",
+                bundle_id.attributes.identifier
+            )
+        })?;
+    let remote_capabilities = remote_capabilities_from_included(&remote_bundle.included)?;
+    let plan = capability_sync_plan_from_entitlements(
+        &project.root.join(entitlements_path),
+        &remote_capabilities,
+    )?;
+    if plan.updates.is_empty() {
+        return Ok(());
+    }
+
+    let mutations = plan_asc_capability_mutations(&plan.updates, &remote_capabilities)?;
+    for mutation in mutations {
+        if mutation.delete {
+            if let Some(remote_id) = mutation.remote_id {
+                client.delete_bundle_capability(&remote_id)?;
+            }
+            continue;
+        }
+
+        match mutation.remote_id {
+            Some(remote_id) => {
+                let _ = client.update_bundle_capability(
+                    &remote_id,
+                    &mutation.capability_type,
+                    &mutation.settings,
+                )?;
+            }
+            None => {
+                let _ = client.create_bundle_capability(
+                    &bundle_id.id,
+                    &mutation.capability_type,
+                    &mutation.settings,
+                )?;
+            }
+        }
+    }
+    Ok(())
+}
+
+fn plan_asc_capability_mutations(
+    updates: &[CapabilityUpdate],
+    remote_capabilities: &[RemoteCapability],
+) -> Result<Vec<AscCapabilityMutation>> {
+    let mut mutations = Vec::new();
+    for update in updates {
+        if !ASC_SUPPORTED_CAPABILITIES.contains(&update.capability_type.as_str()) {
+            bail!(
+                "App Store Connect API key auth does not support syncing capability `{}`; log in with Apple ID so Orbit can use the Developer Portal flow",
+                update.capability_type
+            );
+        }
+        if update.relationships.app_groups.is_some() {
+            bail!(
+                "App Store Connect API key auth cannot link App Groups for capability `{}`; log in with Apple ID so Orbit can use the Developer Portal flow",
+                update.capability_type
+            );
+        }
+        if update.relationships.cloud_containers.is_some() {
+            bail!(
+                "App Store Connect API key auth cannot link iCloud containers for capability `{}`; log in with Apple ID so Orbit can use the Developer Portal flow",
+                update.capability_type
+            );
+        }
+        if update.relationships.merchant_ids.is_some() {
+            bail!(
+                "App Store Connect API key auth cannot link merchant IDs for capability `{}`; log in with Apple ID so Orbit can use the Developer Portal flow",
+                update.capability_type
+            );
+        }
+
+        let remote_id = remote_capabilities
+            .iter()
+            .find(|candidate| candidate.capability_type == update.capability_type)
+            .map(|candidate| candidate.id.clone());
+        if update.option == ASC_OPTION_OFF {
+            mutations.push(AscCapabilityMutation {
+                remote_id,
+                capability_type: update.capability_type.clone(),
+                settings: Vec::new(),
+                delete: true,
+            });
+            continue;
+        }
+
+        mutations.push(AscCapabilityMutation {
+            remote_id,
+            capability_type: update.capability_type.clone(),
+            settings: asc_capability_settings(update)?,
+            delete: false,
+        });
+    }
+    Ok(mutations)
+}
+
+fn asc_capability_settings(update: &CapabilityUpdate) -> Result<Vec<CapabilitySetting>> {
+    let setting = match update.capability_type.as_str() {
+        "ICLOUD" => match update.option.as_str() {
+            ASC_OPTION_ON => Some((ASC_SETTING_ICLOUD_VERSION, ASC_OPTION_ICLOUD_XCODE_6)),
+            "XCODE_5" | ASC_OPTION_ICLOUD_XCODE_6 => {
+                Some((ASC_SETTING_ICLOUD_VERSION, update.option.as_str()))
+            }
+            other => {
+                bail!("App Store Connect API key auth does not support iCloud option `{other}`")
+            }
+        },
+        "DATA_PROTECTION" => match update.option.as_str() {
+            ASC_OPTION_ON => Some((
+                ASC_SETTING_DATA_PROTECTION,
+                ASC_OPTION_DATA_PROTECTION_COMPLETE,
+            )),
+            ASC_OPTION_DATA_PROTECTION_COMPLETE
+            | ASC_OPTION_DATA_PROTECTION_PROTECTED_UNLESS_OPEN
+            | ASC_OPTION_DATA_PROTECTION_PROTECTED_UNTIL_FIRST_USER_AUTH => {
+                Some((ASC_SETTING_DATA_PROTECTION, update.option.as_str()))
+            }
+            other => bail!(
+                "App Store Connect API key auth does not support data protection option `{other}`"
+            ),
+        },
+        "APPLE_ID_AUTH" => match update.option.as_str() {
+            ASC_OPTION_ON => Some((
+                ASC_SETTING_APPLE_ID_AUTH,
+                ASC_OPTION_APPLE_ID_PRIMARY_CONSENT,
+            )),
+            ASC_OPTION_APPLE_ID_PRIMARY_CONSENT => {
+                Some((ASC_SETTING_APPLE_ID_AUTH, update.option.as_str()))
+            }
+            other => bail!(
+                "App Store Connect API key auth does not support Sign In with Apple option `{other}`"
+            ),
+        },
+        "PUSH_NOTIFICATIONS" if update.option == ASC_OPTION_PUSH_BROADCAST => {
+            bail!(
+                "App Store Connect API key auth cannot configure broadcast push settings; log in with Apple ID so Orbit can use the Developer Portal flow"
+            )
+        }
+        _ => None,
+    };
+
+    Ok(setting
+        .into_iter()
+        .map(|(key, option)| CapabilitySetting {
+            key: key.to_owned(),
+            options: vec![CapabilityOption {
+                key: option.to_owned(),
+                enabled: true,
+            }],
+        })
+        .collect())
+}
+
+fn ensure_certificate_with_api_key(
+    client: &AscClient,
+    project: &ProjectContext,
+    state: &mut SigningState,
+    certificate_type: &str,
+) -> Result<ManagedCertificate> {
+    let remote_certificates = client.list_certificates(certificate_type)?;
+    for remote in &remote_certificates {
+        if let Some(local) = state.certificates.iter_mut().find(|certificate| {
+            if certificate.certificate_type != certificate_type || !certificate.p12_path.exists() {
+                return false;
+            }
+            if certificate.id == remote.id {
+                return true;
+            }
+            remote
+                .attributes
+                .serial_number
+                .as_deref()
+                .is_some_and(|serial| certificate.serial_number.eq_ignore_ascii_case(serial))
+        }) {
+            if local.id != remote.id {
+                local.id = remote.id.clone();
+            }
+            if local.display_name.is_none() {
+                local.display_name = remote.attributes.display_name.clone();
+            }
+            return Ok(local.clone());
+        }
+    }
+
+    let paths = team_signing_paths(project, &resolve_api_key_team_id(project)?);
+    ensure_dir(&paths.certificates_dir)?;
+    let slug = crate::util::timestamp_slug();
+    let private_key_path = paths.certificates_dir.join(format!("{slug}.key.pem"));
+    let csr_path = paths.certificates_dir.join(format!("{slug}.csr.pem"));
+    let certificate_der_path = paths.certificates_dir.join(format!("{slug}.cer"));
+    let p12_path = paths.certificates_dir.join(format!("{slug}.p12"));
+
+    let mut openssl_req = Command::new("openssl");
+    openssl_req.args([
+        "req",
+        "-new",
+        "-newkey",
+        "rsa:2048",
+        "-nodes",
+        "-keyout",
+        private_key_path
+            .to_str()
+            .context("private key path contains invalid UTF-8")?,
+        "-subj",
+        &format!("/CN=Orbit {slug}"),
+        "-out",
+        csr_path
+            .to_str()
+            .context("CSR path contains invalid UTF-8")?,
+    ]);
+    crate::util::run_command(&mut openssl_req)?;
+
+    let csr_pem = fs::read_to_string(&csr_path)
+        .with_context(|| format!("failed to read {}", csr_path.display()))?;
+    let remote = client.create_certificate(certificate_type, &csr_pem)?;
+    let certificate_content = remote
+        .attributes
+        .certificate_content
+        .as_deref()
+        .context("App Store Connect did not return the created certificate content")?;
+    let certificate_bytes = base64::engine::general_purpose::STANDARD
+        .decode(certificate_content)
+        .context("failed to decode App Store Connect certificate content")?;
+    fs::write(&certificate_der_path, &certificate_bytes)
+        .with_context(|| format!("failed to write {}", certificate_der_path.display()))?;
+
+    let p12_password = uuid::Uuid::new_v4().to_string();
+    let mut openssl_pkcs12 = Command::new("openssl");
+    openssl_pkcs12.args([
+        "pkcs12",
+        "-export",
+        "-inkey",
+        private_key_path
+            .to_str()
+            .context("private key path contains invalid UTF-8")?,
+        "-in",
+        certificate_der_path
+            .to_str()
+            .context("certificate path contains invalid UTF-8")?,
+        "-inform",
+        "DER",
+        "-out",
+        p12_path
+            .to_str()
+            .context("P12 path contains invalid UTF-8")?,
+        "-passout",
+        &format!("pass:{p12_password}"),
+    ]);
+    crate::util::run_command(&mut openssl_pkcs12)?;
+
+    let serial_number = match remote.attributes.serial_number.clone() {
+        Some(serial_number) => serial_number,
+        None => read_certificate_serial(&certificate_der_path)?,
+    };
+    let password_account = format!("{}-{serial_number}", remote.id);
+    store_p12_password(&password_account, &p12_password)?;
+
+    let certificate = ManagedCertificate {
+        id: remote.id,
+        certificate_type: certificate_type.to_owned(),
+        serial_number,
+        origin: CertificateOrigin::Generated,
+        display_name: remote.attributes.display_name.clone(),
+        private_key_path,
+        certificate_der_path,
+        p12_path,
+        p12_password_account: password_account,
+    };
+    state.certificates.push(certificate.clone());
+    Ok(certificate)
+}
+
+fn ensure_profile_with_api_key(
+    client: &AscClient,
+    project: &ProjectContext,
+    state: &mut SigningState,
+    bundle_id: &Resource<BundleIdAttributes>,
+    profile_type: &str,
+    certificate: &ManagedCertificate,
+    device_ids: &[String],
+) -> Result<ManagedProfile> {
+    let profiles = client.list_profiles(profile_type)?;
+    let bundle_identifier = &bundle_id.attributes.identifier;
+    let mut remote_profile_ids = HashSet::new();
+    let mut stale_orbit_profiles = Vec::new();
+
+    for profile in profiles.data {
+        remote_profile_ids.insert(profile.id.clone());
+        let bundle_link = profile
+            .relationships
+            .get("bundleId")
+            .and_then(|relationship| relationship.data.as_ref())
+            .and_then(|relationship| match relationship {
+                crate::apple::asc_api::RelationshipData::One(link) => Some(link.id.clone()),
+                crate::apple::asc_api::RelationshipData::Many(_) => None,
+            });
+        if bundle_link.as_deref() != Some(bundle_id.id.as_str()) {
+            continue;
+        }
+
+        let certificate_links = profile
+            .relationships
+            .get("certificates")
+            .and_then(|relationship| relationship.data.as_ref())
+            .map(|relationship| match relationship {
+                crate::apple::asc_api::RelationshipData::Many(links) => {
+                    links.iter().map(|link| link.id.clone()).collect::<Vec<_>>()
+                }
+                crate::apple::asc_api::RelationshipData::One(link) => vec![link.id.clone()],
+            })
+            .unwrap_or_default();
+        let device_links = profile
+            .relationships
+            .get("devices")
+            .and_then(|relationship| relationship.data.as_ref())
+            .map(|relationship| match relationship {
+                crate::apple::asc_api::RelationshipData::Many(links) => {
+                    links.iter().map(|link| link.id.clone()).collect::<Vec<_>>()
+                }
+                crate::apple::asc_api::RelationshipData::One(link) => vec![link.id.clone()],
+            })
+            .unwrap_or_default();
+
+        let matches_certificate = certificate_links.contains(&certificate.id);
+        let matches_devices = canonical_ids(&device_links) == canonical_ids(device_ids);
+        if matches_certificate && matches_devices {
+            let managed = persist_asc_profile(
+                project,
+                state,
+                profile_type,
+                bundle_identifier,
+                certificate,
+                &device_links,
+                profile,
+            )?;
+            cleanup_stale_profile_state(
+                state,
+                bundle_identifier,
+                profile_type,
+                &remote_profile_ids,
+            );
+            return Ok(managed);
+        }
+
+        if is_orbit_managed_profile(state, &profile.id, bundle_identifier, profile_type) {
+            stale_orbit_profiles.push(profile.id.clone());
+        }
+    }
+
+    for profile_id in stale_orbit_profiles {
+        client
+            .delete_profile(&profile_id)
+            .with_context(|| format!("failed to repair provisioning profile `{profile_id}`"))?;
+        state.profiles.retain(|profile| profile.id != profile_id);
+    }
+    cleanup_stale_profile_state(state, bundle_identifier, profile_type, &remote_profile_ids);
+
+    let remote = client.create_profile(
+        &format!(
+            "*[orbit] {} {} {}",
+            bundle_identifier,
+            profile_type,
+            crate::util::timestamp_slug()
+        ),
+        profile_type,
+        &bundle_id.id,
+        &[certificate.id.clone()],
+        device_ids,
+    )?;
+    persist_asc_profile(
+        project,
+        state,
+        profile_type,
+        bundle_identifier,
+        certificate,
+        device_ids,
+        remote,
+    )
+}
+
+fn persist_asc_profile(
+    project: &ProjectContext,
+    state: &mut SigningState,
+    profile_type: &str,
+    bundle_identifier: &str,
+    certificate: &ManagedCertificate,
+    device_ids: &[String],
+    remote: Resource<crate::apple::asc_api::ProfileAttributes>,
+) -> Result<ManagedProfile> {
+    let paths = team_signing_paths(project, &resolve_api_key_team_id(project)?);
+    ensure_dir(&paths.profiles_dir)?;
+    let profile_content = remote
+        .attributes
+        .profile_content
+        .as_deref()
+        .context("App Store Connect did not return the provisioning profile content")?;
+    let profile_bytes = base64::engine::general_purpose::STANDARD
+        .decode(profile_content)
+        .context("failed to decode App Store Connect provisioning profile content")?;
+    let profile_path = paths
+        .profiles_dir
+        .join(format!("{}-{}.mobileprovision", remote.id, profile_type));
+    fs::write(&profile_path, profile_bytes)
+        .with_context(|| format!("failed to write {}", profile_path.display()))?;
+
+    state.profiles.retain(|profile| profile.id != remote.id);
+    let profile = ManagedProfile {
+        id: remote.id,
+        profile_type: profile_type.to_owned(),
+        bundle_id: bundle_identifier.to_owned(),
+        path: profile_path,
+        uuid: remote.attributes.uuid.clone(),
+        certificate_ids: vec![certificate.id.clone()],
+        device_ids: device_ids.to_vec(),
+    };
+    state.profiles.push(profile.clone());
+    Ok(profile)
+}
+
+fn resolve_device_ids_with_api_key(
+    client: &AscClient,
+    platform: ApplePlatform,
+    udids: &[String],
+) -> Result<Vec<String>> {
+    let devices = client.list_devices()?;
+    if udids.is_empty() {
+        return Ok(devices
+            .into_iter()
+            .filter(|device| asc_device_matches_platform(&device.attributes.platform, platform))
+            .map(|device| device.id)
+            .collect());
+    }
+
+    let mut device_ids = Vec::new();
+    for udid in udids {
+        let device = client
+            .find_device_by_udid(udid)?
+            .filter(|device| asc_device_matches_platform(&device.attributes.platform, platform))
+            .with_context(|| format!("device `{udid}` is not registered with App Store Connect"))?;
+        device_ids.push(device.id);
+    }
+    Ok(device_ids)
+}
+
+fn asc_bundle_id_platform(platform: ApplePlatform) -> &'static str {
+    match platform {
+        ApplePlatform::Macos => "MAC_OS",
+        ApplePlatform::Ios
+        | ApplePlatform::Tvos
+        | ApplePlatform::Visionos
+        | ApplePlatform::Watchos => "IOS",
+    }
+}
+
+fn asc_device_matches_platform(device_platform: &str, platform: ApplePlatform) -> bool {
+    match platform {
+        ApplePlatform::Ios => device_platform == "IOS",
+        ApplePlatform::Tvos => device_platform == "TVOS",
+        ApplePlatform::Visionos => device_platform == "VISIONOS",
+        ApplePlatform::Watchos => device_platform == "WATCHOS",
+        ApplePlatform::Macos => device_platform == "MAC_OS",
+    }
 }
 
 pub fn sign_bundle(bundle_path: &Path, material: &SigningMaterial) -> Result<()> {
@@ -1101,6 +1745,35 @@ fn certificate_type(platform: ApplePlatform, profile: &ProfileManifest) -> Resul
     }
 }
 
+fn asc_certificate_type(
+    platform: ApplePlatform,
+    profile: &ProfileManifest,
+) -> Result<&'static str> {
+    match (platform, profile.distribution) {
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::Development,
+        ) => Ok("IOS_DEVELOPMENT"),
+        (
+            ApplePlatform::Ios
+            | ApplePlatform::Tvos
+            | ApplePlatform::Visionos
+            | ApplePlatform::Watchos,
+            DistributionKind::AdHoc | DistributionKind::AppStore,
+        ) => Ok("IOS_DISTRIBUTION"),
+        (ApplePlatform::Macos, DistributionKind::Development) => Ok("MAC_APP_DEVELOPMENT"),
+        (ApplePlatform::Macos, DistributionKind::MacAppStore) => Ok("MAC_APP_DISTRIBUTION"),
+        (ApplePlatform::Macos, DistributionKind::DeveloperId) => Ok("DEVELOPER_ID_APPLICATION"),
+        _ => bail!(
+            "App Store Connect API key auth does not support signing for {platform} with {:?}",
+            profile.distribution
+        ),
+    }
+}
+
 fn profile_type(platform: ApplePlatform, profile: &ProfileManifest) -> Result<&'static str> {
     match (platform, profile.distribution) {
         (
@@ -1131,10 +1804,50 @@ fn profile_type(platform: ApplePlatform, profile: &ProfileManifest) -> Result<&'
     }
 }
 
+fn asc_profile_type(platform: ApplePlatform, profile: &ProfileManifest) -> Result<&'static str> {
+    match (platform, profile.distribution) {
+        (
+            ApplePlatform::Ios | ApplePlatform::Visionos | ApplePlatform::Watchos,
+            DistributionKind::Development,
+        ) => Ok("IOS_APP_DEVELOPMENT"),
+        (
+            ApplePlatform::Ios | ApplePlatform::Visionos | ApplePlatform::Watchos,
+            DistributionKind::AdHoc,
+        ) => Ok("IOS_APP_ADHOC"),
+        (
+            ApplePlatform::Ios | ApplePlatform::Visionos | ApplePlatform::Watchos,
+            DistributionKind::AppStore,
+        ) => Ok("IOS_APP_STORE"),
+        (ApplePlatform::Tvos, DistributionKind::Development) => Ok("TVOS_APP_DEVELOPMENT"),
+        (ApplePlatform::Tvos, DistributionKind::AdHoc) => Ok("TVOS_APP_ADHOC"),
+        (ApplePlatform::Tvos, DistributionKind::AppStore) => Ok("TVOS_APP_STORE"),
+        (ApplePlatform::Macos, DistributionKind::Development) => Ok("MAC_APP_DEVELOPMENT"),
+        (ApplePlatform::Macos, DistributionKind::MacAppStore) => Ok("MAC_APP_STORE"),
+        (ApplePlatform::Macos, DistributionKind::DeveloperId) => Ok("MAC_APP_DIRECT"),
+        _ => bail!(
+            "App Store Connect API key auth does not support provisioning profiles for {platform} with {:?}",
+            profile.distribution
+        ),
+    }
+}
+
 fn installer_certificate_type(profile: &ProfileManifest) -> Result<&'static str> {
     match profile.distribution {
         DistributionKind::MacAppStore => Ok("2PQI8IDXNH"),
         DistributionKind::DeveloperId => Ok("OYVN2GW35E"),
+        _ => bail!(
+            "installer signing is not implemented for {:?}",
+            profile.distribution
+        ),
+    }
+}
+
+fn asc_installer_certificate_type(profile: &ProfileManifest) -> Result<&'static str> {
+    match profile.distribution {
+        DistributionKind::MacAppStore => Ok("MAC_INSTALLER_DISTRIBUTION"),
+        DistributionKind::DeveloperId => bail!(
+            "App Store Connect API key auth does not expose a Developer ID installer certificate type; log in with Apple ID so Orbit can use the Developer Portal flow"
+        ),
         _ => bail!(
             "installer signing is not implemented for {:?}",
             profile.distribution
@@ -1663,10 +2376,13 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        CertificateOrigin, ManagedCertificate, ManagedProfile, ProfileManifest,
-        ProjectEntitlementIdentifiers, SigningState, clean_local_signing_state, load_state,
+        ASC_OPTION_APPLE_ID_PRIMARY_CONSENT, ASC_OPTION_DATA_PROTECTION_COMPLETE,
+        ASC_OPTION_PUSH_BROADCAST, CertificateOrigin, ManagedCertificate, ManagedProfile,
+        ProfileManifest, ProjectEntitlementIdentifiers, SigningState, asc_capability_settings,
+        asc_profile_type, clean_local_signing_state, load_state, plan_asc_capability_mutations,
         project_entitlement_identifiers, save_state, team_signing_paths,
     };
+    use crate::apple::capabilities::{CapabilityRelationships, CapabilityUpdate, RemoteCapability};
     use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
     use crate::manifest::{
         ApplePlatform, DistributionKind, Manifest, PlatformManifest, TargetKind, TargetManifest,
@@ -1884,6 +2600,93 @@ mod tests {
                 )]),
                 cloud_containers: vec!["iCloud.dev.orbit.fixture".to_owned()],
             }
+        );
+    }
+
+    #[test]
+    fn api_key_capability_mutations_fail_for_identifier_linking() {
+        let error = plan_asc_capability_mutations(
+            &[CapabilityUpdate {
+                capability_type: "APP_GROUPS".to_owned(),
+                option: "ON".to_owned(),
+                relationships: CapabilityRelationships {
+                    app_groups: Some(vec!["group.dev.orbit.fixture".to_owned()]),
+                    merchant_ids: None,
+                    cloud_containers: None,
+                },
+            }],
+            &[],
+        )
+        .unwrap_err();
+
+        assert!(error.to_string().contains("cannot link App Groups"));
+    }
+
+    #[test]
+    fn api_key_capability_mutations_fail_for_broadcast_push() {
+        let error = asc_capability_settings(&CapabilityUpdate {
+            capability_type: "PUSH_NOTIFICATIONS".to_owned(),
+            option: ASC_OPTION_PUSH_BROADCAST.to_owned(),
+            relationships: CapabilityRelationships::default(),
+        })
+        .unwrap_err();
+
+        assert!(error.to_string().contains("broadcast push"));
+    }
+
+    #[test]
+    fn api_key_capability_mutations_build_expected_settings() {
+        let remote = vec![RemoteCapability {
+            id: "CAP-APPLE-ID".to_owned(),
+            capability_type: "APPLE_ID_AUTH".to_owned(),
+            enabled: Some(true),
+            settings: Vec::new(),
+        }];
+        let updates = vec![
+            CapabilityUpdate {
+                capability_type: "APPLE_ID_AUTH".to_owned(),
+                option: ASC_OPTION_APPLE_ID_PRIMARY_CONSENT.to_owned(),
+                relationships: CapabilityRelationships::default(),
+            },
+            CapabilityUpdate {
+                capability_type: "DATA_PROTECTION".to_owned(),
+                option: ASC_OPTION_DATA_PROTECTION_COMPLETE.to_owned(),
+                relationships: CapabilityRelationships::default(),
+            },
+        ];
+
+        let mutations = plan_asc_capability_mutations(&updates, &remote).unwrap();
+        assert_eq!(mutations.len(), 2);
+        assert_eq!(mutations[0].remote_id.as_deref(), Some("CAP-APPLE-ID"));
+        assert_eq!(mutations[0].settings[0].key, "APPLE_ID_AUTH_APP_CONSENT");
+        assert_eq!(
+            mutations[0].settings[0].options[0].key,
+            "PRIMARY_APP_CONSENT"
+        );
+        assert_eq!(
+            mutations[1].settings[0].key,
+            "DATA_PROTECTION_PERMISSION_LEVEL"
+        );
+        assert_eq!(
+            mutations[1].settings[0].options[0].key,
+            "COMPLETE_PROTECTION"
+        );
+    }
+
+    #[test]
+    fn api_key_profile_type_uses_ios_profiles_for_watch_and_vision_targets() {
+        let profile = ProfileManifest {
+            configuration: "release".to_owned(),
+            distribution: DistributionKind::AppStore,
+        };
+
+        assert_eq!(
+            asc_profile_type(ApplePlatform::Watchos, &profile).unwrap(),
+            "IOS_APP_STORE"
+        );
+        assert_eq!(
+            asc_profile_type(ApplePlatform::Visionos, &profile).unwrap(),
+            "IOS_APP_STORE"
         );
     }
 }
