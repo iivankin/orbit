@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
@@ -7,9 +7,14 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 
 use crate::apple::auth::{EnsureUserAuthRequest, ensure_portal_authenticated};
-use crate::apple::capabilities::capability_plan_from_entitlements;
+use crate::apple::capabilities::{
+    CapabilityRelationships, CapabilityUpdate, capability_sync_plan_from_entitlements,
+};
 use crate::apple::portal::{
     PortalAppId, PortalClient, PortalDeviceClass, PortalProfilePlatform, PortalProvisioningProfile,
+};
+use crate::apple::provisioning::{
+    ProvisioningCapabilityRelationships, ProvisioningCapabilityUpdate, ProvisioningClient,
 };
 use crate::cli::SigningSyncArgs;
 use crate::context::ProjectContext;
@@ -168,11 +173,19 @@ pub fn prepare_signing(
     let team_id = auth.user.team_id.clone().context(
         "signing requires an Apple Developer team selection; log in again and choose a team if prompted",
     )?;
-    let mut client = PortalClient::from_session(&auth.session, team_id)?;
+    let mut client = PortalClient::from_session(&auth.session, team_id.clone())?;
+    let provisioning = ProvisioningClient::from_session(&auth.session, team_id)?;
     let mut state = load_state(project)?;
 
     let bundle_id = ensure_bundle_id(&mut client, project, target, platform)?;
-    sync_capabilities(&mut client, project, target, platform, &bundle_id)?;
+    sync_capabilities(
+        &mut client,
+        &provisioning,
+        project,
+        target,
+        platform,
+        &bundle_id,
+    )?;
 
     let certificate_type = certificate_type(platform, profile)?;
     let certificate = ensure_certificate(&mut client, project, &mut state, certificate_type)?;
@@ -282,6 +295,7 @@ fn ensure_bundle_id(
 
 fn sync_capabilities(
     client: &mut PortalClient,
+    provisioning: &ProvisioningClient,
     project: &ProjectContext,
     target: &TargetManifest,
     platform: ApplePlatform,
@@ -290,79 +304,183 @@ fn sync_capabilities(
     let Some(entitlements_path) = &target.entitlements else {
         return Ok(());
     };
-    let plan = capability_plan_from_entitlements(&project.root.join(entitlements_path))?;
-
-    for service in &plan.services {
-        client.update_app_service(&bundle_id.id, service)?;
+    let provisioning_bundle = provisioning
+        .find_bundle_id(&bundle_id.identifier)?
+        .with_context(|| {
+            format!(
+                "bundle identifier `{}` exists in the Developer Portal but could not be loaded from Apple's provisioning API",
+                bundle_id.identifier
+            )
+        })?;
+    let plan = capability_sync_plan_from_entitlements(
+        &project.root.join(entitlements_path),
+        &provisioning_bundle.capabilities,
+    )?;
+    if plan.updates.is_empty() {
+        return Ok(());
     }
 
-    if !plan.app_groups.is_empty() {
-        if platform == ApplePlatform::Macos {
-            bail!("App Groups capability syncing is not implemented for macOS targets yet");
-        }
-        let existing = client.list_app_groups()?;
-        let mut group_ids = Vec::new();
-        for group in &plan.app_groups {
-            let id = if let Some(existing_group) = existing
-                .iter()
-                .find(|candidate| candidate.identifier == *group)
-            {
-                existing_group.id.clone()
-            } else {
-                let name = identifier_name("App Group", group);
-                client.create_app_group(&name, group)?.id
-            };
-            group_ids.push(id);
-        }
-        client.assign_app_groups(&bundle_id.id, &group_ids)?;
-    }
-
-    if !plan.merchant_ids.is_empty() {
-        let existing = client.list_merchants(platform == ApplePlatform::Macos)?;
-        let mut merchant_ids = Vec::new();
-        for merchant in &plan.merchant_ids {
-            let id = if let Some(existing_merchant) = existing
-                .iter()
-                .find(|candidate| candidate.identifier == *merchant)
-            {
-                existing_merchant.id.clone()
-            } else {
-                let name = identifier_name("Merchant ID", merchant);
-                client
-                    .create_merchant(&name, merchant, platform == ApplePlatform::Macos)?
-                    .id
-            };
-            merchant_ids.push(id);
-        }
-        client.assign_merchants(
-            &bundle_id.id,
-            &merchant_ids,
-            platform == ApplePlatform::Macos,
-        )?;
-    }
-
-    if !plan.cloud_containers.is_empty() {
-        if platform == ApplePlatform::Macos {
-            bail!("iCloud container syncing is not implemented for macOS targets yet");
-        }
-        let existing = client.list_cloud_containers()?;
-        let mut container_ids = Vec::new();
-        for container in &plan.cloud_containers {
-            let id = if let Some(existing_container) = existing
-                .iter()
-                .find(|candidate| candidate.identifier == *container)
-            {
-                existing_container.id.clone()
-            } else {
-                let name = identifier_name("iCloud Container", container);
-                client.create_cloud_container(&name, container)?.id
-            };
-            container_ids.push(id);
-        }
-        client.assign_cloud_containers(&bundle_id.id, &container_ids)?;
-    }
-
+    let app_group_ids = resolve_app_group_ids(
+        client,
+        collect_identifier_values(&plan.updates, |relationships| {
+            relationships.app_groups.as_ref()
+        }),
+    )?;
+    let merchant_ids = resolve_merchant_ids(
+        client,
+        platform,
+        collect_identifier_values(&plan.updates, |relationships| {
+            relationships.merchant_ids.as_ref()
+        }),
+    )?;
+    let cloud_container_ids = resolve_cloud_container_ids(
+        client,
+        collect_identifier_values(&plan.updates, |relationships| {
+            relationships.cloud_containers.as_ref()
+        }),
+    )?;
+    let updates = plan
+        .updates
+        .iter()
+        .map(|update| {
+            Ok(ProvisioningCapabilityUpdate {
+                capability_type: update.capability_type.clone(),
+                option: update.option.clone(),
+                relationships: ProvisioningCapabilityRelationships {
+                    app_groups: map_relationship_ids(
+                        update.relationships.app_groups.as_ref(),
+                        &app_group_ids,
+                    )?,
+                    merchant_ids: map_relationship_ids(
+                        update.relationships.merchant_ids.as_ref(),
+                        &merchant_ids,
+                    )?,
+                    cloud_containers: map_relationship_ids(
+                        update.relationships.cloud_containers.as_ref(),
+                        &cloud_container_ids,
+                    )?,
+                },
+            })
+        })
+        .collect::<Result<Vec<_>>>()?;
+    provisioning.update_bundle_capabilities(&provisioning_bundle, &updates)?;
     Ok(())
+}
+
+fn collect_identifier_values<F>(updates: &[CapabilityUpdate], select: F) -> Vec<String>
+where
+    F: Fn(&CapabilityRelationships) -> Option<&Vec<String>>,
+{
+    let mut values = updates
+        .iter()
+        .flat_map(|update| {
+            select(&update.relationships)
+                .into_iter()
+                .flatten()
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    values.sort();
+    values.dedup();
+    values
+}
+
+fn resolve_app_group_ids(
+    client: &mut PortalClient,
+    identifiers: Vec<String>,
+) -> Result<HashMap<String, String>> {
+    if identifiers.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let existing = client.list_app_groups()?;
+    let mut resolved = HashMap::new();
+    for identifier in identifiers {
+        let id = if let Some(existing_group) = existing
+            .iter()
+            .find(|candidate| candidate.identifier == identifier)
+        {
+            existing_group.id.clone()
+        } else {
+            let name = identifier_name("App Group", &identifier);
+            client.create_app_group(&name, &identifier)?.id
+        };
+        resolved.insert(identifier, id);
+    }
+    Ok(resolved)
+}
+
+fn resolve_merchant_ids(
+    client: &mut PortalClient,
+    platform: ApplePlatform,
+    identifiers: Vec<String>,
+) -> Result<HashMap<String, String>> {
+    if identifiers.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let existing = client.list_merchants(platform == ApplePlatform::Macos)?;
+    let mut resolved = HashMap::new();
+    for identifier in identifiers {
+        let id = if let Some(existing_merchant) = existing
+            .iter()
+            .find(|candidate| candidate.identifier == identifier)
+        {
+            existing_merchant.id.clone()
+        } else {
+            let name = identifier_name("Merchant ID", &identifier);
+            client
+                .create_merchant(&name, &identifier, platform == ApplePlatform::Macos)?
+                .id
+        };
+        resolved.insert(identifier, id);
+    }
+    Ok(resolved)
+}
+
+fn resolve_cloud_container_ids(
+    client: &mut PortalClient,
+    identifiers: Vec<String>,
+) -> Result<HashMap<String, String>> {
+    if identifiers.is_empty() {
+        return Ok(HashMap::new());
+    }
+
+    let existing = client.list_cloud_containers()?;
+    let mut resolved = HashMap::new();
+    for identifier in identifiers {
+        let id = if let Some(existing_container) = existing
+            .iter()
+            .find(|candidate| candidate.identifier == identifier)
+        {
+            existing_container.id.clone()
+        } else {
+            let name = identifier_name("iCloud Container", &identifier);
+            client.create_cloud_container(&name, &identifier)?.id
+        };
+        resolved.insert(identifier, id);
+    }
+    Ok(resolved)
+}
+
+fn map_relationship_ids(
+    identifiers: Option<&Vec<String>>,
+    resolved: &HashMap<String, String>,
+) -> Result<Option<Vec<String>>> {
+    let Some(identifiers) = identifiers else {
+        return Ok(None);
+    };
+    identifiers
+        .iter()
+        .map(|identifier| {
+            resolved
+                .get(identifier)
+                .cloned()
+                .with_context(|| format!("missing Apple identifier record for `{identifier}`"))
+        })
+        .collect::<Result<Vec<_>>>()
+        .map(Some)
 }
 
 fn ensure_certificate(

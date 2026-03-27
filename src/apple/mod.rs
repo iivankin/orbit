@@ -4,4 +4,5 @@ pub mod auth;
 pub mod capabilities;
 pub mod device;
 pub mod portal;
+pub mod provisioning;
 pub mod signing;
