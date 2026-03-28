@@ -24,7 +24,7 @@ use crate::manifest::{
 use crate::util::{
     CliSpinner, collect_files_with_extensions, command_output, command_output_allow_failure,
     copy_dir_recursive, copy_file, ensure_dir, ensure_parent_dir, prompt_select, resolve_path,
-    run_command, run_command_capture,
+    run_command,
 };
 
 #[derive(Debug, Clone)]
@@ -809,7 +809,7 @@ fn compile_swift_target(
     toolchain: &Toolchain,
     profile: &ProfileManifest,
     target_kind: TargetKind,
-    intermediates_dir: &Path,
+    _intermediates_dir: &Path,
     swift_sources: &[PathBuf],
     package_outputs: &[PackageBuildOutput],
     external_link_inputs: &ExternalLinkInputs,
@@ -818,21 +818,6 @@ fn compile_swift_target(
     product_path: &Path,
     module_output_path: Option<&Path>,
 ) -> Result<()> {
-    if use_split_swift_device_app_build(toolchain, target_kind) {
-        return compile_split_swift_device_app_target(
-            toolchain,
-            profile,
-            target_kind,
-            intermediates_dir,
-            swift_sources,
-            package_outputs,
-            external_link_inputs,
-            object_files,
-            module_name,
-            product_path,
-        );
-    }
-
     let mut command = toolchain.swiftc();
     command.arg("-parse-as-library");
     command.arg("-target").arg(&toolchain.target_triple);
@@ -852,7 +837,6 @@ fn compile_swift_target(
         }
         _ => {}
     }
-    apply_swift_target_linker_defaults(&mut command, target_kind);
     if matches!(
         target_kind,
         TargetKind::StaticLibrary | TargetKind::DynamicLibrary | TargetKind::Framework
@@ -886,178 +870,6 @@ fn compile_swift_target(
         command.arg(source);
     }
     run_command(&mut command)
-}
-
-fn use_split_swift_device_app_build(toolchain: &Toolchain, target_kind: TargetKind) -> bool {
-    toolchain.platform == ApplePlatform::Ios
-        && toolchain.destination == DestinationKind::Device
-        && target_kind == TargetKind::App
-}
-
-fn compile_split_swift_device_app_target(
-    toolchain: &Toolchain,
-    profile: &ProfileManifest,
-    target_kind: TargetKind,
-    intermediates_dir: &Path,
-    swift_sources: &[PathBuf],
-    package_outputs: &[PackageBuildOutput],
-    external_link_inputs: &ExternalLinkInputs,
-    c_object_files: &[PathBuf],
-    module_name: &str,
-    product_path: &Path,
-) -> Result<()> {
-    let compile_plan =
-        prepare_swift_device_app_compile_plan(intermediates_dir, swift_sources, module_name)?;
-    let (swift_stdlib_path, host_swift_stdlib_path) = swift_stdlib_search_paths(toolchain)?;
-
-    let mut compile_command = toolchain.swiftc();
-    compile_command.current_dir(intermediates_dir);
-    compile_command.arg("-module-name").arg(module_name);
-    compile_command.arg("-sdk").arg(&toolchain.sdk_path);
-    compile_command.arg("-target").arg(&toolchain.target_triple);
-    compile_command.arg("-c");
-    compile_command.arg("-whole-module-optimization");
-    compile_command.arg("-emit-module");
-    compile_command
-        .arg("-emit-module-path")
-        .arg(&compile_plan.module_path);
-    compile_command
-        .arg("-working-directory")
-        .arg(intermediates_dir);
-    if matches!(profile.configuration.as_str(), "debug") {
-        compile_command.args(["-Onone", "-g"]);
-    } else {
-        compile_command.arg("-O");
-    }
-    for package in package_outputs {
-        compile_command.arg("-I").arg(&package.module_dir);
-    }
-    for path in &external_link_inputs.module_search_paths {
-        compile_command.arg("-I").arg(path);
-    }
-    for path in &external_link_inputs.framework_search_paths {
-        compile_command.arg("-F").arg(path);
-    }
-    for source in &compile_plan.source_files {
-        compile_command.arg(source);
-    }
-    run_command_capture(&mut compile_command)?;
-
-    let mut link_command = toolchain.clang(false);
-    link_command.arg("-target").arg(&toolchain.target_triple);
-    link_command.arg("-isysroot").arg(&toolchain.sdk_path);
-    link_command.arg("-o").arg(product_path);
-    if matches!(profile.configuration.as_str(), "debug") {
-        link_command.args(["-O0", "-g"]);
-    } else {
-        link_command.arg("-O2");
-    }
-    for package in package_outputs {
-        link_command.arg("-L").arg(&package.library_dir);
-        for library in &package.link_libraries {
-            link_command.arg("-l").arg(library);
-        }
-    }
-    apply_external_link_inputs(&mut link_command, external_link_inputs);
-    link_command.arg("-L").arg(swift_stdlib_path);
-    link_command.arg("-L").arg(host_swift_stdlib_path);
-    apply_clang_swift_target_linker_defaults(&mut link_command, target_kind);
-    link_command.args(["-Xlinker", "-add_ast_path", "-Xlinker"]);
-    link_command.arg(&compile_plan.module_path);
-    for object_file in c_object_files {
-        link_command.arg(object_file);
-    }
-    link_command.arg(&compile_plan.object_path);
-    run_command(&mut link_command)
-}
-
-#[derive(Debug, Clone)]
-struct SwiftDeviceAppCompilePlan {
-    source_files: Vec<PathBuf>,
-    object_path: PathBuf,
-    module_path: PathBuf,
-}
-
-fn prepare_swift_device_app_compile_plan(
-    intermediates_dir: &Path,
-    swift_sources: &[PathBuf],
-    module_name: &str,
-) -> Result<SwiftDeviceAppCompilePlan> {
-    let support_source_path = intermediates_dir.join("__orbit_swift_support__.swift");
-    // Force the Swift driver down the multi-file whole-module path. The one-shot
-    // `swiftc` link path produces a different iPhoneOS SwiftUI entrypoint shape,
-    // and that binary exits immediately on physical devices.
-    fs::write(
-        &support_source_path,
-        "// Orbit support file for iPhoneOS app compilation.\n",
-    )
-    .with_context(|| format!("failed to write {}", support_source_path.display()))?;
-
-    let mut source_files = swift_sources.to_vec();
-    source_files.push(support_source_path);
-    Ok(SwiftDeviceAppCompilePlan {
-        source_files,
-        object_path: intermediates_dir.join(format!("{module_name}.o")),
-        module_path: intermediates_dir.join(format!("{module_name}.swiftmodule")),
-    })
-}
-
-fn swift_stdlib_search_paths(toolchain: &Toolchain) -> Result<(PathBuf, PathBuf)> {
-    let developer_dir =
-        PathBuf::from(command_output(Command::new("xcode-select").arg("-p"))?.trim());
-    Ok((
-        developer_dir
-            .join("Toolchains")
-            .join("XcodeDefault.xctoolchain")
-            .join("usr")
-            .join("lib")
-            .join("swift")
-            .join(&toolchain.sdk_name),
-        PathBuf::from("/usr/lib/swift"),
-    ))
-}
-
-fn apply_swift_target_linker_defaults(command: &mut Command, target_kind: TargetKind) {
-    if !swift_target_needs_executable_runtime_linker_args(target_kind) {
-        return;
-    }
-
-    // Match Xcode's iPhoneOS app/executable link behavior closely enough that
-    // LaunchServices sees the same Objective-C runtime dependency and
-    // executable framework rpath in the final binary.
-    command.arg("-link-objc-runtime");
-    command.args([
-        "-Xlinker",
-        "-rpath",
-        "-Xlinker",
-        "@executable_path/Frameworks",
-    ]);
-}
-
-fn apply_clang_swift_target_linker_defaults(command: &mut Command, target_kind: TargetKind) {
-    if !swift_target_needs_executable_runtime_linker_args(target_kind) {
-        return;
-    }
-
-    command.arg("-fobjc-link-runtime");
-    command.args([
-        "-Xlinker",
-        "-rpath",
-        "-Xlinker",
-        "@executable_path/Frameworks",
-    ]);
-}
-
-fn swift_target_needs_executable_runtime_linker_args(target_kind: TargetKind) -> bool {
-    matches!(
-        target_kind,
-        TargetKind::App
-            | TargetKind::WatchApp
-            | TargetKind::AppExtension
-            | TargetKind::WatchExtension
-            | TargetKind::WidgetExtension
-            | TargetKind::Executable
-    )
 }
 
 fn link_native_target(
@@ -1235,7 +1047,6 @@ fn write_info_plist(
                     &mut plist,
                     target,
                     toolchain.info_plist_supported_platform() == "iPhoneOS",
-                    target_uses_swiftui_app_lifecycle(project, target)?,
                 )?;
             }
             plist.insert(
@@ -1319,7 +1130,6 @@ fn add_ios_app_plist_defaults(
     plist: &mut Dictionary,
     target: &TargetManifest,
     is_device_build: bool,
-    uses_swiftui_app_lifecycle: bool,
 ) -> Result<()> {
     let families = resolved_ios_device_families(target.ios.as_ref());
     plist.insert(
@@ -1331,41 +1141,6 @@ fn add_ios_app_plist_defaults(
                 .collect(),
         ),
     );
-    if uses_swiftui_app_lifecycle {
-        plist.insert(
-            "UIApplicationSceneManifest".to_owned(),
-            Value::Dictionary(Dictionary::from_iter([
-                (
-                    "UIApplicationSupportsMultipleScenes".to_owned(),
-                    Value::Boolean(true),
-                ),
-                (
-                    "UISceneConfigurations".to_owned(),
-                    Value::Dictionary(Dictionary::new()),
-                ),
-            ])),
-        );
-    } else {
-        plist.insert(
-            "UIApplicationSceneManifest".to_owned(),
-            Value::Dictionary(Dictionary::from_iter([
-                (
-                    "UIApplicationSupportsMultipleScenes".to_owned(),
-                    Value::Boolean(false),
-                ),
-                (
-                    "UISceneConfigurations".to_owned(),
-                    Value::Dictionary(Dictionary::from_iter([(
-                        "UIWindowSceneSessionRoleApplication".to_owned(),
-                        Value::Array(vec![Value::Dictionary(Dictionary::from_iter([(
-                            "UISceneConfigurationName".to_owned(),
-                            Value::String("Default Configuration".to_owned()),
-                        )]))]),
-                    )])),
-                ),
-            ])),
-        );
-    }
     let required_capabilities = target
         .ios
         .as_ref()
@@ -1510,23 +1285,6 @@ fn write_bundle_pkg_info(target_kind: TargetKind, bundle_root: &Path) -> Result<
 
     let path = bundle_root.join("PkgInfo");
     fs::write(&path, contents).with_context(|| format!("failed to write {}", path.display()))
-}
-
-fn target_uses_swiftui_app_lifecycle(
-    project: &ProjectContext,
-    target: &TargetManifest,
-) -> Result<bool> {
-    for source in resolve_target_sources(project, target, &["swift"])? {
-        let contents = fs::read_to_string(&source)
-            .with_context(|| format!("failed to read Swift source {}", source.display()))?;
-        if contents.contains("import SwiftUI")
-            && contents.contains("@main")
-            && contents.contains(": App")
-        {
-            return Ok(true);
-        }
-    }
-    Ok(false)
 }
 
 fn extension_plist(config: &ExtensionManifest) -> Result<Dictionary> {
@@ -4122,10 +3880,8 @@ mod tests {
         device_is_locked_from_details, device_support_label_from_device, embedded_dependency_root,
         error_mentions_locked_device, extension_plist, find_running_process_for_installation,
         json_to_plist, lldb_expect_attach_script, merge_extension_attributes,
-        merge_partial_info_plist, ordered_package_targets, prepare_swift_device_app_compile_plan,
-        relocate_bundle_debug_artifacts, select_xcframework_library,
-        swift_target_needs_executable_runtime_linker_args, use_split_swift_device_app_build,
-        write_info_plist,
+        merge_partial_info_plist, ordered_package_targets, relocate_bundle_debug_artifacts,
+        select_xcframework_library, write_info_plist,
     };
     use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
     use crate::manifest::{
@@ -4259,7 +4015,7 @@ mod tests {
     }
 
     #[test]
-    fn writes_ios_swiftui_app_defaults_like_xcode() {
+    fn writes_ios_app_defaults_without_scene_manifest_inference() {
         let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
         let target = project
             .manifest
@@ -4298,7 +4054,7 @@ mod tests {
                 .and_then(Value::as_string),
             Some("en")
         );
-        assert!(dict.contains_key("UIApplicationSceneManifest"));
+        assert!(!dict.contains_key("UIApplicationSceneManifest"));
         assert_eq!(
             dict.get("UIRequiredDeviceCapabilities")
                 .and_then(Value::as_array)
@@ -4436,82 +4192,6 @@ mod tests {
         assert_eq!(
             dict.get("UIStatusBarStyle").and_then(Value::as_string),
             Some("UIStatusBarStyleLightContent")
-        );
-    }
-
-    #[test]
-    fn swift_runtime_linker_defaults_apply_to_launchable_targets() {
-        assert!(swift_target_needs_executable_runtime_linker_args(
-            TargetKind::App
-        ));
-        assert!(swift_target_needs_executable_runtime_linker_args(
-            TargetKind::Executable
-        ));
-        assert!(swift_target_needs_executable_runtime_linker_args(
-            TargetKind::WidgetExtension
-        ));
-        assert!(!swift_target_needs_executable_runtime_linker_args(
-            TargetKind::Framework
-        ));
-        assert!(!swift_target_needs_executable_runtime_linker_args(
-            TargetKind::StaticLibrary
-        ));
-    }
-
-    #[test]
-    fn uses_split_swift_build_for_ios_device_apps_only() {
-        let ios_device = Toolchain {
-            platform: ApplePlatform::Ios,
-            destination: DestinationKind::Device,
-            sdk_name: "iphoneos".to_owned(),
-            sdk_path: PathBuf::from("/tmp/iphoneos.sdk"),
-            deployment_target: "18.0".to_owned(),
-            architecture: "arm64".to_owned(),
-            target_triple: "arm64-apple-ios18.0".to_owned(),
-        };
-        let ios_simulator = Toolchain {
-            destination: DestinationKind::Simulator,
-            sdk_name: "iphonesimulator".to_owned(),
-            sdk_path: PathBuf::from("/tmp/iphonesimulator.sdk"),
-            target_triple: "arm64-apple-ios18.0-simulator".to_owned(),
-            ..ios_device.clone()
-        };
-
-        assert!(use_split_swift_device_app_build(
-            &ios_device,
-            TargetKind::App
-        ));
-        assert!(!use_split_swift_device_app_build(
-            &ios_device,
-            TargetKind::Framework
-        ));
-        assert!(!use_split_swift_device_app_build(
-            &ios_simulator,
-            TargetKind::App
-        ));
-    }
-
-    #[test]
-    fn prepares_support_file_for_ios_device_swift_app_compile_plan() {
-        let temp = tempfile::tempdir().unwrap();
-        let source = temp.path().join("App.swift");
-        std::fs::write(&source, "import SwiftUI\n").unwrap();
-
-        let plan =
-            prepare_swift_device_app_compile_plan(temp.path(), &[source.clone()], "ExampleIOSApp")
-                .unwrap();
-
-        assert_eq!(plan.object_path, temp.path().join("ExampleIOSApp.o"));
-        assert_eq!(
-            plan.module_path,
-            temp.path().join("ExampleIOSApp.swiftmodule")
-        );
-        assert_eq!(plan.source_files.first(), Some(&source));
-        assert_eq!(plan.source_files.len(), 2);
-        assert!(
-            plan.source_files
-                .last()
-                .is_some_and(|path| path.ends_with("__orbit_swift_support__.swift"))
         );
     }
 
