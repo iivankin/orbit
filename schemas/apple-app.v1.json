@@ -1,0 +1,1185 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orbit.dev/schemas/apple-app.v1.json",
+  "title": "Orbit Apple App Manifest v1",
+  "description": "Authoring schema for app-centric Orbit Apple manifests.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "$schema",
+    "name",
+    "bundle_id",
+    "version",
+    "build",
+    "platforms"
+  ],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Schema identifier used by Orbit backend dispatch and editor validation. This can be the published URL or a local path ending with `apple-app.v1.json`."
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Canonical product name. This also becomes the synthesized root target name."
+    },
+    "display_name": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional launcher/home-screen name. Defaults to `name`."
+    },
+    "bundle_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Root bundle identifier for the app family."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$",
+      "description": "Apple-friendly semantic version in `x.y.z` form."
+    },
+    "build": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Monotonic integer build number mapped to `CFBundleVersion`."
+    },
+    "team_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional default Apple Developer team for the product."
+    },
+    "provider_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Optional default App Store Connect provider for the product."
+    },
+    "platforms": {
+      "$ref": "#/$defs/platformTargets"
+    },
+    "sources": {
+      "$ref": "#/$defs/pathArray",
+      "description": "Root app source roots."
+    },
+    "resources": {
+      "$ref": "#/$defs/pathArray",
+      "description": "Root app bundle resources."
+    },
+    "dependencies": {
+      "$ref": "#/$defs/dependencies",
+      "description": "Package.json-style dependency dictionary."
+    },
+    "info": {
+      "$ref": "#/$defs/infoManifest",
+      "description": "Structured `Info.plist` configuration."
+    },
+    "entitlements": {
+      "$ref": "#/$defs/entitlementsManifest",
+      "description": "Inline Orbit entitlement DSL."
+    },
+    "push": {
+      "$ref": "#/$defs/pushConfig",
+      "description": "APNs configuration for the root app."
+    },
+    "extensions": {
+      "type": "object",
+      "description": "Embedded extensions keyed by stable extension id.",
+      "default": {},
+      "additionalProperties": {
+        "$ref": "#/$defs/extensionConfig"
+      }
+    },
+    "watch": {
+      "$ref": "#/$defs/watchConfig",
+      "description": "Companion watchOS app and watch extension."
+    },
+    "app_clip": {
+      "$ref": "#/$defs/appClipConfig",
+      "description": "App Clip child bundle."
+    },
+    "hooks": {
+      "$ref": "#/$defs/hooksManifest",
+      "description": "Optional lifecycle hooks."
+    },
+    "tests": {
+      "$ref": "#/$defs/testsManifest",
+      "description": "Optional test target declarations."
+    }
+  },
+  "$defs": {
+    "applePlatform": {
+      "type": "string",
+      "enum": ["ios", "macos", "tvos", "visionos", "watchos"]
+    },
+    "pathArray": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "default": []
+    },
+    "platformTargets": {
+      "type": "object",
+      "minProperties": 1,
+      "additionalProperties": false,
+      "properties": {
+        "ios": {
+          "type": "string",
+          "description": "iOS deployment target, for example `18.0`."
+        },
+        "macos": {
+          "type": "string",
+          "description": "macOS deployment target, for example `15.0`."
+        },
+        "tvos": {
+          "type": "string",
+          "description": "tvOS deployment target."
+        },
+        "visionos": {
+          "type": "string",
+          "description": "visionOS deployment target."
+        },
+        "watchos": {
+          "type": "string",
+          "description": "watchOS deployment target."
+        }
+      }
+    },
+    "dependencies": {
+      "type": "object",
+      "default": {},
+      "additionalProperties": {
+        "$ref": "#/$defs/dependencySpec"
+      }
+    },
+    "dependencySpec": {
+      "description": "Exactly one dependency source must be selected.",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["path"],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Local Swift package path."
+            },
+            "embed": {
+              "type": "boolean",
+              "description": "Optional override for automatic embed detection."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["framework"],
+          "properties": {
+            "framework": {
+              "const": true,
+              "description": "Links a system Apple framework by dependency key."
+            },
+            "embed": {
+              "type": "boolean",
+              "description": "Optional override for automatic embed detection."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["xcframework"],
+          "properties": {
+            "xcframework": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Path to an XCFramework bundle."
+            },
+            "embed": {
+              "type": "boolean",
+              "description": "Optional override for automatic embed detection."
+            }
+          }
+        }
+      ]
+    },
+    "plistValue": {
+      "description": "JSON value that Orbit can represent in an Apple plist.",
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "type": "number"
+        },
+        {
+          "type": "boolean"
+        },
+        {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/plistValue"
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/plistValue"
+          }
+        }
+      ]
+    },
+    "infoManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": {},
+      "properties": {
+        "extra": {
+          "type": "object",
+          "description": "Raw `Info.plist` keys. Common `NS*UsageDescription` keys are documented explicitly below, and any other plist-compatible keys can still be added.",
+          "default": {},
+          "properties": {
+            "NSCameraUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests camera access."
+            },
+            "NSMicrophoneUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests microphone access."
+            },
+            "NSPhotoLibraryUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app reads from the photo library."
+            },
+            "NSPhotoLibraryAddUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app writes to the photo library."
+            },
+            "NSContactsUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests contacts access."
+            },
+            "NSCalendarsUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests calendar access."
+            },
+            "NSCalendarsFullAccessUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests full read and write calendar access."
+            },
+            "NSCalendarsWriteOnlyAccessUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests write-only calendar access."
+            },
+            "NSRemindersFullAccessUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests full reminders access."
+            },
+            "NSLocationWhenInUseUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests location access while in use."
+            },
+            "NSLocationAlwaysAndWhenInUseUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests always-on location access."
+            },
+            "NSLocationAlwaysUsageDescription": {
+              "type": "string",
+              "description": "Legacy privacy reason for always-on location access."
+            },
+            "NSBluetoothAlwaysUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests Bluetooth access."
+            },
+            "NSBluetoothPeripheralUsageDescription": {
+              "type": "string",
+              "description": "Legacy privacy reason shown when the app uses Core Bluetooth peripheral access."
+            },
+            "NSRemindersUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests reminders access."
+            },
+            "NSHomeKitUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests HomeKit access."
+            },
+            "NSMotionUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests motion and fitness data."
+            },
+            "NSFaceIDUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app uses Face ID authentication."
+            },
+            "NSLocalNetworkUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses devices on the local network."
+            },
+            "NSBonjourServices": {
+              "type": "array",
+              "description": "Bonjour service types the app browses or advertises on the local network.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "NSLocationTemporaryUsageDescriptionDictionary": {
+              "type": "object",
+              "description": "Temporary precise location purpose strings keyed by the app-defined purpose identifier.",
+              "additionalProperties": {
+                "type": "string"
+              }
+            },
+            "NSSpeechRecognitionUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests speech recognition access."
+            },
+            "NSSiriUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests Siri or Intents access."
+            },
+            "NSNearbyInteractionUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests Nearby Interaction access."
+            },
+            "NSHealthShareUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app reads HealthKit data."
+            },
+            "NSHealthUpdateUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app writes HealthKit data."
+            },
+            "NSAppleMusicUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses the user's media library."
+            },
+            "NSAppleScriptEnabled": {
+              "type": "boolean",
+              "description": "Whether AppleScript support is enabled for the macOS app."
+            },
+            "NSAppleEventsUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown on macOS when the app sends Apple events to control other apps."
+            },
+            "NSDockTilePlugIn": {
+              "type": "string",
+              "description": "Bundle-relative name of the app's Dock tile plug-in."
+            },
+            "NSHealthClinicalHealthRecordsShareUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests access to the user's clinical health records."
+            },
+            "NSHealthRequiredReadAuthorizationTypeIdentifier": {
+              "type": "array",
+              "description": "Required HealthKit type identifiers that must all be authorized for read access.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "NSHealthRequiredWriteAuthorizationTypeIdentifiers": {
+              "type": "array",
+              "description": "Required HealthKit type identifiers that must all be authorized for write access.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "NSUserTrackingUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app requests tracking authorization."
+            },
+            "NSUserNotificationsUsageDescription": {
+              "type": "string",
+              "description": "Optional notification permission prompt text on newer Apple platforms."
+            },
+            "NSAppTransportSecurity": {
+              "type": "object",
+              "description": "App Transport Security policy overrides and exception domains.",
+              "additionalProperties": {
+                "$ref": "#/$defs/plistValue"
+              }
+            },
+            "NSHumanReadableCopyright": {
+              "type": "string",
+              "description": "Localized copyright string shown by the system."
+            },
+            "NSJavaNeeded": {
+              "type": "boolean",
+              "description": "Whether the macOS app requires a running Java VM."
+            },
+            "NSJavaPath": {
+              "type": "array",
+              "description": "Java class search paths whose components are preceded by `NSJavaRoot`.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "NSJavaRoot": {
+              "type": "string",
+              "description": "Root directory containing Java classes referenced by `NSJavaPath`."
+            },
+            "NSLocationUsageDescription": {
+              "type": "string",
+              "description": "Legacy location usage description. Apple recommends `NSLocationWhenInUseUsageDescription` or `NSLocationAlwaysUsageDescription` instead."
+            },
+            "NSMainNibFile": {
+              "type": "string",
+              "description": "Main nib file base name for AppKit-style apps."
+            },
+            "NSPersistentStoreTypeKey": {
+              "type": "string",
+              "description": "Core Data persistent store type associated with a document type."
+            },
+            "NSPrefPaneIconFile": {
+              "type": "string",
+              "description": "Image resource used to represent a preference pane in System Settings."
+            },
+            "NSPrefPaneIconLabel": {
+              "type": "string",
+              "description": "Label displayed beneath a preference pane icon in System Settings."
+            },
+            "NSPrincipalClass": {
+              "type": "string",
+              "description": "Principal Objective-C class for the bundle."
+            },
+            "NSServices": {
+              "type": "array",
+              "description": "Service definitions provided by the macOS app.",
+              "items": {
+                "$ref": "#/$defs/nsServiceEntry"
+              }
+            },
+            "NSSupportsAutomaticTermination": {
+              "type": "boolean",
+              "description": "Whether the macOS app supports automatic termination."
+            },
+            "NSSupportsPurgeableLocalStorage": {
+              "type": "boolean",
+              "description": "Whether the app can rely on nonlocal storage for user data."
+            },
+            "NSSupportsSuddenTermination": {
+              "type": "boolean",
+              "description": "Whether the macOS app supports sudden termination."
+            },
+            "NSUbiquitousContainers": {
+              "type": "object",
+              "description": "iCloud Drive container settings keyed by container identifier.",
+              "additionalProperties": {
+                "$ref": "#/$defs/nsUbiquitousContainerSettings"
+              }
+            },
+            "NSUbiquitousDisplaySet": {
+              "type": "string",
+              "description": "Display set identifier used for the app's mobile document storage."
+            },
+            "NSUserActivityTypes": {
+              "type": "array",
+              "description": "User activity types supported by the app.",
+              "items": {
+                "type": "string"
+              }
+            },
+            "NSUserNotificationAlertStyle": {
+              "type": "string",
+              "description": "macOS notification style for the app.",
+              "enum": ["banner", "alert", "none"]
+            },
+            "NSSystemAdministrationUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown on macOS when the app requests privileged system administration access."
+            },
+            "NSVideoSubscriberAccountUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses the user's TV provider account."
+            },
+            "NSDesktopFolderUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses the desktop folder on macOS."
+            },
+            "NSDocumentsFolderUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses the documents folder on macOS."
+            },
+            "NSDownloadsFolderUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses the downloads folder on macOS."
+            },
+            "NSNetworkVolumesUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses network-mounted volumes on macOS."
+            },
+            "NSRemovableVolumesUsageDescription": {
+              "type": "string",
+              "description": "Privacy reason shown when the app accesses removable volumes on macOS."
+            }
+          },
+          "patternProperties": {
+            "^NS[A-Z].*$": {
+              "$ref": "#/$defs/plistValue",
+              "description": "Apple `NS*` plist key, typically used for privacy usage descriptions or other system metadata."
+            }
+          },
+          "additionalProperties": {
+            "$ref": "#/$defs/plistValue"
+          }
+        }
+      }
+    },
+    "entitlementsManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": {},
+      "properties": {
+        "app_groups": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Application groups. Values should use the `group.` prefix."
+        },
+        "associated_domains": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Associated domains such as `applinks:example.com`."
+        },
+        "merchant_ids": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Apple Pay merchant identifiers. Values should use the `merchant.` prefix."
+        },
+        "cloud_containers": {
+          "$ref": "#/$defs/stringArray",
+          "description": "iCloud container identifiers. Values should use the `iCloud.` prefix."
+        },
+        "icloud_services": {
+          "type": "array",
+          "default": [],
+          "description": "Enabled iCloud services for the declared cloud containers.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "CloudDocuments",
+              "CloudKit",
+              "CloudKit-Anonymous",
+              "CloudKit-Anonymous-Dev"
+            ]
+          }
+        },
+        "classkit_environment": {
+          "$ref": "#/$defs/devProdString",
+          "description": "ClassKit environment."
+        },
+        "default_data_protection": {
+          "type": "string",
+          "enum": [
+            "NSFileProtectionCompleteUnlessOpen",
+            "NSFileProtectionCompleteUntilFirstUserAuthentication",
+            "NSFileProtectionNone",
+            "NSFileProtectionComplete"
+          ],
+          "description": "Default data protection class."
+        },
+        "network_extensions": {
+          "type": "array",
+          "default": [],
+          "description": "Network Extension providers enabled for this target.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "dns-proxy",
+              "app-proxy-provider",
+              "content-filter-provider",
+              "packet-tunnel-provider",
+              "dns-proxy-systemextension",
+              "app-proxy-provider-systemextension",
+              "content-filter-provider-systemextension",
+              "packet-tunnel-provider-systemextension",
+              "dns-settings",
+              "app-push-provider"
+            ]
+          }
+        },
+        "nfc_reader_session_formats": {
+          "type": "array",
+          "default": [],
+          "description": "NFC reader session formats.",
+          "items": {
+            "type": "string",
+            "enum": ["NDEF", "TAG"]
+          }
+        },
+        "vpn_api": {
+          "type": "array",
+          "default": [],
+          "description": "Personal VPN API modes.",
+          "items": {
+            "type": "string",
+            "enum": ["allow-vpn"]
+          }
+        },
+        "pass_type_identifiers": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Wallet pass type identifiers."
+        },
+        "apple_sign_in": {
+          "type": "array",
+          "default": [],
+          "description": "Apple ID sign-in modes.",
+          "items": {
+            "type": "string",
+            "enum": ["Default"]
+          }
+        },
+        "user_fonts": {
+          "type": "array",
+          "default": [],
+          "description": "Font installation modes.",
+          "items": {
+            "type": "string",
+            "enum": ["app-usage", "system-installation"]
+          }
+        },
+        "apple_pay_later_merchandising": {
+          "type": "array",
+          "default": [],
+          "description": "Apple Pay Later merchandising modes.",
+          "items": {
+            "type": "string",
+            "enum": ["payinfour-merchandising"]
+          }
+        },
+        "sensitive_content_analysis": {
+          "type": "array",
+          "default": [],
+          "description": "Sensitive content analysis client modes.",
+          "items": {
+            "type": "string",
+            "enum": ["analysis"]
+          }
+        },
+        "app_attest_environment": {
+          "$ref": "#/$defs/devProdString",
+          "description": "DeviceCheck App Attest environment."
+        },
+        "journal_allow": {
+          "type": "array",
+          "default": [],
+          "description": "Journaling suggestions modes.",
+          "items": {
+            "type": "string",
+            "enum": ["suggestions"]
+          }
+        },
+        "managed_app_distribution_install_ui": {
+          "type": "array",
+          "default": [],
+          "description": "Managed app distribution install UI modes.",
+          "items": {
+            "type": "string",
+            "enum": ["managed-app"]
+          }
+        },
+        "network_slicing_app_category": {
+          "type": "array",
+          "default": [],
+          "description": "Network slicing application categories.",
+          "items": {
+            "type": "string",
+            "enum": ["gaming-6014", "communication-9000", "streaming-9001"]
+          }
+        },
+        "network_slicing_traffic_category": {
+          "type": "array",
+          "default": [],
+          "description": "Network slicing traffic categories.",
+          "items": {
+            "type": "string",
+            "enum": [
+              "defaultslice-1",
+              "video-2",
+              "background-3",
+              "voice-4",
+              "callsignaling-5",
+              "responsivedata-6",
+              "avstreaming-7",
+              "responsiveav-8"
+            ]
+          }
+        },
+        "homekit": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables HomeKit."
+        },
+        "hotspot_configuration": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Hotspot Configuration."
+        },
+        "multipath": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Multipath networking."
+        },
+        "siri": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables SiriKit."
+        },
+        "wireless_accessory_configuration": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Wireless Accessory Configuration."
+        },
+        "extended_virtual_addressing": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables extended virtual addressing."
+        },
+        "wifi_info": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Wi-Fi information access."
+        },
+        "autofill_credential_provider": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Autofill Credential Provider support."
+        },
+        "healthkit": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables HealthKit."
+        },
+        "communication_notifications": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables communication notifications."
+        },
+        "time_sensitive_notifications": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables time-sensitive notifications."
+        },
+        "group_activities": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Group Activities."
+        },
+        "family_controls": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Family Controls."
+        },
+        "inter_app_audio": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Inter-App Audio."
+        },
+        "hls_low_latency": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables low-latency HLS."
+        },
+        "mdm_managed_associated_domains": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables MDM-managed associated domains."
+        },
+        "fileprovider_testing_mode": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables File Provider testing mode."
+        },
+        "healthkit_recalibrate_estimates": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables HealthKit recalibration estimates."
+        },
+        "maps": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Maps integration."
+        },
+        "user_management": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Managed Apple ID user management."
+        },
+        "custom_protocol": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables networking custom protocol support."
+        },
+        "system_extension_install": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables System Extension installation."
+        },
+        "push_to_talk": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Push to Talk."
+        },
+        "driverkit_transport_usb": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit USB transport."
+        },
+        "increased_memory_limit": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables increased memory limit."
+        },
+        "driverkit_communicates_with_drivers": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit communication with drivers."
+        },
+        "media_device_discovery_extension": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables media device discovery extension support."
+        },
+        "driverkit_allow_third_party_userclients": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables third-party DriverKit user clients."
+        },
+        "weatherkit": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables WeatherKit."
+        },
+        "on_demand_install_capable": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Marks the target as on-demand install capable."
+        },
+        "driverkit_family_scsi_controller": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit SCSI controller family."
+        },
+        "driverkit_family_serial": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit serial family."
+        },
+        "driverkit_family_networking": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit networking family."
+        },
+        "driverkit_family_hid_eventservice": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit HID event service family."
+        },
+        "driverkit_family_hid_device": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit HID device family."
+        },
+        "driverkit": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit."
+        },
+        "driverkit_transport_hid": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit HID transport."
+        },
+        "driverkit_family_audio": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables DriverKit audio family."
+        },
+        "shared_with_you": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Shared with You."
+        },
+        "shared_with_you_collaboration": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Shared with You collaboration."
+        },
+        "submerged_shallow_depth_and_pressure": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables shallow depth and pressure access for submerged scenarios."
+        },
+        "proximity_reader_identity_display": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Tap to Display ID."
+        },
+        "proximity_reader_payment_acceptance": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Enables Tap to Pay on iPhone."
+        },
+        "matter_allow_setup_payload": {
+          "$ref": "#/$defs/booleanFlag",
+          "description": "Allows Matter setup payload access."
+        },
+        "sandbox": {
+          "$ref": "#/$defs/sandboxConfig"
+        },
+        "extra": {
+          "type": "object",
+          "default": {},
+          "description": "Raw entitlement keys not modeled directly by Orbit. Keys generated from first-class fields cannot be overridden here.",
+          "additionalProperties": {
+            "$ref": "#/$defs/plistValue"
+          }
+        }
+      }
+    },
+    "stringArray": {
+      "type": "array",
+      "default": [],
+      "items": {
+        "type": "string",
+        "minLength": 1
+      }
+    },
+    "devProdString": {
+      "type": "string",
+      "enum": ["development", "production"]
+    },
+    "nsServiceEntry": {
+      "type": "object",
+      "description": "Single macOS service definition from the `NSServices` array.",
+      "properties": {
+        "NSPortName": {
+          "type": "string",
+          "description": "Incoming service port name."
+        },
+        "NSMessage": {
+          "type": "string",
+          "description": "Instance method name invoked for the service."
+        },
+        "NSSendFileTypes": {
+          "$ref": "#/$defs/stringArray",
+          "description": "UTI file types accepted by the service."
+        },
+        "NSSendTypes": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Pasteboard types accepted by the service."
+        },
+        "NSServiceDescription": {
+          "type": "string",
+          "description": "Localized description presented to users."
+        },
+        "NSRequiredContext": {
+          "$ref": "#/$defs/plistValue",
+          "description": "Conditions that control whether the service is available."
+        },
+        "NSRestricted": {
+          "type": "boolean",
+          "description": "Whether sandboxed apps are prevented from invoking the service."
+        },
+        "NSReturnTypes": {
+          "$ref": "#/$defs/stringArray",
+          "description": "Pasteboard types returned by the service."
+        },
+        "NSMenuItem": {
+          "type": "object",
+          "description": "Service menu item configuration.",
+          "additionalProperties": {
+            "type": "string"
+          }
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/plistValue"
+      }
+    },
+    "nsUbiquitousContainerSettings": {
+      "type": "object",
+      "description": "Settings for a single iCloud Drive container.",
+      "properties": {
+        "NSUbiquitousContainerIsDocumentScopePublic": {
+          "type": "boolean",
+          "description": "Whether iCloud Drive should expose the container contents publicly."
+        },
+        "NSUbiquitousContainerName": {
+          "type": "string",
+          "description": "Display name used for the container in iCloud Drive."
+        },
+        "NSUbiquitousContainerSupportedFolderLevels": {
+          "type": "string",
+          "description": "Maximum nesting level allowed in the container's Documents directory.",
+          "enum": ["None", "One", "Any"]
+        }
+      },
+      "additionalProperties": {
+        "$ref": "#/$defs/plistValue"
+      }
+    },
+    "booleanFlag": {
+      "type": "boolean",
+      "default": false
+    },
+    "sandboxConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "default": true
+        },
+        "network": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string",
+            "enum": ["client", "server"]
+          }
+        },
+        "files": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "string",
+            "enum": ["user-selected.read-only", "user-selected.read-write"]
+          }
+        }
+      }
+    },
+    "pushConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["environment"],
+      "properties": {
+        "environment": {
+          "type": "string",
+          "enum": ["development", "production"]
+        },
+        "credential": {
+          "type": "string",
+          "enum": ["auth-key", "certificate"],
+          "default": "auth-key"
+        },
+        "broadcast": {
+          "type": "boolean",
+          "default": false
+        }
+      }
+    },
+    "entryConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["class"],
+      "properties": {
+        "class": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Objective-C runtime entry class."
+        }
+      }
+    },
+    "extensionConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["kind", "sources", "entry"],
+      "properties": {
+        "kind": {
+          "type": "string",
+          "enum": ["packet-tunnel", "widget", "share", "safari", "safari-web"]
+        },
+        "platforms": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "$ref": "#/$defs/applePlatform"
+          }
+        },
+        "sources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "resources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "info": {
+          "$ref": "#/$defs/infoManifest"
+        },
+        "entitlements": {
+          "$ref": "#/$defs/entitlementsManifest"
+        },
+        "push": {
+          "$ref": "#/$defs/pushConfig"
+        },
+        "entry": {
+          "$ref": "#/$defs/entryConfig"
+        }
+      }
+    },
+    "watchConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["extension"],
+      "properties": {
+        "sources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "resources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "info": {
+          "$ref": "#/$defs/infoManifest"
+        },
+        "entitlements": {
+          "$ref": "#/$defs/entitlementsManifest"
+        },
+        "extension": {
+          "$ref": "#/$defs/watchExtensionConfig"
+        }
+      }
+    },
+    "watchExtensionConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources", "entry"],
+      "properties": {
+        "sources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "resources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "info": {
+          "$ref": "#/$defs/infoManifest"
+        },
+        "entitlements": {
+          "$ref": "#/$defs/entitlementsManifest"
+        },
+        "entry": {
+          "$ref": "#/$defs/entryConfig"
+        }
+      }
+    },
+    "appClipConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sources"],
+      "properties": {
+        "sources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "resources": {
+          "$ref": "#/$defs/pathArray"
+        },
+        "dependencies": {
+          "$ref": "#/$defs/dependencies"
+        },
+        "info": {
+          "$ref": "#/$defs/infoManifest"
+        },
+        "entitlements": {
+          "$ref": "#/$defs/entitlementsManifest"
+        },
+        "push": {
+          "$ref": "#/$defs/pushConfig"
+        }
+      }
+    },
+    "hooksManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "before_build": {
+          "$ref": "#/$defs/stringArray"
+        },
+        "after_sign": {
+          "$ref": "#/$defs/stringArray"
+        }
+      }
+    },
+    "testsManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "unit": {
+          "$ref": "#/$defs/testTargetManifest"
+        },
+        "ui": {
+          "$ref": "#/$defs/testTargetManifest"
+        }
+      }
+    },
+    "testTargetManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "sources": {
+          "$ref": "#/$defs/pathArray"
+        }
+      }
+    }
+  }
+}

@@ -13,14 +13,21 @@ use plist::{Dictionary, Value};
 use serde::Deserialize;
 use tempfile::{NamedTempFile, tempdir};
 
-use crate::build::receipt::{BuildReceipt, list_receipts, write_receipt};
-use crate::build::toolchain::{DestinationKind, Toolchain};
+use super::external::{
+    ExternalLinkInputs, PackageBuildOutput, apply_external_link_inputs, compile_swift_package,
+    resolve_external_link_inputs,
+};
+use crate::apple::build::receipt::{BuildReceipt, list_receipts, load_receipt, write_receipt};
+use crate::apple::build::toolchain::{DestinationKind, Toolchain};
+use crate::apple::runtime::{
+    apple_platform_from_cli, build_target_for_platform, distribution_from_cli, profile_for_build,
+    profile_for_run, resolve_build_distribution, resolve_platform,
+};
 use crate::cli::{BuildArgs, RunArgs, SubmitArgs};
 use crate::context::ProjectContext;
 use crate::manifest::{
     ApplePlatform, DistributionKind, ExtensionManifest, IosDeviceFamily, IosInterfaceOrientation,
-    IosTargetManifest, ProfileManifest, SwiftPackageDependency, TargetKind, TargetManifest,
-    XcframeworkDependency,
+    IosTargetManifest, ProfileManifest, TargetKind, TargetManifest,
 };
 use crate::util::{
     CliSpinner, collect_files_with_extensions, command_output, command_output_allow_failure,
@@ -32,7 +39,7 @@ use crate::util::{
 struct BuildRequest {
     target_name: String,
     platform: ApplePlatform,
-    profile_name: String,
+    profile: ProfileManifest,
     destination: DestinationKind,
     output: Option<PathBuf>,
     provisioning_udids: Option<Vec<String>>,
@@ -50,17 +57,6 @@ struct ProductLayout {
     product_path: PathBuf,
     binary_path: PathBuf,
     module_output_path: Option<PathBuf>,
-}
-
-#[derive(Debug, Clone, Default)]
-struct ExternalLinkInputs {
-    module_search_paths: Vec<PathBuf>,
-    framework_search_paths: Vec<PathBuf>,
-    library_search_paths: Vec<PathBuf>,
-    link_frameworks: Vec<String>,
-    weak_frameworks: Vec<String>,
-    link_libraries: Vec<String>,
-    embedded_payloads: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -130,33 +126,46 @@ fn build_requires_signing(profile: &ProfileManifest, destination: DestinationKin
         || !matches!(profile.distribution, DistributionKind::Development)
 }
 
+fn profile_description(profile: &ProfileManifest) -> String {
+    format!(
+        "{} {}",
+        profile.distribution.as_str(),
+        profile.configuration.as_str()
+    )
+}
+
 pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> {
-    let target = resolve_requested_target(project, args.target.as_deref())?;
-    let platform = project.manifest.resolve_platform_for_target(target, None)?;
-    let profile_name = resolve_profile_name(
+    let platform = resolve_platform(
         project,
-        platform,
-        args.profile.as_deref(),
-        None,
-        "Select a build profile",
+        args.platform.map(apple_platform_from_cli),
+        "Select a platform to build",
     )?;
-    let profile = project.manifest.profile_for(platform, &profile_name)?;
+    let target = build_target_for_platform(project, platform)?;
+    let distribution =
+        resolve_build_distribution(project, platform, distribution_from_cli(args.distribution))?;
+    let profile = profile_for_build(distribution, args.release);
     let request = BuildRequest {
         target_name: target.name.clone(),
         platform,
-        profile_name,
-        destination: resolve_destination(project, platform, args.simulator, args.device, profile)?,
+        profile,
+        destination: resolve_destination(
+            project,
+            platform,
+            args.simulator,
+            args.device,
+            distribution,
+        )?,
         output: args.output.clone(),
         provisioning_udids: None,
     };
-    if build_requires_signing(profile, request.destination) {
+    if build_requires_signing(&request.profile, request.destination) {
         crate::apple::auth::ensure_project_authenticated(project)?;
     }
 
     let spinner = CliSpinner::new(format!(
         "Building {} for {} ({})",
         request.target_name,
-        request.profile_name,
+        profile_description(&request.profile),
         request.destination.as_str()
     ));
     let outcome = match build_project(project, &request) {
@@ -168,7 +177,8 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
     };
     spinner.finish_success(format!(
         "Built {} for {}.",
-        outcome.receipt.target, outcome.receipt.profile
+        outcome.receipt.target,
+        profile_description(&request.profile)
     ));
     println!("artifact: {}", outcome.receipt.artifact_path.display());
     println!("receipt: {}", outcome.receipt_path.display());
@@ -176,19 +186,21 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
 }
 
 pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()> {
-    let target = resolve_requested_target(project, args.target.as_deref())?;
-    let platform = project.manifest.resolve_platform_for_target(target, None)?;
+    let platform = resolve_platform(
+        project,
+        args.platform.map(apple_platform_from_cli),
+        "Select a platform to run",
+    )?;
+    let target = build_target_for_platform(project, platform)?;
     validate_run_platform(platform)?;
-    let profile_name = resolve_profile_name(
+    let profile = profile_for_run();
+    let destination = resolve_destination(
         project,
         platform,
-        args.profile.as_deref(),
-        Some("development"),
-        "Select a run profile",
+        args.simulator,
+        args.device,
+        profile.distribution,
     )?;
-    let profile = project.manifest.profile_for(platform, &profile_name)?;
-    validate_run_distribution(profile)?;
-    let destination = resolve_destination(project, platform, args.simulator, args.device, profile)?;
     if args.device_id.is_some() && destination != DestinationKind::Device {
         bail!("--device-id can only be used together with a physical-device run");
     }
@@ -205,21 +217,21 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
     let request = BuildRequest {
         target_name: target.name.clone(),
         platform,
-        profile_name,
+        profile,
         destination,
         output: None,
         provisioning_udids: selected_device
             .as_ref()
             .map(|device| vec![device.hardware_properties.udid.clone()]),
     };
-    if build_requires_signing(profile, request.destination) {
+    if build_requires_signing(&request.profile, request.destination) {
         crate::apple::auth::ensure_project_authenticated(project)?;
     }
 
     let spinner = CliSpinner::new(format!(
         "Building {} for {} ({})",
         request.target_name,
-        request.profile_name,
+        profile_description(&request.profile),
         request.destination.as_str()
     ));
     let outcome = match build_project(project, &request) {
@@ -231,7 +243,8 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
     };
     spinner.finish_success(format!(
         "Built {} for {}.",
-        outcome.receipt.target, outcome.receipt.profile
+        outcome.receipt.target,
+        profile_description(&request.profile)
     ));
     match (
         outcome.receipt.platform,
@@ -287,9 +300,7 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
         .platforms
         .get(&platform)
         .context("platform configuration missing from manifest")?;
-    let profile = project
-        .manifest
-        .profile_for(platform, &request.profile_name)?;
+    let profile = &request.profile;
 
     let toolchain = Toolchain::resolve(
         platform,
@@ -301,7 +312,7 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
         .project_paths
         .build_dir
         .join(platform.to_string())
-        .join(&request.profile_name)
+        .join(profile.variant_name())
         .join(toolchain.destination.as_str());
     ensure_dir(&build_root)?;
 
@@ -309,14 +320,7 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
     let mut built_targets = HashMap::new();
     let signing_required = build_requires_signing(profile, request.destination);
     for target in &ordered_targets {
-        let built = compile_target(
-            project,
-            &toolchain,
-            target,
-            &build_root,
-            &request.profile_name,
-            profile,
-        )?;
+        let built = compile_target(project, &toolchain, target, &build_root, profile)?;
         built_targets.insert(target.name.clone(), built);
     }
 
@@ -365,7 +369,7 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
     let mut receipt = BuildReceipt::new(
         &root_target.name,
         platform,
-        &request.profile_name,
+        profile.configuration,
         profile.distribution,
         request.destination.as_str(),
         &root_target.bundle_id,
@@ -388,7 +392,6 @@ fn compile_target(
     toolchain: &Toolchain,
     target: &TargetManifest,
     build_root: &Path,
-    profile_name: &str,
     profile: &ProfileManifest,
 ) -> Result<BuiltTarget> {
     let target_dir = build_root.join(&target.name);
@@ -502,15 +505,7 @@ fn compile_target(
         build_progress_step(
             format!("Writing Info.plist for target `{}`", target.name),
             |_| format!("Wrote Info.plist for target `{}`.", target.name),
-            || {
-                write_info_plist(
-                    project,
-                    toolchain,
-                    target,
-                    &product.product_path,
-                    profile_name,
-                )
-            },
+            || write_info_plist(project, toolchain, target, &product.product_path),
         )?;
     }
     if target.kind.is_bundle() {
@@ -582,73 +577,12 @@ fn relocate_bundle_debug_artifacts(
     Ok(())
 }
 
-fn resolve_requested_target<'a>(
-    project: &'a ProjectContext,
-    requested_target: Option<&str>,
-) -> Result<&'a TargetManifest> {
-    if let Some(requested_target) = requested_target {
-        return project.manifest.resolve_target(Some(requested_target));
-    }
-
-    let mut candidates = project.manifest.selectable_root_targets();
-    if candidates.len() <= 1 || !project.app.interactive {
-        return candidates
-            .drain(..)
-            .next()
-            .context("manifest did not contain any targets");
-    }
-
-    let labels = candidates
-        .iter()
-        .map(|target| format!("{} ({})", target.name, target.bundle_id))
-        .collect::<Vec<_>>();
-    let index = prompt_select("Select a target", &labels)?;
-    Ok(candidates.remove(index))
-}
-
-fn resolve_profile_name(
-    project: &ProjectContext,
-    platform: ApplePlatform,
-    requested_profile: Option<&str>,
-    default_profile: Option<&str>,
-    prompt: &str,
-) -> Result<String> {
-    if let Some(requested_profile) = requested_profile {
-        let _ = project.manifest.profile_for(platform, requested_profile)?;
-        return Ok(requested_profile.to_owned());
-    }
-
-    if let Some(default_profile) = default_profile {
-        if project
-            .manifest
-            .profile_for(platform, default_profile)
-            .is_ok()
-        {
-            return Ok(default_profile.to_owned());
-        }
-    }
-
-    let profiles = project.manifest.profile_names(platform)?;
-    if profiles.len() == 1 {
-        return Ok(profiles[0].clone());
-    }
-    if !project.app.interactive {
-        bail!(
-            "multiple profiles are available for platform `{platform}`; pass --profile ({})",
-            profiles.join(", ")
-        );
-    }
-
-    let index = prompt_select(prompt, &profiles)?;
-    Ok(profiles[index].clone())
-}
-
 fn resolve_destination(
     project: &ProjectContext,
     platform: ApplePlatform,
     simulator: bool,
     device: bool,
-    profile: &ProfileManifest,
+    distribution: DistributionKind,
 ) -> Result<DestinationKind> {
     if simulator && device {
         bail!("--simulator and --device cannot be used together");
@@ -665,7 +599,7 @@ fn resolve_destination(
     if simulator {
         return Ok(DestinationKind::Simulator);
     }
-    if matches!(profile.distribution, DistributionKind::Development) && project.app.interactive {
+    if matches!(distribution, DistributionKind::Development) && project.app.interactive {
         let options = ["Simulator", "Physical device"];
         let index = prompt_select("Select a destination", &options)?;
         return Ok(match index {
@@ -673,34 +607,23 @@ fn resolve_destination(
             _ => DestinationKind::Device,
         });
     }
-    Ok(default_destination_for_profile(platform, profile))
+    Ok(default_destination_for_distribution(platform, distribution))
 }
 
-fn default_destination_for_profile(
+fn default_destination_for_distribution(
     platform: ApplePlatform,
-    profile: &ProfileManifest,
+    distribution: DistributionKind,
 ) -> DestinationKind {
     if platform == ApplePlatform::Macos {
         return DestinationKind::Device;
     }
 
-    match profile.distribution {
+    match distribution {
         DistributionKind::Development => DestinationKind::Simulator,
         DistributionKind::AdHoc
         | DistributionKind::AppStore
         | DistributionKind::DeveloperId
         | DistributionKind::MacAppStore => DestinationKind::Device,
-    }
-}
-
-fn validate_run_distribution(profile: &ProfileManifest) -> Result<()> {
-    match profile.distribution {
-        DistributionKind::Development | DistributionKind::AdHoc => Ok(()),
-        DistributionKind::AppStore
-        | DistributionKind::DeveloperId
-        | DistributionKind::MacAppStore => {
-            bail!("`orbit run` only supports development or ad-hoc profiles")
-        }
     }
 }
 
@@ -715,8 +638,11 @@ fn validate_run_platform(platform: ApplePlatform) -> Result<()> {
 }
 
 fn resolve_submit_receipt(project: &ProjectContext, args: &SubmitArgs) -> Result<BuildReceipt> {
+    let requested_platform = args.platform.map(apple_platform_from_cli);
+    let requested_distribution = distribution_from_cli(args.distribution);
+
     if let Some(receipt_path) = &args.receipt {
-        let receipt = crate::build::receipt::load_receipt(receipt_path)?;
+        let receipt = load_receipt(receipt_path)?;
         if !receipt.submit_eligible {
             bail!(
                 "receipt `{}` is not submit-eligible because it was built for `{:?}` distribution",
@@ -724,13 +650,33 @@ fn resolve_submit_receipt(project: &ProjectContext, args: &SubmitArgs) -> Result
                 receipt.distribution
             );
         }
+        if requested_platform.is_some_and(|platform| receipt.platform != platform) {
+            bail!(
+                "receipt `{}` targets platform `{}`, not the requested `{}`",
+                receipt.id,
+                receipt.platform,
+                requested_platform
+                    .map(|platform| platform.to_string())
+                    .unwrap_or_default()
+            );
+        }
+        if requested_distribution.is_some_and(|distribution| receipt.distribution != distribution) {
+            bail!(
+                "receipt `{}` uses distribution `{}`, not the requested `{}`",
+                receipt.id,
+                receipt.distribution.as_str(),
+                requested_distribution
+                    .map(DistributionKind::as_str)
+                    .unwrap_or_default()
+            );
+        }
         return Ok(receipt);
     }
 
     let mut receipts = list_receipts(
         &project.project_paths.receipts_dir,
-        args.target.as_deref(),
-        args.profile.as_deref(),
+        requested_platform,
+        requested_distribution,
     )?;
     receipts.retain(|receipt| receipt.submit_eligible);
     receipts.sort_by(|left, right| right.created_at_unix.cmp(&left.created_at_unix));
@@ -751,7 +697,10 @@ fn receipt_label(receipt: &BuildReceipt) -> String {
         "{} | {} | {} | {} | {}",
         receipt.id,
         receipt.target,
-        receipt.profile,
+        profile_description(&ProfileManifest::new(
+            receipt.configuration,
+            receipt.distribution
+        )),
         receipt.destination,
         receipt.artifact_path.display()
     )
@@ -808,7 +757,7 @@ fn compile_c_family_sources(
             command.arg("-isysroot").arg(&toolchain.sdk_path);
             command.arg("-c").arg(&source);
             command.arg("-o").arg(&object_path);
-            if matches!(profile.configuration.as_str(), "debug") {
+            if profile.is_debug() {
                 command.arg("-g");
             } else {
                 command.arg("-O2");
@@ -838,7 +787,7 @@ fn compile_swift_target(
     command.arg("-parse-as-library");
     command.arg("-target").arg(&toolchain.target_triple);
     command.arg("-module-name").arg(module_name);
-    if matches!(profile.configuration.as_str(), "debug") {
+    if profile.is_debug() {
         command.args(["-Onone", "-g"]);
     } else {
         command.arg("-O");
@@ -912,7 +861,7 @@ fn link_native_target(
             command.arg("-isysroot").arg(&toolchain.sdk_path);
             command.arg("-dynamiclib");
             command.arg("-o").arg(product_path);
-            if matches!(profile.configuration.as_str(), "debug") {
+            if profile.is_debug() {
                 command.arg("-g");
             } else {
                 command.arg("-O2");
@@ -928,7 +877,7 @@ fn link_native_target(
             command.arg("-target").arg(&toolchain.target_triple);
             command.arg("-isysroot").arg(&toolchain.sdk_path);
             command.arg("-o").arg(product_path);
-            if matches!(profile.configuration.as_str(), "debug") {
+            if profile.is_debug() {
                 command.arg("-g");
             } else {
                 command.arg("-O2");
@@ -1059,7 +1008,6 @@ fn write_info_plist(
     toolchain: &Toolchain,
     target: &TargetManifest,
     bundle_root: &Path,
-    _profile_name: &str,
 ) -> Result<()> {
     let mut plist = Dictionary::new();
     plist.insert(
@@ -2795,78 +2743,6 @@ struct NotarySubmitResponse {
     status: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
-struct SwiftPackageManifest {
-    name: String,
-    products: Vec<SwiftPackageProduct>,
-    targets: Vec<SwiftPackageTarget>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SwiftPackageProduct {
-    name: String,
-    targets: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SwiftPackageTarget {
-    name: String,
-    path: Option<String>,
-    #[serde(default)]
-    dependencies: Vec<SwiftPackageTargetDependency>,
-    #[serde(rename = "type", default)]
-    kind: Option<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-#[serde(untagged)]
-enum SwiftPackageTargetDependency {
-    ByName {
-        #[serde(rename = "byName")]
-        by_name: (String, Option<serde_json::Value>),
-    },
-    Target {
-        target: (String, Option<serde_json::Value>),
-    },
-    Product {
-        product: (
-            String,
-            Option<String>,
-            Option<Vec<serde_json::Value>>,
-            Option<serde_json::Value>,
-        ),
-    },
-}
-
-#[derive(Debug, Clone)]
-struct PackageBuildOutput {
-    module_dir: PathBuf,
-    library_dir: PathBuf,
-    link_libraries: Vec<String>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct XcframeworkInfoPlist {
-    #[serde(rename = "AvailableLibraries")]
-    available_libraries: Vec<XcframeworkLibrary>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct XcframeworkLibrary {
-    #[serde(rename = "LibraryIdentifier")]
-    library_identifier: String,
-    #[serde(rename = "LibraryPath")]
-    library_path: String,
-    #[serde(rename = "HeadersPath")]
-    headers_path: Option<String>,
-    #[serde(rename = "SupportedPlatform")]
-    supported_platform: String,
-    #[serde(rename = "SupportedPlatformVariant")]
-    supported_platform_variant: Option<String>,
-    #[serde(rename = "SupportedArchitectures")]
-    supported_architectures: Vec<String>,
-}
-
 fn compile_swift_packages(
     project: &ProjectContext,
     toolchain: &Toolchain,
@@ -2895,180 +2771,6 @@ fn compile_swift_packages(
     Ok(outputs)
 }
 
-fn resolve_external_link_inputs(
-    project: &ProjectContext,
-    toolchain: &Toolchain,
-    intermediates_dir: &Path,
-    target: &TargetManifest,
-) -> Result<ExternalLinkInputs> {
-    let mut inputs = ExternalLinkInputs {
-        link_frameworks: target.frameworks.clone(),
-        weak_frameworks: target.weak_frameworks.clone(),
-        link_libraries: target.system_libraries.clone(),
-        ..ExternalLinkInputs::default()
-    };
-
-    for dependency in &target.xcframeworks {
-        merge_external_link_inputs(
-            &mut inputs,
-            resolve_xcframework_dependency(project, toolchain, intermediates_dir, dependency)?,
-        );
-    }
-
-    dedup_vec(&mut inputs.module_search_paths);
-    dedup_vec(&mut inputs.framework_search_paths);
-    dedup_vec(&mut inputs.library_search_paths);
-    dedup_vec(&mut inputs.link_frameworks);
-    dedup_vec(&mut inputs.weak_frameworks);
-    dedup_vec(&mut inputs.link_libraries);
-    dedup_vec(&mut inputs.embedded_payloads);
-
-    Ok(inputs)
-}
-
-fn resolve_xcframework_dependency(
-    project: &ProjectContext,
-    toolchain: &Toolchain,
-    _intermediates_dir: &Path,
-    dependency: &XcframeworkDependency,
-) -> Result<ExternalLinkInputs> {
-    let xcframework_root = resolve_path(&project.root, &dependency.path);
-    let info_path = xcframework_root.join("Info.plist");
-    let info: XcframeworkInfoPlist = plist::from_file(&info_path)
-        .with_context(|| format!("failed to parse {}", info_path.display()))?;
-    let library =
-        select_xcframework_library(toolchain, &info.available_libraries).with_context(|| {
-            format!(
-                "failed to select XCFramework slice for {}",
-                xcframework_root.display()
-            )
-        })?;
-    let slice_root = xcframework_root.join(&library.library_identifier);
-    let library_path = slice_root.join(&library.library_path);
-    let mut inputs = ExternalLinkInputs::default();
-
-    if let Some(headers_path) = &library.headers_path {
-        let headers_root = slice_root.join(headers_path);
-        inputs.module_search_paths.push(headers_root);
-    }
-
-    let explicit_name = dependency.library.as_ref().map(|name| name.as_str());
-    let file_name = library_path
-        .file_name()
-        .and_then(OsStr::to_str)
-        .context("XCFramework library path is missing a file name")?;
-    if file_name.ends_with(".framework") {
-        let framework_name = explicit_name
-            .map(ToOwned::to_owned)
-            .or_else(|| {
-                Path::new(file_name)
-                    .file_stem()
-                    .and_then(OsStr::to_str)
-                    .map(ToOwned::to_owned)
-            })
-            .context("failed to derive XCFramework framework name")?;
-        inputs.framework_search_paths.push(
-            library_path
-                .parent()
-                .context("framework path is missing a parent")?
-                .to_path_buf(),
-        );
-        inputs.link_frameworks.push(framework_name);
-        if dependency.embed {
-            inputs.embedded_payloads.push(library_path);
-        }
-    } else {
-        let library_name = explicit_name
-            .map(ToOwned::to_owned)
-            .or_else(|| {
-                file_name
-                    .strip_prefix("lib")
-                    .and_then(|value| {
-                        value
-                            .strip_suffix(".a")
-                            .or_else(|| value.strip_suffix(".dylib"))
-                    })
-                    .map(ToOwned::to_owned)
-            })
-            .context("failed to derive XCFramework library name")?;
-        inputs.library_search_paths.push(
-            library_path
-                .parent()
-                .context("library path is missing a parent")?
-                .to_path_buf(),
-        );
-        inputs.link_libraries.push(library_name);
-        if dependency.embed && file_name.ends_with(".dylib") {
-            inputs.embedded_payloads.push(library_path);
-        }
-    }
-
-    Ok(inputs)
-}
-
-fn select_xcframework_library<'a>(
-    toolchain: &Toolchain,
-    available_libraries: &'a [XcframeworkLibrary],
-) -> Option<&'a XcframeworkLibrary> {
-    let platform = match toolchain.platform {
-        ApplePlatform::Ios => "ios",
-        ApplePlatform::Macos => "macos",
-        ApplePlatform::Tvos => "tvos",
-        ApplePlatform::Visionos => "xros",
-        ApplePlatform::Watchos => "watchos",
-    };
-    let variant = match toolchain.destination {
-        DestinationKind::Simulator => Some("simulator"),
-        DestinationKind::Device => None,
-    };
-
-    available_libraries.iter().find(|library| {
-        library.supported_platform == platform
-            && library.supported_platform_variant.as_deref() == variant
-            && library
-                .supported_architectures
-                .iter()
-                .any(|architecture| architecture == &toolchain.architecture)
-    })
-}
-
-fn merge_external_link_inputs(target: &mut ExternalLinkInputs, source: ExternalLinkInputs) {
-    target
-        .module_search_paths
-        .extend(source.module_search_paths);
-    target
-        .framework_search_paths
-        .extend(source.framework_search_paths);
-    target
-        .library_search_paths
-        .extend(source.library_search_paths);
-    target.link_frameworks.extend(source.link_frameworks);
-    target.weak_frameworks.extend(source.weak_frameworks);
-    target.link_libraries.extend(source.link_libraries);
-    target.embedded_payloads.extend(source.embedded_payloads);
-}
-
-fn apply_external_link_inputs(command: &mut Command, inputs: &ExternalLinkInputs) {
-    for path in &inputs.module_search_paths {
-        command.arg("-I").arg(path);
-    }
-    for path in &inputs.framework_search_paths {
-        command.arg("-F").arg(path);
-    }
-    for path in &inputs.library_search_paths {
-        command.arg("-L").arg(path);
-    }
-    for framework in &inputs.link_frameworks {
-        command.arg("-framework").arg(framework);
-    }
-    for framework in &inputs.weak_frameworks {
-        command.arg("-weak_framework").arg(framework);
-    }
-    for library in &inputs.link_libraries {
-        command.arg("-l").arg(library);
-    }
-}
-
 fn embed_external_payloads(
     inputs: &ExternalLinkInputs,
     toolchain: &Toolchain,
@@ -3093,256 +2795,6 @@ fn embed_external_payloads(
         }
     }
     Ok(())
-}
-
-fn dedup_vec<T>(values: &mut Vec<T>)
-where
-    T: Ord,
-{
-    values.sort();
-    values.dedup();
-}
-
-fn compile_swift_package(
-    project: &ProjectContext,
-    toolchain: &Toolchain,
-    profile: &ProfileManifest,
-    intermediates_dir: &Path,
-    dependency: &SwiftPackageDependency,
-) -> Result<PackageBuildOutput> {
-    let package_root = resolve_path(&project.root, &dependency.path);
-    let description = command_output(
-        Command::new("swift")
-            .args(["package", "--package-path"])
-            .arg(&package_root)
-            .arg("dump-package"),
-    )?;
-    let package: SwiftPackageManifest = serde_json::from_str(&description).with_context(|| {
-        format!(
-            "failed to parse Swift package description for {}",
-            package_root.display()
-        )
-    })?;
-
-    let product = package
-        .products
-        .iter()
-        .find(|product| product.name == dependency.product)
-        .with_context(|| {
-            format!(
-                "Swift package `{}` does not export product `{}`",
-                package_root.display(),
-                dependency.product
-            )
-        })?;
-
-    let built_target_names = ordered_package_targets(&package, &product.targets)?;
-    let module_dir = intermediates_dir
-        .join("swiftpackages")
-        .join(&dependency.product)
-        .join("modules");
-    let library_dir = intermediates_dir
-        .join("swiftpackages")
-        .join(&dependency.product)
-        .join("libs");
-    ensure_dir(&module_dir)?;
-    ensure_dir(&library_dir)?;
-
-    let targets_by_name = package
-        .targets
-        .iter()
-        .map(|target| (target.name.as_str(), target))
-        .collect::<HashMap<_, _>>();
-    let mut built_libraries = Vec::new();
-
-    for target_name in &built_target_names {
-        let package_target = targets_by_name
-            .get(target_name.as_str())
-            .copied()
-            .with_context(|| format!("missing Swift package target `{target_name}`"))?;
-        let source_root = package_target
-            .path
-            .as_ref()
-            .map(|path| package_root.join(path))
-            .unwrap_or_else(|| package_root.join("Sources").join(target_name));
-        let swift_sources = collect_files_with_extensions(&source_root, &["swift"])?;
-        if swift_sources.is_empty() {
-            bail!(
-                "Swift package target `{target_name}` under `{}` does not contain any Swift sources",
-                source_root.display()
-            );
-        }
-
-        let library_name = swift_package_library_name(&package.name, target_name);
-        let module_path = module_dir.join(format!("{target_name}.swiftmodule"));
-        let library_path = library_dir.join(format!("lib{library_name}.a"));
-        let mut command = toolchain.swiftc();
-        command.arg("-parse-as-library");
-        command.arg("-target").arg(&toolchain.target_triple);
-        command.arg("-emit-library");
-        command.arg("-static");
-        command.arg("-emit-module");
-        command.arg("-module-name").arg(target_name);
-        command.arg("-o").arg(&library_path);
-        command.arg("-emit-module-path").arg(&module_path);
-        if matches!(profile.configuration.as_str(), "debug") {
-            command.args(["-Onone", "-g"]);
-        } else {
-            command.arg("-O");
-        }
-        command.arg("-I").arg(&module_dir);
-        command.arg("-L").arg(&library_dir);
-        for dependency_name in package_target_local_dependencies(package_target, &targets_by_name)?
-        {
-            command
-                .arg("-l")
-                .arg(swift_package_library_name(&package.name, &dependency_name));
-        }
-        for source in swift_sources {
-            command.arg(source);
-        }
-        build_progress_step(
-            format!(
-                "Compiling Swift package target `{}` from `{}`",
-                target_name, dependency.product
-            ),
-            |_| {
-                format!(
-                    "Compiled Swift package target `{}` from `{}`.",
-                    target_name, dependency.product
-                )
-            },
-            || run_command(&mut command),
-        )?;
-        built_libraries.push(library_name);
-    }
-
-    Ok(PackageBuildOutput {
-        module_dir,
-        library_dir,
-        link_libraries: built_libraries,
-    })
-}
-
-fn ordered_package_targets(
-    package: &SwiftPackageManifest,
-    root_targets: &[String],
-) -> Result<Vec<String>> {
-    let targets_by_name = package
-        .targets
-        .iter()
-        .map(|target| (target.name.as_str(), target))
-        .collect::<HashMap<_, _>>();
-    let mut ordered = Vec::new();
-    let mut visiting = std::collections::BTreeSet::new();
-    let mut visited = std::collections::BTreeSet::new();
-
-    fn visit(
-        target_name: &str,
-        targets_by_name: &HashMap<&str, &SwiftPackageTarget>,
-        ordered: &mut Vec<String>,
-        visiting: &mut std::collections::BTreeSet<String>,
-        visited: &mut std::collections::BTreeSet<String>,
-    ) -> Result<()> {
-        if visited.contains(target_name) {
-            return Ok(());
-        }
-        if !visiting.insert(target_name.to_owned()) {
-            bail!("Swift package target dependency cycle detected at `{target_name}`");
-        }
-
-        let target = targets_by_name
-            .get(target_name)
-            .copied()
-            .with_context(|| format!("missing Swift package target `{target_name}`"))?;
-        validate_package_target_kind(target)?;
-        for dependency_name in package_target_local_dependencies(target, targets_by_name)? {
-            visit(
-                &dependency_name,
-                targets_by_name,
-                ordered,
-                visiting,
-                visited,
-            )?;
-        }
-
-        visiting.remove(target_name);
-        visited.insert(target_name.to_owned());
-        ordered.push(target_name.to_owned());
-        Ok(())
-    }
-
-    for target_name in root_targets {
-        visit(
-            target_name,
-            &targets_by_name,
-            &mut ordered,
-            &mut visiting,
-            &mut visited,
-        )?;
-    }
-
-    Ok(ordered)
-}
-
-fn validate_package_target_kind(target: &SwiftPackageTarget) -> Result<()> {
-    match target.kind.as_deref().unwrap_or("regular") {
-        "regular" => Ok(()),
-        other => bail!(
-            "Swift package target `{}` has unsupported kind `{other}`",
-            target.name
-        ),
-    }
-}
-
-fn package_target_local_dependencies(
-    target: &SwiftPackageTarget,
-    targets_by_name: &HashMap<&str, &SwiftPackageTarget>,
-) -> Result<Vec<String>> {
-    let mut dependencies = Vec::new();
-    for dependency in &target.dependencies {
-        match dependency {
-            SwiftPackageTargetDependency::ByName { by_name } => {
-                if targets_by_name.contains_key(by_name.0.as_str()) {
-                    dependencies.push(by_name.0.clone());
-                }
-            }
-            SwiftPackageTargetDependency::Target { target } => {
-                dependencies.push(target.0.clone());
-            }
-            SwiftPackageTargetDependency::Product { product } => {
-                bail!(
-                    "Swift package target `{}` depends on external product `{}`; Orbit only supports local package target graphs for now",
-                    target.name,
-                    product.0
-                );
-            }
-        }
-    }
-    dependencies.sort();
-    dependencies.dedup();
-    Ok(dependencies)
-}
-
-fn swift_package_library_name(package_name: &str, target_name: &str) -> String {
-    format!(
-        "{}_{}",
-        sanitize_library_name_component(package_name),
-        sanitize_library_name_component(target_name)
-    )
-}
-
-fn sanitize_library_name_component(value: &str) -> String {
-    value
-        .chars()
-        .map(|character| {
-            if character.is_ascii_alphanumeric() {
-                character
-            } else {
-                '_'
-            }
-        })
-        .collect()
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -3977,20 +3429,23 @@ mod tests {
     use tempfile::TempDir;
 
     use super::{
-        ApplePlatform, DestinationKind, DeviceRunningProcess, ExtensionManifest,
-        SwiftPackageManifest, SwiftPackageProduct, SwiftPackageTarget,
-        SwiftPackageTargetDependency, TargetKind, Toolchain, XcframeworkLibrary,
-        device_is_locked_from_details, device_support_label_from_device, embedded_dependency_root,
-        error_mentions_locked_device, extension_plist, find_running_process_for_installation,
-        json_to_plist, lldb_expect_attach_script, macos_executable_path,
-        merge_extension_attributes, merge_partial_info_plist, ordered_package_targets,
-        relocate_bundle_debug_artifacts, select_xcframework_library, write_info_plist,
+        ApplePlatform, DestinationKind, DeviceRunningProcess, ExtensionManifest, TargetKind,
+        Toolchain, device_is_locked_from_details, device_support_label_from_device,
+        embedded_dependency_root, error_mentions_locked_device, extension_plist,
+        find_running_process_for_installation, json_to_plist, lldb_expect_attach_script,
+        macos_executable_path, merge_extension_attributes, merge_partial_info_plist,
+        relocate_bundle_debug_artifacts, write_info_plist,
     };
-    use crate::build::receipt::BuildReceipt;
+    use crate::apple::build::external::{
+        SwiftPackageManifest, SwiftPackageProduct, SwiftPackageTarget,
+        SwiftPackageTargetDependency, XcframeworkLibrary, ordered_package_targets,
+        select_xcframework_library,
+    };
+    use crate::apple::build::receipt::BuildReceipt;
     use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
     use crate::manifest::{
-        DistributionKind, IosDeviceFamily, IosInterfaceOrientation,
-        IosSupportedOrientationsManifest, IosTargetManifest, Manifest,
+        BuildConfiguration, DistributionKind, IosDeviceFamily, IosInterfaceOrientation,
+        IosSupportedOrientationsManifest, IosTargetManifest, Manifest, ManifestSchema,
     };
 
     fn fixture(path: &str) -> PathBuf {
@@ -4001,13 +3456,13 @@ mod tests {
         let temp = tempfile::tempdir().unwrap();
         let manifest_path = fixture(path);
         let root = manifest_path.parent().unwrap().to_path_buf();
-        let manifest = Manifest::load(&manifest_path).unwrap();
         let data_dir = temp.path().join("data");
         let cache_dir = temp.path().join("cache");
         let orbit_dir = temp.path().join("orbit");
         let build_dir = orbit_dir.join("build");
         let artifacts_dir = orbit_dir.join("artifacts");
         let receipts_dir = orbit_dir.join("receipts");
+        let manifest = Manifest::load(&manifest_path, &orbit_dir).unwrap();
         std::fs::create_dir_all(&data_dir).unwrap();
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::create_dir_all(&build_dir).unwrap();
@@ -4028,6 +3483,7 @@ mod tests {
             },
             root,
             manifest_path,
+            manifest_schema: ManifestSchema::AppleAppV1,
             manifest,
             project_paths: ProjectPaths {
                 orbit_dir,
@@ -4138,7 +3594,7 @@ mod tests {
             target_triple: "arm64-apple-ios18.0".to_owned(),
         };
 
-        write_info_plist(&project, &toolchain, &target, &bundle_root, "development").unwrap();
+        write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
 
         let plist = Value::from_file(bundle_root.join("Info.plist")).unwrap();
         let dict = plist.as_dictionary().unwrap();
@@ -4233,7 +3689,7 @@ mod tests {
             target_triple: "arm64-apple-ios18.0".to_owned(),
         };
 
-        write_info_plist(&project, &toolchain, &target, &bundle_root, "development").unwrap();
+        write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
 
         let plist = Value::from_file(bundle_root.join("Info.plist")).unwrap();
         let dict = plist.as_dictionary().unwrap();
@@ -4301,7 +3757,7 @@ mod tests {
 
     #[test]
     fn defaults_bundle_display_name_to_target_name() {
-        let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
+        let (temp, project) = project_for_fixture("examples/macos-app/orbit.json");
         let target = project
             .manifest
             .resolve_target(Some("ExampleMacApp"))
@@ -4319,7 +3775,7 @@ mod tests {
             target_triple: "arm64-apple-macosx14.0".to_owned(),
         };
 
-        write_info_plist(&project, &toolchain, &target, &bundle_root, "development").unwrap();
+        write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
 
         let plist = Value::from_file(bundle_root.join("Contents").join("Info.plist")).unwrap();
         let dict = plist.as_dictionary().unwrap();
@@ -4335,7 +3791,7 @@ mod tests {
 
     #[test]
     fn writes_macos_app_metadata_under_contents() {
-        let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
+        let (temp, project) = project_for_fixture("examples/macos-app/orbit.json");
         let target = project
             .manifest
             .resolve_target(Some("ExampleMacApp"))
@@ -4353,7 +3809,7 @@ mod tests {
             target_triple: "arm64-apple-macosx14.0".to_owned(),
         };
 
-        write_info_plist(&project, &toolchain, &target, &bundle_root, "development").unwrap();
+        write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
 
         assert!(bundle_root.join("Contents").join("Info.plist").exists());
         assert!(bundle_root.join("Contents").join("PkgInfo").exists());
@@ -4392,7 +3848,7 @@ mod tests {
         let receipt = BuildReceipt::new(
             "ExampleMacApp",
             ApplePlatform::Macos,
-            "development",
+            BuildConfiguration::Debug,
             DistributionKind::Development,
             "local",
             "dev.orbit.examples.examplemacapp",
@@ -4487,13 +3943,10 @@ mod tests {
             .manifest
             .resolve_target(Some("ExampleCompanionApp"))
             .unwrap();
-        let watch_app = project
-            .manifest
-            .resolve_target(Some("ExampleWatchApp"))
-            .unwrap();
+        let watch_app = project.manifest.resolve_target(Some("WatchApp")).unwrap();
         let watch_extension = project
             .manifest
-            .resolve_target(Some("ExampleWatchExtension"))
+            .resolve_target(Some("WatchExtension"))
             .unwrap();
         assert_eq!(
             embedded_dependency_root(&project, ApplePlatform::Ios, app, watch_app).unwrap(),
@@ -4541,10 +3994,7 @@ mod tests {
     fn embeds_app_clips_into_appclips_directory() {
         let (_temp, project) = project_for_fixture("examples/ios-app-clip/orbit.json");
         let app = project.manifest.resolve_target(Some("ExampleApp")).unwrap();
-        let clip = project
-            .manifest
-            .resolve_target(Some("ExampleClip"))
-            .unwrap();
+        let clip = project.manifest.resolve_target(Some("AppClip")).unwrap();
 
         assert_eq!(
             embedded_dependency_root(&project, ApplePlatform::Ios, app, clip).unwrap(),

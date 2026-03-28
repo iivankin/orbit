@@ -1,89 +1,24 @@
 {
+  "$schema": "../../schemas/apple-app.v1.json",
   "name": "ExampleIOSApp",
+  "bundle_id": "dev.orbit.examples.exampleiosapp",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
   "team_id": "JZPJ2RGU5F",
   "provider_id": "128120286",
-  "source_roots": [],
-  "toolchain": {
-    "xcode_version": "26.3"
-  },
   "platforms": {
-    "ios": {
-      "deployment_target": "18.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        },
-        "internal": {
-          "configuration": "release",
-          "distribution": "ad-hoc"
-        },
-        "release": {
-          "configuration": "release",
-          "distribution": "app-store"
-        }
-      }
-    },
-    "macos": {
-      "deployment_target": "14.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        }
-      }
-    }
+    "ios": "18.0"
   },
-  "targets": [
-    {
-      "name": "ExampleIOSApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.exampleiosapp",
-      "platforms": [
-        "ios"
-      ],
-      "sources": [
-        "Sources/ExampleIOSApp",
-        "Sources/Shared"
-      ],
-      "resources": [
-        "Resources"
-      ],
-      "dependencies": [],
-      "swift_packages": [
-        {
-          "product": "OrbitGreeting",
-          "path": "Packages/OrbitGreeting"
-        }
-      ],
-      "entitlements": null,
-      "extension": null
-    },
-    {
-      "name": "ExampleMacApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.examplemacapp",
-      "platforms": [
-        "macos"
-      ],
-      "sources": [
-        "Sources/ExampleMacApp",
-        "Sources/Shared"
-      ],
-      "resources": [
-        "Resources"
-      ],
-      "dependencies": [],
-      "swift_packages": [
-        {
-          "product": "OrbitGreeting",
-          "path": "Packages/OrbitGreeting"
-        }
-      ],
-      "entitlements": null,
-      "extension": null
+  "sources": [
+    "Sources/ExampleIOSApp",
+    "Sources/Shared"
+  ],
+  "resources": [
+    "Resources"
+  ],
+  "dependencies": {
+    "OrbitGreeting": {
+      "path": "Packages/OrbitGreeting"
     }
-  ]
+  }
 }

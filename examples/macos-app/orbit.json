@@ -1,40 +1,18 @@
 {
+  "$schema": "../../schemas/apple-app.v1.json",
   "name": "ExampleMacApp",
+  "bundle_id": "dev.orbit.examples.macos",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
+  "team_id": "JZPJ2RGU5F",
+  "provider_id": "128120286",
   "platforms": {
-    "macos": {
-      "deployment_target": "14.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        },
-        "release": {
-          "configuration": "release",
-          "distribution": "developer-id"
-        },
-        "app-store": {
-          "configuration": "release",
-          "distribution": "mac-app-store"
-        }
-      }
-    }
+    "macos": "14.0"
   },
-  "targets": [
-    {
-      "name": "ExampleMacApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.macos",
-      "platforms": [
-        "macos"
-      ],
-      "sources": [
-        "Sources/App"
-      ],
-      "resources": [
-        "Resources"
-      ]
-    }
+  "sources": [
+    "Sources/App"
+  ],
+  "resources": [
+    "Resources"
   ]
 }

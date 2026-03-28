@@ -1,32 +1,16 @@
 {
+  "$schema": "../../schemas/apple-app.v1.json",
   "name": "ExampleCompiledResourcesApp",
+  "bundle_id": "dev.orbit.examples.resources",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
   "platforms": {
-    "ios": {
-      "deployment_target": "18.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        }
-      }
-    }
+    "ios": "18.0"
   },
-  "targets": [
-    {
-      "name": "ExampleCompiledResourcesApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.resources",
-      "platforms": [
-        "ios"
-      ],
-      "sources": [
-        "Sources/App"
-      ],
-      "resources": [
-        "Resources"
-      ]
-    }
+  "sources": [
+    "Sources/App"
+  ],
+  "resources": [
+    "Resources"
   ]
 }

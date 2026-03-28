@@ -1,75 +1,27 @@
 {
-  "name": "ExampleWatchApp",
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleCompanionApp",
+  "bundle_id": "dev.orbit.examples.watchapp",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
   "platforms": {
-    "ios": {
-      "deployment_target": "18.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        }
-      }
-    },
-    "watchos": {
-      "deployment_target": "11.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        }
-      }
-    }
+    "ios": "18.0",
+    "watchos": "11.0"
   },
-  "targets": [
-    {
-      "name": "ExampleCompanionApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.watchapp",
-      "platforms": [
-        "ios"
-      ],
-      "sources": [
-        "Sources/App"
-      ],
-      "dependencies": [
-        "ExampleWatchApp"
-      ]
-    },
-    {
-      "name": "ExampleWatchApp",
-      "kind": "watch-app",
-      "bundle_id": "dev.orbit.examples.watchapp.watchkitapp",
-      "platforms": [
-        "watchos"
-      ],
-      "sources": [
-        "Sources/WatchApp"
-      ],
-      "dependencies": [
-        "ExampleWatchExtension"
-      ]
-    },
-    {
-      "name": "ExampleWatchExtension",
-      "kind": "watch-extension",
-      "bundle_id": "dev.orbit.examples.watchapp.watchkitapp.watchkitextension",
-      "platforms": [
-        "watchos"
-      ],
+  "sources": [
+    "Sources/App"
+  ],
+  "watch": {
+    "sources": [
+      "Sources/WatchApp"
+    ],
+    "extension": {
       "sources": [
         "Sources/WatchExtension"
       ],
-      "extension": {
-        "point_identifier": "com.apple.watchkit",
-        "principal_class": "WatchExtensionDelegate",
-        "NSExtensionAttributes": {
-          "WKBackgroundModes": [
-            "workout-processing"
-          ]
-        }
+      "entry": {
+        "class": "WatchExtensionDelegate"
       }
     }
-  ]
+  }
 }

@@ -1,35 +1,18 @@
 {
+  "$schema": "../../schemas/apple-app.v1.json",
   "name": "ExampleSwiftPackageApp",
+  "bundle_id": "dev.orbit.examples.swiftpm",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
   "platforms": {
-    "ios": {
-      "deployment_target": "18.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        }
-      }
-    }
+    "ios": "18.0"
   },
-  "targets": [
-    {
-      "name": "ExampleSwiftPackageApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.swiftpm",
-      "platforms": [
-        "ios"
-      ],
-      "sources": [
-        "Sources/App"
-      ],
-      "swift_packages": [
-        {
-          "product": "OrbitFeature",
-          "path": "Packages/OrbitFeature"
-        }
-      ]
+  "sources": [
+    "Sources/App"
+  ],
+  "dependencies": {
+    "OrbitFeature": {
+      "path": "Packages/OrbitFeature"
     }
-  ]
+  }
 }

@@ -28,9 +28,11 @@ use crate::apple::portal::{
 use crate::apple::provisioning::{
     ProvisioningCapabilityRelationships, ProvisioningCapabilityUpdate, ProvisioningClient,
 };
-use crate::cli::{
-    SigningExportArgs, SigningExportPushArgs, SigningImportArgs, SigningSyncArgs, TargetPlatform,
+use crate::apple::runtime::{
+    apple_platform_from_cli, build_target_for_platform, distribution_from_cli,
+    profile_for_distribution, resolve_build_distribution, resolve_platform,
 };
+use crate::cli::{SigningExportArgs, SigningExportPushArgs, SigningImportArgs, SigningSyncArgs};
 use crate::context::ProjectContext;
 use crate::manifest::{
     ApplePlatform, DistributionKind, ProfileManifest, PushCredentialKind, TargetManifest,
@@ -320,10 +322,15 @@ pub struct RemoteSigningCleanSummary {
 }
 
 pub fn sync_signing(project: &ProjectContext, args: &SigningSyncArgs) -> Result<()> {
-    let target = resolve_signing_target(project, args.target.as_deref())?;
-    let platform = project.manifest.resolve_platform_for_target(target, None)?;
-    let profile_name = resolve_profile_name(project, platform, args.profile.as_deref())?;
-    let profile = project.manifest.profile_for(platform, &profile_name)?;
+    let platform = resolve_platform(
+        project,
+        args.platform.map(apple_platform_from_cli),
+        "Select a platform to sync signing for",
+    )?;
+    let target = build_target_for_platform(project, platform)?;
+    let distribution =
+        resolve_build_distribution(project, platform, distribution_from_cli(args.distribution))?;
+    let profile = profile_for_distribution(distribution);
 
     if !args.device && args.simulator {
         println!("simulator builds do not require signing");
@@ -334,16 +341,12 @@ pub fn sync_signing(project: &ProjectContext, args: &SigningSyncArgs) -> Result<
         profile.distribution,
         DistributionKind::Development | DistributionKind::AdHoc
     ) {
-        Some(select_device_udids(
-            project,
-            profile.distribution,
-            platform,
-        )?)
+        Some(select_device_udids(project, distribution, platform)?)
     } else {
         None
     };
 
-    let material = prepare_signing(project, target, platform, profile, device_udids)?;
+    let material = prepare_signing(project, target, platform, &profile, device_udids)?;
     println!("identity: {}", material.signing_identity);
     println!("keychain: {}", material.keychain_path.display());
     println!(
@@ -381,13 +384,12 @@ pub fn export_signing_credentials(
 ) -> Result<()> {
     let selection = resolve_signing_selection(
         project,
-        args.target.as_deref(),
-        args.profile.as_deref(),
         args.platform.map(apple_platform_from_cli),
+        distribution_from_cli(args.distribution),
     )?;
     let team_id = resolve_local_team_id(project)?;
     let state = load_state(project, &team_id)?;
-    let profile_type = profile_type(selection.platform, selection.profile)?;
+    let profile_type = profile_type(selection.platform, &selection.profile)?;
     let managed_profile = state
         .profiles
         .iter()
@@ -400,7 +402,9 @@ pub fn export_signing_credentials(
         .with_context(|| {
             format!(
                 "no Orbit-managed provisioning profile was found for `{}` ({}/{}) under Apple team `{team_id}`; run `orbit apple signing sync` first",
-                selection.target.name, selection.platform, selection.profile_name
+                selection.target.name,
+                selection.platform,
+                selection.profile.variant_name()
             )
         })?;
     let certificate_id = managed_profile
@@ -424,14 +428,18 @@ pub fn export_signing_credentials(
             .join("signing-export")
             .join(format!(
                 "{}-{}-{}",
-                selection.target.name, selection.platform, selection.profile_name
+                selection.target.name,
+                selection.platform,
+                selection.profile.variant_name()
             ))
     });
     ensure_dir(&output_dir)?;
 
     let file_stem = format!(
         "{}-{}-{}",
-        selection.target.name, selection.platform, selection.profile_name
+        selection.target.name,
+        selection.platform,
+        selection.profile.variant_name()
     );
     let p12_path = output_dir.join(format!("{file_stem}.p12"));
     let profile_path = output_dir.join(format!("{file_stem}.mobileprovision"));
@@ -516,9 +524,8 @@ pub fn import_signing_credentials(
 ) -> Result<()> {
     let selection = resolve_signing_selection(
         project,
-        args.target.as_deref(),
-        args.profile.as_deref(),
         args.platform.map(apple_platform_from_cli),
+        distribution_from_cli(args.distribution),
     )?;
     let password = match &args.password {
         Some(password) => password.clone(),
@@ -527,7 +534,7 @@ pub fn import_signing_credentials(
     };
     let team_id = resolve_local_team_id(project)?;
     let mut state = load_state(project, &team_id)?;
-    let certificate_type = certificate_type(selection.platform, selection.profile)?;
+    let certificate_type = certificate_type(selection.platform, &selection.profile)?;
     let paths = team_signing_paths(project, &team_id);
     ensure_dir(&paths.certificates_dir)?;
 
@@ -580,87 +587,27 @@ pub fn import_signing_credentials(
 struct SigningSelection<'a> {
     target: &'a TargetManifest,
     platform: ApplePlatform,
-    profile_name: String,
-    profile: &'a ProfileManifest,
+    profile: ProfileManifest,
 }
 
 fn resolve_signing_selection<'a>(
     project: &'a ProjectContext,
-    requested_target: Option<&str>,
-    requested_profile: Option<&str>,
     requested_platform: Option<ApplePlatform>,
+    requested_distribution: Option<DistributionKind>,
 ) -> Result<SigningSelection<'a>> {
-    let target = resolve_signing_target(project, requested_target)?;
-    let platform = project
-        .manifest
-        .resolve_platform_for_target(target, requested_platform)?;
-    let profile_name = resolve_profile_name(project, platform, requested_profile)?;
-    let profile = project.manifest.profile_for(platform, &profile_name)?;
+    let platform = resolve_platform(
+        project,
+        requested_platform,
+        "Select a platform to manage signing for",
+    )?;
+    let target = build_target_for_platform(project, platform)?;
+    let distribution = resolve_build_distribution(project, platform, requested_distribution)?;
+    let profile = profile_for_distribution(distribution);
     Ok(SigningSelection {
         target,
         platform,
-        profile_name,
         profile,
     })
-}
-
-fn apple_platform_from_cli(platform: TargetPlatform) -> ApplePlatform {
-    match platform {
-        TargetPlatform::Ios => ApplePlatform::Ios,
-        TargetPlatform::Macos => ApplePlatform::Macos,
-        TargetPlatform::Tvos => ApplePlatform::Tvos,
-        TargetPlatform::Visionos => ApplePlatform::Visionos,
-        TargetPlatform::Watchos => ApplePlatform::Watchos,
-    }
-}
-
-fn resolve_signing_target<'a>(
-    project: &'a ProjectContext,
-    requested_target: Option<&str>,
-) -> Result<&'a TargetManifest> {
-    if let Some(requested_target) = requested_target {
-        return project.manifest.resolve_target(Some(requested_target));
-    }
-
-    let mut candidates = project.manifest.selectable_root_targets();
-    if candidates.len() <= 1 || !project.app.interactive {
-        return candidates
-            .drain(..)
-            .next()
-            .context("manifest did not contain any targets");
-    }
-
-    let labels = candidates
-        .iter()
-        .map(|target| format!("{} ({})", target.name, target.bundle_id))
-        .collect::<Vec<_>>();
-    let index = prompt_select("Select a target to sync signing for", &labels)?;
-    Ok(candidates.remove(index))
-}
-
-fn resolve_profile_name(
-    project: &ProjectContext,
-    platform: ApplePlatform,
-    requested_profile: Option<&str>,
-) -> Result<String> {
-    if let Some(requested_profile) = requested_profile {
-        let _ = project.manifest.profile_for(platform, requested_profile)?;
-        return Ok(requested_profile.to_owned());
-    }
-
-    let profiles = project.manifest.profile_names(platform)?;
-    if profiles.len() == 1 {
-        return Ok(profiles[0].clone());
-    }
-    if !project.app.interactive {
-        bail!(
-            "multiple profiles are available for platform `{platform}`; pass --profile ({})",
-            profiles.join(", ")
-        );
-    }
-
-    let index = prompt_select("Select a signing profile", &profiles)?;
-    Ok(profiles[index].clone())
 }
 
 pub fn prepare_signing(
@@ -3898,8 +3845,8 @@ mod tests {
     use crate::apple::capabilities::{CapabilityRelationships, CapabilityUpdate, RemoteCapability};
     use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
     use crate::manifest::{
-        ApplePlatform, DistributionKind, Manifest, PlatformManifest, TargetKind, TargetManifest,
-        ToolchainManifest,
+        ApplePlatform, BuildConfiguration, DistributionKind, Manifest, ManifestSchema,
+        PlatformManifest, TargetKind, TargetManifest,
     };
 
     fn test_project() -> (TempDir, ProjectContext) {
@@ -3920,22 +3867,12 @@ mod tests {
         let manifest = Manifest {
             name: "OrbitFixture".to_owned(),
             version: "0.1.0".to_owned(),
-            platform: "apple".to_owned(),
             team_id: Some("TEAM123456".to_owned()),
             provider_id: None,
-            source_roots: Vec::new(),
-            toolchain: ToolchainManifest::default(),
             platforms: BTreeMap::from([(
                 ApplePlatform::Ios,
                 PlatformManifest {
                     deployment_target: "18.0".to_owned(),
-                    profiles: BTreeMap::from([(
-                        "development".to_owned(),
-                        ProfileManifest {
-                            configuration: "debug".to_owned(),
-                            distribution: DistributionKind::Development,
-                        },
-                    )]),
                 },
             )]),
             targets: vec![TargetManifest {
@@ -3983,6 +3920,7 @@ mod tests {
             app,
             root: root.clone(),
             manifest_path,
+            manifest_schema: ManifestSchema::AppleAppV1,
             manifest,
             project_paths: ProjectPaths {
                 orbit_dir,
@@ -4420,10 +4358,7 @@ mod tests {
 
     #[test]
     fn api_key_profile_type_uses_ios_profiles_for_watch_and_vision_targets() {
-        let profile = ProfileManifest {
-            configuration: "release".to_owned(),
-            distribution: DistributionKind::AppStore,
-        };
+        let profile = ProfileManifest::new(BuildConfiguration::Release, DistributionKind::AppStore);
 
         assert_eq!(
             asc_profile_type(ApplePlatform::Watchos, &profile).unwrap(),

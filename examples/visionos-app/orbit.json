@@ -1,33 +1,13 @@
 {
+  "$schema": "../../schemas/apple-app.v1.json",
   "name": "ExampleVisionApp",
+  "bundle_id": "dev.orbit.examples.visionos",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
   "platforms": {
-    "visionos": {
-      "deployment_target": "2.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        },
-        "release": {
-          "configuration": "release",
-          "distribution": "app-store"
-        }
-      }
-    }
+    "visionos": "2.0"
   },
-  "targets": [
-    {
-      "name": "ExampleVisionApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.visionos",
-      "platforms": [
-        "visionos"
-      ],
-      "sources": [
-        "Sources/App"
-      ]
-    }
+  "sources": [
+    "Sources/App"
   ]
 }

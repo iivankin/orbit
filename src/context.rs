@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
-use crate::manifest::Manifest;
+use crate::manifest::{Manifest, ManifestSchema, detect_schema};
 use crate::util::{
     ensure_dir, prompt_select, read_json_file_if_exists, resolve_path, write_json_file,
 };
@@ -21,6 +21,7 @@ pub struct ProjectContext {
     pub app: AppContext,
     pub root: PathBuf,
     pub manifest_path: PathBuf,
+    pub manifest_schema: ManifestSchema,
     pub manifest: Manifest,
     pub project_paths: ProjectPaths,
 }
@@ -84,7 +85,6 @@ impl AppContext {
             .parent()
             .context("manifest path did not contain a parent directory")?
             .to_path_buf();
-        let manifest = Manifest::load(&manifest_path)?;
         let orbit_dir = root.join(".orbit");
         let build_dir = orbit_dir.join("build");
         let artifacts_dir = orbit_dir.join("artifacts");
@@ -94,11 +94,14 @@ impl AppContext {
         ensure_dir(&build_dir)?;
         ensure_dir(&artifacts_dir)?;
         ensure_dir(&receipts_dir)?;
+        let manifest_schema = detect_schema(&manifest_path)?;
+        let manifest = Manifest::load(&manifest_path, &orbit_dir)?;
 
         Ok(ProjectContext {
             app: self.clone(),
             root,
             manifest_path,
+            manifest_schema,
             manifest,
             project_paths: ProjectPaths {
                 orbit_dir,
@@ -115,6 +118,13 @@ impl AppContext {
 
     pub fn write_device_cache(&self, cache: &DeviceCache) -> Result<()> {
         write_json_file(&self.global_paths.device_cache_path, cache)
+    }
+
+    pub fn resolve_manifest_path_for_dispatch(
+        &self,
+        requested_manifest: Option<&Path>,
+    ) -> Result<PathBuf> {
+        self.resolve_manifest_path(requested_manifest)
     }
 
     fn resolve_manifest_path(&self, requested_manifest: Option<&Path>) -> Result<PathBuf> {

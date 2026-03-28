@@ -43,8 +43,14 @@ fn base_command(workspace: &Path, home: &Path, mock_bin: &Path, log_path: &Path)
 
 fn create_watch_workspace(root: &Path) -> PathBuf {
     let workspace = root.join("watch-workspace");
+    fs::create_dir_all(workspace.join("Sources/App")).unwrap();
     fs::create_dir_all(workspace.join("Sources/WatchApp")).unwrap();
     fs::create_dir_all(workspace.join("Sources/WatchExtension")).unwrap();
+    fs::write(
+        workspace.join("Sources/App/App.swift"),
+        "import SwiftUI\n@main struct ExampleIOSApp: App { var body: some Scene { WindowGroup { Text(\"Phone\") } } }\n",
+    )
+    .unwrap();
     fs::write(
         workspace.join("Sources/WatchApp/App.swift"),
         "import SwiftUI\n@main struct ExampleWatchApp: App { var body: some Scene { WindowGroup { Text(\"Watch\") } } }\n",
@@ -58,41 +64,31 @@ fn create_watch_workspace(root: &Path) -> PathBuf {
     fs::write(
         workspace.join("orbit.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
+            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
             "name": "WatchFixture",
+            "bundle_id": "dev.orbit.fixture.watch",
             "version": "0.1.0",
-            "platform": "apple",
+            "build": 1,
             "platforms": {
-                "watchos": {
-                    "deployment_target": "11.0",
-                    "profiles": {
-                        "development": {
-                            "configuration": "debug",
-                            "distribution": "development"
-                        }
-                    }
-                }
+                "ios": "18.0",
+                "watchos": "11.0"
             },
-            "targets": [
-                {
-                    "name": "ExampleWatchApp",
-                    "kind": "watch-app",
-                    "bundle_id": "dev.orbit.fixture.watch",
-                    "platforms": ["watchos"],
-                    "sources": ["Sources/WatchApp"],
-                    "dependencies": ["ExampleWatchExtension"]
-                },
-                {
-                    "name": "ExampleWatchExtension",
-                    "kind": "watch-extension",
-                    "bundle_id": "dev.orbit.fixture.watch.extension",
-                    "platforms": ["watchos"],
-                    "sources": ["Sources/WatchExtension"],
-                    "extension": {
-                        "point_identifier": "com.apple.watchkit",
-                        "principal_class": "WatchExtensionDelegate"
+            "sources": [
+                "Sources/App"
+            ],
+            "watch": {
+                "sources": [
+                    "Sources/WatchApp"
+                ],
+                "extension": {
+                    "sources": [
+                        "Sources/WatchExtension"
+                    ],
+                    "entry": {
+                        "class": "WatchExtensionDelegate"
                     }
                 }
-            ]
+            }
         }))
         .unwrap(),
     )
@@ -102,33 +98,26 @@ fn create_watch_workspace(root: &Path) -> PathBuf {
 
 fn create_signing_workspace(root: &Path) -> PathBuf {
     let workspace = root.join("signing-workspace");
-    fs::create_dir_all(&workspace).unwrap();
+    fs::create_dir_all(workspace.join("Sources/App")).unwrap();
+    fs::write(
+        workspace.join("Sources/App/App.swift"),
+        "import SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(\"App\") } } }\n",
+    )
+    .unwrap();
     fs::write(
         workspace.join("orbit.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
-            "name": "SigningFixture",
+            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "name": "ExampleApp",
+            "bundle_id": "dev.orbit.fixture",
             "version": "0.1.0",
-            "platform": "apple",
+            "build": 1,
             "team_id": "TEAM123456",
             "platforms": {
-                "ios": {
-                    "deployment_target": "18.0",
-                    "profiles": {
-                        "development": {
-                            "configuration": "debug",
-                            "distribution": "development"
-                        }
-                    }
-                }
+                "ios": "18.0"
             },
-            "targets": [
-                {
-                    "name": "ExampleApp",
-                    "kind": "app",
-                    "bundle_id": "dev.orbit.fixture",
-                    "platforms": ["ios"],
-                    "sources": ["Sources/App"]
-                }
+            "sources": [
+                "Sources/App"
             ]
         }))
         .unwrap(),
@@ -444,8 +433,8 @@ fn watchos_run_debug_uses_simctl_and_lldb() {
         "--manifest",
         workspace.join("orbit.json").to_str().unwrap(),
         "run",
-        "--target",
-        "ExampleWatchApp",
+        "--platform",
+        "watchos",
         "--simulator",
         "--debug",
     ]);
@@ -458,9 +447,11 @@ fn watchos_run_debug_uses_simctl_and_lldb() {
 
     let log = read_log(&log_path);
     assert!(log.contains("xcrun simctl install WATCH-UDID"));
-    assert!(log.contains("xcrun simctl launch --wait-for-debugger --terminate-running-process WATCH-UDID dev.orbit.fixture.watch"));
+    assert!(log.contains(
+        "xcrun simctl launch --wait-for-debugger --terminate-running-process WATCH-UDID dev.orbit.fixture.watch.watchkitapp"
+    ));
     assert!(log.contains("lldb --file"));
-    assert!(log.contains("process attach -i -w -n ExampleWatchApp"));
+    assert!(log.contains("process attach -i -w -n WatchApp"));
     assert!(log.contains("process continue"));
 }
 
@@ -486,7 +477,9 @@ fn signing_import_export_and_clean_round_trip() {
         "apple",
         "signing",
         "import",
-        "--profile",
+        "--platform",
+        "ios",
+        "--distribution",
         "development",
         "--p12",
         p12_path.to_str().unwrap(),
@@ -536,7 +529,9 @@ fn signing_import_export_and_clean_round_trip() {
         "apple",
         "signing",
         "export",
-        "--profile",
+        "--platform",
+        "ios",
+        "--distribution",
         "development",
         "--output-dir",
         export_dir.to_str().unwrap(),
@@ -549,10 +544,14 @@ fn signing_import_export_and_clean_round_trip() {
     );
     let stdout = String::from_utf8_lossy(&export_output.stdout);
     assert!(stdout.contains("p12_password: secret"));
-    assert!(export_dir.join("ExampleApp-ios-development.p12").exists());
     assert!(
         export_dir
-            .join("ExampleApp-ios-development.mobileprovision")
+            .join("ExampleApp-ios-development-debug.p12")
+            .exists()
+    );
+    assert!(
+        export_dir
+            .join("ExampleApp-ios-development-debug.mobileprovision")
             .exists()
     );
 
@@ -583,7 +582,9 @@ fn signing_import_export_and_clean_round_trip() {
         "apple",
         "signing",
         "export",
-        "--profile",
+        "--platform",
+        "ios",
+        "--distribution",
         "development",
         "--output-dir",
         export_dir.to_str().unwrap(),
@@ -670,7 +671,7 @@ fn submit_uses_existing_receipt_without_rebuilding() {
             "id": "receipt-1",
             "target": "ExampleApp",
             "platform": "ios",
-            "profile": "release",
+            "configuration": "release",
             "distribution": "app-store",
             "destination": "device",
             "bundle_id": "dev.orbit.fixture",

@@ -1,33 +1,13 @@
 {
+  "$schema": "../../schemas/apple-app.v1.json",
   "name": "ExampleTVApp",
+  "bundle_id": "dev.orbit.examples.tvos",
   "version": "0.1.0",
-  "platform": "apple",
+  "build": 1,
   "platforms": {
-    "tvos": {
-      "deployment_target": "18.0",
-      "profiles": {
-        "development": {
-          "configuration": "debug",
-          "distribution": "development"
-        },
-        "release": {
-          "configuration": "release",
-          "distribution": "app-store"
-        }
-      }
-    }
+    "tvos": "18.0"
   },
-  "targets": [
-    {
-      "name": "ExampleTVApp",
-      "kind": "app",
-      "bundle_id": "dev.orbit.examples.tvos",
-      "platforms": [
-        "tvos"
-      ],
-      "sources": [
-        "Sources/App"
-      ]
-    }
+  "sources": [
+    "Sources/App"
   ]
 }

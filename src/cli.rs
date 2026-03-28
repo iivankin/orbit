@@ -20,7 +20,7 @@ pub const CLAP_STYLING: Styles = Styles::styled()
 #[command(arg_required_else_help = true)]
 #[command(styles = CLAP_STYLING)]
 #[command(
-    after_help = "Examples:\n  orbit run --simulator\n  orbit build --profile release\n  orbit submit --wait\n  orbit clean --all\n  orbit apple device list --refresh\n  orbit apple signing export --profile development\n  orbit apple signing export-push --output ./AuthKey_ORBIT.p8\n  orbit apple signing import --profile development --p12 ./signing.p12 --password secret"
+    after_help = "Examples:\n  orbit run --platform ios --simulator\n  orbit build --platform ios --distribution development\n  orbit build --platform ios --distribution app-store --release\n  orbit submit --platform ios --wait\n  orbit clean --all\n  orbit apple device list --refresh\n  orbit apple signing export --platform ios --distribution development\n  orbit apple signing export-push --output ./AuthKey_ORBIT.p8\n  orbit apple signing import --platform ios --distribution development --p12 ./signing.p12 --password secret"
 )]
 pub struct Cli {
     #[arg(long, global = true)]
@@ -44,11 +44,8 @@ pub enum Command {
 
 #[derive(Debug, Args)]
 pub struct RunArgs {
-    #[arg(long)]
-    pub target: Option<String>,
-
-    #[arg(long)]
-    pub profile: Option<String>,
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
 
     #[arg(long, conflicts_with = "device")]
     pub simulator: bool,
@@ -65,11 +62,14 @@ pub struct RunArgs {
 
 #[derive(Debug, Args)]
 pub struct BuildArgs {
-    #[arg(long)]
-    pub target: Option<String>,
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    #[arg(long, value_enum)]
+    pub distribution: Option<DistributionArg>,
 
     #[arg(long)]
-    pub profile: Option<String>,
+    pub release: bool,
 
     #[arg(long, conflicts_with = "device")]
     pub simulator: bool,
@@ -83,11 +83,11 @@ pub struct BuildArgs {
 
 #[derive(Debug, Args)]
 pub struct SubmitArgs {
-    #[arg(long)]
-    pub target: Option<String>,
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
 
-    #[arg(long)]
-    pub profile: Option<String>,
+    #[arg(long, value_enum)]
+    pub distribution: Option<DistributionArg>,
 
     #[arg(long)]
     pub receipt: Option<PathBuf>,
@@ -190,11 +190,11 @@ pub enum AppleSigningCommand {
 
 #[derive(Debug, Args)]
 pub struct SigningSyncArgs {
-    #[arg(long)]
-    pub target: Option<String>,
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
 
-    #[arg(long)]
-    pub profile: Option<String>,
+    #[arg(long, value_enum)]
+    pub distribution: Option<DistributionArg>,
 
     #[arg(long, conflicts_with = "device")]
     pub simulator: bool,
@@ -205,14 +205,11 @@ pub struct SigningSyncArgs {
 
 #[derive(Debug, Args)]
 pub struct SigningExportArgs {
-    #[arg(long)]
-    pub target: Option<String>,
-
-    #[arg(long)]
-    pub profile: Option<String>,
-
     #[arg(long, value_enum)]
     pub platform: Option<TargetPlatform>,
+
+    #[arg(long, value_enum)]
+    pub distribution: Option<DistributionArg>,
 
     #[arg(long)]
     pub output_dir: Option<PathBuf>,
@@ -229,14 +226,11 @@ pub struct SigningExportPushArgs {
 
 #[derive(Debug, Args)]
 pub struct SigningImportArgs {
-    #[arg(long)]
-    pub target: Option<String>,
-
-    #[arg(long)]
-    pub profile: Option<String>,
-
     #[arg(long, value_enum)]
     pub platform: Option<TargetPlatform>,
+
+    #[arg(long, value_enum)]
+    pub distribution: Option<DistributionArg>,
 
     #[arg(long)]
     pub p12: PathBuf,
@@ -257,4 +251,18 @@ pub enum TargetPlatform {
     Visionos,
     #[value(name = "watchos")]
     Watchos,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+pub enum DistributionArg {
+    #[value(name = "development")]
+    Development,
+    #[value(name = "ad-hoc")]
+    AdHoc,
+    #[value(name = "app-store")]
+    AppStore,
+    #[value(name = "developer-id")]
+    DeveloperId,
+    #[value(name = "mac-app-store")]
+    MacAppStore,
 }

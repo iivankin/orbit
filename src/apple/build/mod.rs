@@ -1,3 +1,4 @@
+pub mod external;
 pub mod pipeline;
 pub mod receipt;
 pub mod toolchain;

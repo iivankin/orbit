@@ -19,7 +19,7 @@ Minimal app:
 
 ```json
 {
-  "$schema": "https://orbit.dev/schemas/orbit.app.v1.json",
+  "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
   "name": "ExampleApp",
   "bundle_id": "dev.orbit.examples.app",
   "version": "1.0.0",
@@ -36,7 +36,7 @@ More complete app:
 
 ```json
 {
-  "$schema": "https://orbit.dev/schemas/orbit.app.v1.json",
+  "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
   "name": "Orbit VPN",
   "display_name": "Orbit",
   "bundle_id": "dev.orbit.vpn",

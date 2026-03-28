@@ -1,8 +1,12 @@
 pub mod apple_id;
 pub mod asc_api;
 pub mod auth;
+pub mod build;
 pub mod capabilities;
+pub mod clean;
 pub mod device;
+pub mod manifest;
 pub mod portal;
 pub mod provisioning;
+pub mod runtime;
 pub mod signing;

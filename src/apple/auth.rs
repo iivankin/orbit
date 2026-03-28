@@ -5,6 +5,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
+use serde_json::{Map as JsonMap, Value as JsonValue};
 
 use crate::apple::apple_id::{self, AppleIdError, StoredAppleSession};
 use crate::context::{AppContext, ProjectContext};
@@ -555,9 +556,6 @@ fn persist_project_auth_selection(project: &ProjectContext, user: &UserAuth) -> 
         return Ok(());
     }
 
-    let mut manifest = project.manifest.clone();
-    let mut changed = false;
-
     let normalized_team_id = user
         .team_id
         .as_deref()
@@ -569,41 +567,61 @@ fn persist_project_auth_selection(project: &ProjectContext, user: &UserAuth) -> 
         .filter(|value| looks_like_provider_id(value))
         .map(ToOwned::to_owned);
 
-    if manifest
-        .team_id
-        .as_deref()
-        .is_some_and(|value| !looks_like_apple_team_id(value))
-    {
-        manifest.team_id = None;
-        changed = true;
-    }
-    if normalized_team_id.is_some() && manifest.team_id != normalized_team_id {
-        manifest.team_id = normalized_team_id;
-        changed = true;
-    }
-    if manifest
-        .provider_id
-        .as_deref()
-        .is_some_and(|value| !looks_like_provider_id(value))
-    {
-        manifest.provider_id = None;
-        changed = true;
-    }
-    if manifest.provider_id != normalized_provider_id {
-        manifest.provider_id = normalized_provider_id;
-        changed = true;
-    }
-
+    let changed = persist_auth_selection_fields(
+        &project.manifest_path,
+        normalized_team_id.as_deref(),
+        normalized_provider_id.as_deref(),
+    )?;
     if !changed {
         return Ok(());
     }
-
-    write_json_file(&project.manifest_path, &manifest)?;
     print_success(format!(
         "Saved Apple provider selection to {}.",
         project.manifest_path.display()
     ));
     Ok(())
+}
+
+fn persist_auth_selection_fields(
+    manifest_path: &std::path::Path,
+    team_id: Option<&str>,
+    provider_id: Option<&str>,
+) -> Result<bool> {
+    let mut manifest: JsonValue = crate::util::read_json_file(manifest_path)?;
+    let object = manifest
+        .as_object_mut()
+        .context("manifest file must contain a top-level object")?;
+    let mut changed = false;
+    changed |= sync_optional_string_field(object, "team_id", team_id, looks_like_apple_team_id);
+    changed |= sync_optional_string_field(object, "provider_id", provider_id, looks_like_provider_id);
+    if changed {
+        write_json_file(manifest_path, &manifest)?;
+    }
+    Ok(changed)
+}
+
+fn sync_optional_string_field(
+    object: &mut JsonMap<String, JsonValue>,
+    key: &str,
+    normalized_value: Option<&str>,
+    validator: fn(&str) -> bool,
+) -> bool {
+    let current_value = object.get(key).and_then(JsonValue::as_str);
+    let current_value = current_value.filter(|value| validator(value));
+
+    if current_value == normalized_value {
+        return false;
+    }
+
+    match normalized_value {
+        Some(value) => {
+            object.insert(key.to_owned(), JsonValue::String(value.to_owned()));
+        }
+        None => {
+            object.remove(key);
+        }
+    }
+    true
 }
 
 fn looks_like_apple_team_id(value: &str) -> bool {
@@ -702,7 +720,14 @@ fn delete_secret(service: &str, account: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
-    use super::{EnsureUserAuthRequest, UserAuth, request_matches_user};
+    use std::fs;
+
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    use super::{
+        EnsureUserAuthRequest, UserAuth, persist_auth_selection_fields, request_matches_user,
+    };
 
     #[test]
     fn request_match_allows_unspecified_fields() {
@@ -751,5 +776,53 @@ mod tests {
             },
             &user
         ));
+    }
+
+    #[test]
+    fn persisting_auth_selection_keeps_authoring_manifest_shape() {
+        let temp = tempdir().unwrap();
+        let manifest_path = temp.path().join("orbit.json");
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "../../schemas/apple-app.v1.json",
+                "name": "ExampleMacApp",
+                "bundle_id": "dev.orbit.examples.macos",
+                "version": "0.1.0",
+                "build": 1,
+                "platforms": { "macos": "14.0" },
+                "sources": ["Sources/App"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let changed = persist_auth_selection_fields(
+            &manifest_path,
+            Some("TEAM123456"),
+            Some("128120286"),
+        )
+        .unwrap();
+        assert!(changed);
+
+        let manifest: serde_json::Value =
+            serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
+        assert_eq!(
+            manifest.get("$schema").and_then(|value| value.as_str()),
+            Some("../../schemas/apple-app.v1.json")
+        );
+        assert_eq!(
+            manifest.get("bundle_id").and_then(|value| value.as_str()),
+            Some("dev.orbit.examples.macos")
+        );
+        assert!(manifest.get("targets").is_none());
+        assert_eq!(
+            manifest.get("team_id").and_then(|value| value.as_str()),
+            Some("TEAM123456")
+        );
+        assert_eq!(
+            manifest.get("provider_id").and_then(|value| value.as_str()),
+            Some("128120286")
+        );
     }
 }
