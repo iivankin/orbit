@@ -124,10 +124,6 @@ pub enum AppleCommand {
         #[command(subcommand)]
         command: AppleSigningCommand,
     },
-    Debug {
-        #[command(subcommand)]
-        command: Box<AppleDebugCommand>,
-    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -186,107 +182,8 @@ pub enum DevicePlatform {
 
 #[derive(Debug, Subcommand)]
 pub enum AppleSigningCommand {
-    Sync(SigningSyncArgs),
     Export(SigningExportArgs),
     Import(SigningImportArgs),
-}
-
-#[derive(Debug, Subcommand)]
-pub enum AppleDebugCommand {
-    GrandSlam(Box<AppleGrandSlamDebugArgs>),
-    DeveloperServices(AppleDeveloperServicesDebugArgs),
-    NotaryStatus(AppleNotaryStatusDebugArgs),
-    AscSession(AppleAscSessionDebugArgs),
-}
-
-#[derive(Debug, Args)]
-pub struct AppleGrandSlamDebugArgs {
-    #[arg(long)]
-    pub skip_lookup: bool,
-
-    #[arg(long)]
-    pub skip_fetch_global_configs: bool,
-
-    #[arg(long)]
-    pub skip_srp: bool,
-
-    #[arg(long, default_value = "iTunes")]
-    pub service: String,
-
-    #[arg(long)]
-    pub client_identifier: Option<String>,
-
-    #[arg(long)]
-    pub client_info: Option<String>,
-
-    #[arg(long)]
-    pub user_agent: Option<String>,
-
-    #[arg(long)]
-    pub accept_language: Option<String>,
-
-    #[arg(long)]
-    pub locale: Option<String>,
-
-    #[arg(long)]
-    pub device_id: Option<String>,
-
-    #[arg(long)]
-    pub serial_number: Option<String>,
-
-    #[arg(long)]
-    pub md: Option<String>,
-
-    #[arg(long = "md-m")]
-    pub md_m: Option<String>,
-
-    #[arg(long = "md-rinfo")]
-    pub md_rinfo: Option<String>,
-
-    #[arg(long)]
-    pub probe_content_delivery: bool,
-
-    #[arg(long)]
-    pub dump_plist: bool,
-}
-
-#[derive(Debug, Args)]
-pub struct AppleNotaryStatusDebugArgs {
-    #[arg(long)]
-    pub submission_id: String,
-}
-
-#[derive(Debug, Args)]
-pub struct AppleDeveloperServicesDebugArgs {
-    #[arg(long)]
-    pub bundle_id: Option<String>,
-
-    #[arg(long)]
-    pub certificate_type: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub struct AppleAscSessionDebugArgs {
-    #[arg(
-        long,
-        default_value = "https://api.appstoreconnect.apple.com/v1/apps?limit=1"
-    )]
-    pub url: String,
-}
-
-#[derive(Debug, Args)]
-pub struct SigningSyncArgs {
-    #[arg(long, value_enum)]
-    pub platform: Option<TargetPlatform>,
-
-    #[arg(long, value_enum)]
-    pub distribution: Option<DistributionArg>,
-
-    #[arg(long, conflicts_with = "device")]
-    pub simulator: bool,
-
-    #[arg(long, conflicts_with = "simulator")]
-    pub device: bool,
 }
 
 #[derive(Debug, Args)]

@@ -6,7 +6,6 @@ pub mod authkit;
 pub mod build;
 pub mod capabilities;
 pub mod clean;
-pub mod debug;
 pub mod developer_services;
 pub mod device;
 pub mod grand_slam;

@@ -26,7 +26,7 @@ use crate::apple::runtime::{
     apple_platform_from_cli, build_target_for_platform, distribution_from_cli,
     profile_for_distribution, resolve_build_distribution, resolve_platform,
 };
-use crate::cli::{SigningExportArgs, SigningImportArgs, SigningSyncArgs};
+use crate::cli::{SigningExportArgs, SigningImportArgs};
 use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, ProfileManifest, TargetManifest};
 use crate::util::{
@@ -276,35 +276,6 @@ pub struct RemoteSigningCleanSummary {
     pub removed_cloud_containers: usize,
 }
 
-pub fn sync_signing(project: &ProjectContext, args: &SigningSyncArgs) -> Result<()> {
-    let platform = resolve_platform(
-        project,
-        args.platform.map(apple_platform_from_cli),
-        "Select a platform to sync signing for",
-    )?;
-    let target = build_target_for_platform(project, platform)?;
-    let distribution =
-        resolve_build_distribution(project, platform, distribution_from_cli(args.distribution))?;
-    let profile = profile_for_distribution(distribution);
-
-    if !args.device && args.simulator {
-        println!("simulator builds do not require signing");
-        return Ok(());
-    }
-
-    let material = prepare_signing(project, target, platform, &profile, None)?;
-    println!("identity: {}", material.signing_identity);
-    println!("keychain: {}", material.keychain_path.display());
-    println!(
-        "provisioning_profile: {}",
-        material.provisioning_profile_path.display()
-    );
-    if let Some(entitlements_path) = &material.entitlements_path {
-        println!("entitlements: {}", entitlements_path.display());
-    }
-    Ok(())
-}
-
 pub fn export_signing_credentials(
     project: &ProjectContext,
     args: &SigningExportArgs,
@@ -328,7 +299,7 @@ pub fn export_signing_credentials(
         })
         .with_context(|| {
             format!(
-                "no Orbit-managed provisioning profile was found for `{}` ({}/{}) under Apple team `{team_id}`; run `orbit apple signing sync` first",
+                "no Orbit-managed provisioning profile was found for `{}` ({}/{}) under Apple team `{team_id}`; build or submit the target first so Orbit can prepare signing material",
                 selection.target.name,
                 selection.platform,
                 selection.profile.variant_name()

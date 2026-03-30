@@ -57,64 +57,6 @@ fn live_developer_services_lists_configured_team() {
 
 #[test]
 #[ignore = "manual live Apple account test"]
-fn live_grand_slam_probe_prepares_content_delivery_auth() {
-    let config = require_live_apple_config("ORBIT_RUN_LIVE_APPLE_E2E");
-    let temp = tempfile::tempdir().unwrap();
-    let (app_name, bundle_id) = config.unique_app_identity("GrandSlamProbe");
-    let workspace = create_live_workspace(temp.path(), &config, &app_name, &bundle_id);
-
-    let mut command = live_command(&workspace, &config);
-    command.args([
-        "--non-interactive",
-        "apple",
-        "debug",
-        "grand-slam",
-        "--skip-lookup",
-        "--skip-fetch-global-configs",
-        "--probe-content-delivery",
-    ]);
-    let output = run_and_capture(&mut command);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("authenticateUserWithArguments")
-            && stdout.contains("authenticateForSession")
-            && stdout.contains("\"PublicID\":\"786bf020-ef6d-4bd2-afa7-220f3337762c\""),
-        "expected live content-delivery auth probe output:\n{stdout}"
-    );
-}
-
-#[test]
-#[ignore = "manual live Apple account test"]
-fn live_debug_asc_session_reports_orbit_identity_probe() {
-    let config = require_live_apple_config("ORBIT_RUN_LIVE_APPLE_E2E");
-    let temp = tempfile::tempdir().unwrap();
-    let (app_name, bundle_id) = config.unique_app_identity("AscProbe");
-    let workspace = create_live_workspace(temp.path(), &config, &app_name, &bundle_id);
-
-    let mut command = live_command(&workspace, &config);
-    command.args(["--non-interactive", "apple", "debug", "asc-session"]);
-    let output = run_and_capture(&mut command);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
-    let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(
-        stdout.contains("ASC authkit bootstrap (Orbit identity) response"),
-        "expected Orbit identity bootstrap probe in debug output:\n{stdout}"
-    );
-}
-
-#[test]
-#[ignore = "manual live Apple account test"]
 fn live_build_sign_provision_and_clean_remote_state() {
     let config = require_live_apple_config("ORBIT_RUN_LIVE_APPLE_E2E");
     let temp = tempfile::tempdir().unwrap();

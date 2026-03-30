@@ -32,17 +32,12 @@ use crate::apple::auth::{
     EnsureUserAuthRequest, ensure_user_auth_with_password, resolve_user_auth_metadata,
 };
 use crate::apple::srp::encrypt_password;
-use crate::cli::AppleGrandSlamDebugArgs;
 use crate::context::AppContext;
 use crate::util::{
     command_output, prompt_confirm, prompt_input, read_json_file_if_exists, write_json_file,
 };
 
 const GRAND_SLAM_SERVICE_URL: &str = "https://gsa.apple.com/grandslam/GsService2";
-const GRAND_SLAM_LOOKUP_URL: &str = "https://gsa.apple.com/grandslam/GsService2/lookup";
-const GRAND_SLAM_LOOKUP_V2_URL: &str = "https://gsa.apple.com/grandslam/GsService2/lookup/v2";
-const GRAND_SLAM_FETCH_GLOBAL_CONFIGS_URL: &str =
-    "https://gsas.apple.com/grandslam/GsService2/fetchGlobalConfigs";
 const DEFAULT_ACCEPT_LANGUAGE: &str = "en-US,en;q=0.9";
 const DEFAULT_LOCALE: &str = "en_US";
 const DEFAULT_MD_RINFO: &str = "17106176";
@@ -56,89 +51,6 @@ const CONTENT_DELIVERY_APP_TOKEN_SERVICE: &str = "com.apple.gs.itunesconnect.aut
 const XCODE_NOTARY_APP_TOKEN_SERVICE: &str = "com.apple.gs.xcode.auth";
 const AUTHKIT_APP_INFO: &str = "com.apple.gs.xcode.auth";
 const GRAND_SLAM_CACHE_SAFETY_WINDOW_SECS: u64 = 300;
-
-pub fn debug_grand_slam(app: &AppContext, args: &AppleGrandSlamDebugArgs) -> Result<()> {
-    let profile = ClientProfile::detect(args)?;
-    let client = build_client()?;
-
-    if !args.skip_lookup {
-        print_title("GrandSlam lookup");
-        let lookup =
-            execute_simple_request(&client, GRAND_SLAM_LOOKUP_URL, request_headers(&profile)?)?;
-        print_response("lookup", &lookup, args.dump_plist)?;
-
-        let lookup_v2 = execute_simple_request(
-            &client,
-            GRAND_SLAM_LOOKUP_V2_URL,
-            request_headers(&profile)?,
-        )?;
-        print_response("lookup/v2", &lookup_v2, args.dump_plist)?;
-    }
-
-    if !args.skip_fetch_global_configs {
-        print_title("GrandSlam fetchGlobalConfigs");
-        let fetch_global_configs = execute_simple_request(
-            &client,
-            GRAND_SLAM_FETCH_GLOBAL_CONFIGS_URL,
-            request_headers(&profile)?,
-        )?;
-        print_response("fetchGlobalConfigs", &fetch_global_configs, args.dump_plist)?;
-    }
-
-    if args.skip_srp {
-        return Ok(());
-    }
-
-    let credentials = ensure_user_auth_with_password(
-        app,
-        EnsureUserAuthRequest {
-            prompt_for_missing: app.interactive,
-            ..Default::default()
-        },
-    )
-    .context("GrandSlam SRP debug requires ORBIT_APPLE_ID and Apple ID credentials")?;
-
-    print_title("GrandSlam SRP");
-    let srp_session = start_srp_session(
-        &client,
-        &profile,
-        &credentials.user.apple_id,
-        &credentials.password,
-    )?;
-    print_response("SRP init", &srp_session.init_response, args.dump_plist)?;
-
-    let complete_response =
-        complete_srp_session(&client, &profile, &credentials.user.apple_id, srp_session)?;
-    print_response(
-        "SRP complete",
-        &complete_response.raw_response,
-        args.dump_plist,
-    )?;
-
-    if let Some(spd) = complete_response.spd_base64 {
-        println!("spd: {spd}");
-    }
-    if let Some(spd_plaintext) = complete_response.spd_plaintext {
-        print_title("GrandSlam SPD");
-        match PlistValue::from_reader(Cursor::new(&spd_plaintext)) {
-            Ok(plist) => {
-                let json = serde_json::to_string_pretty(&plist_to_json(&plist))?;
-                println!("decrypted:\n{json}");
-                if args.probe_content_delivery {
-                    let material = GrandSlamAuthMaterial::from_plist(&plist)?;
-                    probe_content_delivery_auth(&client, &profile, &material)?;
-                }
-            }
-            Err(_) => {
-                println!("decrypted:\n{}", String::from_utf8_lossy(&spd_plaintext));
-                if args.probe_content_delivery {
-                    bail!("GrandSlam SPD decrypted successfully but is not a plist");
-                }
-            }
-        }
-    }
-    Ok(())
-}
 
 #[derive(Debug, Clone)]
 struct ClientProfile {
@@ -160,19 +72,15 @@ struct ClientProfile {
 struct SrpInitSession {
     c: String,
     verifier: SrpClientVerifier<Sha256>,
-    init_response: HttpDebugResponse,
 }
 
 #[derive(Debug)]
 struct SrpCompleteOutcome {
-    raw_response: HttpDebugResponse,
-    spd_base64: Option<String>,
     spd_plaintext: Option<Vec<u8>>,
 }
 
 #[derive(Debug)]
 struct HttpDebugResponse {
-    status: reqwest::StatusCode,
     headers: BTreeMap<String, String>,
     body: Vec<u8>,
 }
@@ -195,7 +103,6 @@ struct ContentDeliveryHeaders {
 #[derive(Debug, Clone)]
 struct GrandSlamAppToken {
     token: String,
-    duration: u64,
     expiry: u64,
 }
 
@@ -312,22 +219,6 @@ struct AuthenticateForSessionResult {
 }
 
 impl ClientProfile {
-    fn detect(args: &AppleGrandSlamDebugArgs) -> Result<Self> {
-        Self::from_detection_options(ClientProfileDetectionOptions {
-            service: args.service.clone(),
-            client_identifier: args.client_identifier.clone(),
-            client_info: args.client_info.clone(),
-            user_agent: args.user_agent.clone(),
-            accept_language: args.accept_language.clone(),
-            locale: args.locale.clone(),
-            device_id: args.device_id.clone(),
-            serial_number: args.serial_number.clone(),
-            md: args.md.clone(),
-            md_m: args.md_m.clone(),
-            md_rinfo: args.md_rinfo.clone(),
-        })
-    }
-
     fn default_detect() -> Result<Self> {
         Self::from_detection_options(ClientProfileDetectionOptions {
             service: "iTunes".to_owned(),
@@ -519,25 +410,6 @@ impl GrandSlamAuthMaterial {
             continuation: response_data(dictionary, "c").context("GrandSlam SPD is missing `c`")?,
             service_tokens,
         })
-    }
-
-    fn auth_token_candidates(&self) -> Vec<(String, String)> {
-        let mut candidates = Vec::new();
-        if let Some(token) = self.service_tokens.get("com.apple.gs.appleid.auth") {
-            candidates.push(("com.apple.gs.appleid.auth".to_owned(), token.clone()));
-        }
-        if let Some(token) = self.service_tokens.get("com.apple.gs.authagent.auth") {
-            candidates.push(("com.apple.gs.authagent.auth".to_owned(), token.clone()));
-        }
-        candidates.push(("GsIdmsToken".to_owned(), self.gs_idms_token.clone()));
-        candidates
-    }
-
-    fn identity_candidates(&self) -> Vec<(&'static str, &str)> {
-        vec![
-            ("adsid", self.adsid.as_str()),
-            ("DsPrsId", self.ds_person_id.as_str()),
-        ]
     }
 }
 
@@ -900,7 +772,6 @@ fn start_srp_session(
     Ok(SrpInitSession {
         c: challenge,
         verifier,
-        init_response: response,
     })
 }
 
@@ -960,13 +831,11 @@ fn complete_srp_session(
     });
 
     Ok(SrpCompleteOutcome {
-        spd_base64: spd_ciphertext.as_ref().map(|value| STANDARD.encode(value)),
         spd_plaintext: spd_ciphertext
             .as_ref()
             .map(|value| decrypt_spd(session.verifier.key(), value))
             .transpose()
             .context("failed to decrypt GrandSlam `spd` payload")?,
-        raw_response: response,
     })
 }
 
@@ -991,66 +860,6 @@ fn derive_spd_material(session_key: &[u8], label: &[u8]) -> Result<Vec<u8>> {
         .map_err(|error| anyhow::anyhow!("invalid HMAC key: {error}"))?;
     mac.update(label);
     Ok(mac.finalize().into_bytes().to_vec())
-}
-
-fn probe_content_delivery_auth(
-    client: &Client,
-    profile: &ClientProfile,
-    material: &GrandSlamAuthMaterial,
-) -> Result<()> {
-    print_title("ContentDelivery auth probe");
-
-    let mut token_candidates = material.auth_token_candidates();
-    match request_app_token(
-        client,
-        profile,
-        material,
-        CONTENT_DELIVERY_APP_TOKEN_SERVICE,
-    ) {
-        Ok(app_token) => {
-            println!(
-                "acquired {} app token (duration={}s, expiry={})",
-                CONTENT_DELIVERY_APP_TOKEN_SERVICE, app_token.duration, app_token.expiry
-            );
-            token_candidates.insert(
-                0,
-                (
-                    CONTENT_DELIVERY_APP_TOKEN_SERVICE.to_owned(),
-                    app_token.token.clone(),
-                ),
-            );
-        }
-        Err(error) => {
-            println!(
-                "failed to acquire {} app token: {error:#}",
-                CONTENT_DELIVERY_APP_TOKEN_SERVICE
-            );
-        }
-    }
-
-    let mut last_error = None;
-    for (identity_kind, identity_value) in material.identity_candidates() {
-        for (token_kind, token_value) in &token_candidates {
-            println!("trying authenticateUserWithArguments with {identity_kind} + {token_kind}");
-            match try_content_delivery_auth(
-                client,
-                profile,
-                material,
-                identity_value,
-                token_value.as_str(),
-                token_kind.as_str(),
-            ) {
-                Ok(()) => return Ok(()),
-                Err(error) => {
-                    println!("  failed: {error:#}");
-                    last_error = Some(error);
-                }
-            }
-        }
-    }
-
-    Err(last_error
-        .unwrap_or_else(|| anyhow::anyhow!("no content-delivery auth candidate was attempted")))
 }
 
 pub(crate) fn establish_submit_auth(
@@ -1358,105 +1167,6 @@ fn current_unix_time() -> u64 {
         .as_secs()
 }
 
-fn try_content_delivery_auth(
-    client: &Client,
-    profile: &ClientProfile,
-    material: &GrandSlamAuthMaterial,
-    identity_value: &str,
-    token_value: &str,
-    token_kind: &str,
-) -> Result<()> {
-    let auth_headers = ContentDeliveryHeaders::new(profile, material, identity_value, token_value)?;
-    let authenticate_user_response = execute_json_rpc::<AuthenticateUserResult>(
-        client,
-        "MZContentDeliveryService",
-        &auth_headers.headers,
-        "authenticateUserWithArguments",
-        content_delivery_auth_params(profile, None)?,
-    )?;
-    print_response(
-        &format!("authenticateUserWithArguments ({token_kind})"),
-        &authenticate_user_response.raw_response,
-        false,
-    )?;
-    if !authenticate_user_response.result.success {
-        bail!("authenticateUserWithArguments returned Success=false");
-    }
-
-    let authenticate_session_headers =
-        auth_headers.merged(&authenticate_user_response.raw_response.headers);
-    let authenticate_session_response = execute_json_rpc::<AuthenticateForSessionResult>(
-        client,
-        "MZContentDeliveryService",
-        &authenticate_session_headers.headers,
-        "authenticateForSession",
-        content_delivery_auth_params(profile, None)?,
-    )?;
-    print_response(
-        "authenticateForSession",
-        &authenticate_session_response.raw_response,
-        false,
-    )?;
-    if !authenticate_session_response.result.success {
-        bail!("authenticateForSession returned Success=false");
-    }
-
-    let provider_headers =
-        authenticate_session_headers.merged(&authenticate_session_response.raw_response.headers);
-    let providers_info_response = execute_json_rpc::<ProvidersInfoResult>(
-        client,
-        "MZITunesProducerService",
-        &provider_headers.headers,
-        "providersInfoWithArguments",
-        content_delivery_auth_params(profile, None)?,
-    )?;
-    print_response(
-        "providersInfoWithArguments",
-        &providers_info_response.raw_response,
-        false,
-    )?;
-    if !providers_info_response.result.success {
-        bail!("providersInfoWithArguments returned Success=false");
-    }
-
-    let provider_name = select_provider_name(
-        &providers_info_response.result.providers,
-        &authenticate_user_response.result.providers_by_shortname,
-    )?;
-    let provider_session_response = execute_json_rpc::<AuthenticateForSessionResult>(
-        client,
-        "MZContentDeliveryService",
-        &provider_headers.headers,
-        "authenticateForSession",
-        content_delivery_auth_params(profile, Some(provider_name.as_str()))?,
-    )?;
-    print_response(
-        &format!("authenticateForSession provider={provider_name}"),
-        &provider_session_response.raw_response,
-        false,
-    )?;
-    if !provider_session_response.result.success {
-        bail!("provider authenticateForSession returned Success=false");
-    }
-
-    println!(
-        "content-delivery auth succeeded for provider {provider_name} (public id: {})",
-        providers_info_response
-            .result
-            .providers
-            .get(&provider_name)
-            .map(|provider| provider.provider_public_id.as_str())
-            .unwrap_or("<unknown>")
-    );
-    if let Some(session_id) = provider_session_response.result.session_id.as_deref() {
-        println!("  session_id: {session_id}");
-    }
-    if let Some(shared_secret) = provider_session_response.result.shared_secret.as_deref() {
-        println!("  shared_secret: {shared_secret}");
-    }
-    Ok(())
-}
-
 // Transporter does not use the raw GsIdmsToken directly for content-delivery.
 // It first exchanges the GrandSlam session for an app-scoped token bound to
 // `com.apple.gs.itunesconnect.auth`, then uses that token as X-Apple-GS-Token.
@@ -1552,8 +1262,6 @@ fn request_app_token(
     Ok(GrandSlamAppToken {
         token: response_string(app_token, "token")
             .context("decrypted GrandSlam app token is missing `token`")?,
-        duration: response_unsigned(app_token, "duration")
-            .context("decrypted GrandSlam app token is missing `duration`")?,
         expiry: response_unsigned(app_token, "expiry")
             .context("decrypted GrandSlam app token is missing `expiry`")?,
     })
@@ -1971,61 +1679,6 @@ fn content_delivery_auth_params(
     Ok(JsonValue::Object(params))
 }
 
-fn select_provider_name(
-    providers: &BTreeMap<String, ProviderInfoEntry>,
-    fallback_providers: &BTreeMap<String, ProviderInfo>,
-) -> Result<String> {
-    if let Ok(team_id) = std::env::var("ORBIT_APPLE_TEAM_ID")
-        && let Some(provider) = providers
-            .values()
-            .find(|provider| provider.team_id.as_deref() == Some(team_id.as_str()))
-    {
-        return Ok(provider.provider_name.clone());
-    }
-    if let Ok(team_id) = std::env::var("ORBIT_APPLE_TEAM_ID")
-        && let Some(provider) = fallback_providers
-            .values()
-            .find(|provider| provider.team_id.as_deref() == Some(team_id.as_str()))
-    {
-        return Ok(provider.provider_name.clone());
-    }
-
-    if let Some(provider_name) = providers.keys().next()
-        && providers.len() == 1
-    {
-        return Ok(provider_name.clone());
-    }
-    if let Some(provider) = fallback_providers.values().next()
-        && fallback_providers.len() == 1
-    {
-        return Ok(provider.provider_name.clone());
-    }
-
-    let available = providers
-        .values()
-        .map(|provider| {
-            format!(
-                "{} (team_id={}, public_id={})",
-                provider.provider_name,
-                provider.team_id.as_deref().unwrap_or("<unknown>"),
-                provider.provider_public_id
-            )
-        })
-        .chain(fallback_providers.values().map(|provider| {
-            format!(
-                "{} (team_id={}, public_id={})",
-                provider.provider_name,
-                provider.team_id.as_deref().unwrap_or("<unknown>"),
-                provider.provider_public_id
-            )
-        }))
-        .collect::<Vec<_>>()
-        .join(", ");
-    bail!(
-        "multiple providers available; set ORBIT_APPLE_TEAM_ID to choose one. available: {available}"
-    )
-}
-
 fn transporter_os_identifier() -> Result<String> {
     let version =
         crate::util::command_output(std::process::Command::new("sw_vers").arg("-productVersion"))
@@ -2107,19 +1760,6 @@ fn request_headers(profile: &ClientProfile) -> Result<HeaderMap> {
     Ok(headers)
 }
 
-fn execute_simple_request(
-    client: &Client,
-    url: &str,
-    headers: HeaderMap,
-) -> Result<HttpDebugResponse> {
-    let response = client
-        .get(url)
-        .headers(headers)
-        .send()
-        .with_context(|| format!("failed to execute {url}"))?;
-    HttpDebugResponse::from_response(response)
-}
-
 fn execute_plist_post(
     client: &Client,
     url: &str,
@@ -2155,7 +1795,6 @@ fn plist_body(request: Dictionary) -> Vec<u8> {
 
 impl HttpDebugResponse {
     fn from_response(response: reqwest::blocking::Response) -> Result<Self> {
-        let status = response.status();
         let headers = response
             .headers()
             .iter()
@@ -2167,45 +1806,12 @@ impl HttpDebugResponse {
             })
             .collect::<BTreeMap<_, _>>();
         let body = response.bytes()?.to_vec();
-        Ok(Self {
-            status,
-            headers,
-            body,
-        })
+        Ok(Self { headers, body })
     }
 
     fn plist(&self) -> Option<PlistValue> {
         PlistValue::from_reader(Cursor::new(&self.body)).ok()
     }
-}
-
-fn print_title(title: &str) {
-    println!("\n== {title} ==");
-}
-
-fn print_response(name: &str, response: &HttpDebugResponse, dump_plist: bool) -> Result<()> {
-    println!("{name} status: {}", response.status);
-    if !response.headers.is_empty() {
-        println!("headers:");
-        for (name, value) in &response.headers {
-            println!("  {name}: {value}");
-        }
-    }
-
-    if dump_plist {
-        println!("body:\n{}", String::from_utf8_lossy(&response.body));
-        return Ok(());
-    }
-
-    if let Some(plist) = response.plist() {
-        let json = serde_json::to_string_pretty(&plist_to_json(&plist))?;
-        println!("body:\n{json}");
-    } else if response.body.is_empty() {
-        println!("body: <empty>");
-    } else {
-        println!("body:\n{}", String::from_utf8_lossy(&response.body));
-    }
-    Ok(())
 }
 
 fn printable_body(response: &HttpDebugResponse) -> String {

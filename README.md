@@ -444,12 +444,6 @@ orbit apple device import --file ./devices.csv
 
 ### Signing Utilities
 
-Sync signing assets:
-
-```sh
-orbit apple signing sync --platform ios --distribution development
-```
-
 Export signing materials:
 
 ```sh

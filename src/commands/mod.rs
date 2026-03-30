@@ -2,7 +2,7 @@ pub mod apple;
 
 use anyhow::Result;
 
-use crate::cli::{AppleCommand, AppleDebugCommand, AppleDeviceCommand, Cli, Command};
+use crate::cli::{AppleCommand, AppleDeviceCommand, Cli, Command};
 use crate::context::AppContext;
 use crate::manifest::{ManifestBackend, detect_schema};
 
@@ -16,12 +16,6 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
                 | AppleDeviceCommand::Remove(_) => apple::execute(app, cli),
             },
             AppleCommand::Signing { .. } => dispatch_project_command(app, cli),
-            AppleCommand::Debug { command } => match command.as_ref() {
-                AppleDebugCommand::GrandSlam(_)
-                | AppleDebugCommand::DeveloperServices(_)
-                | AppleDebugCommand::NotaryStatus(_)
-                | AppleDebugCommand::AscSession(_) => apple::execute(app, cli),
-            },
         },
         Command::Run(_) | Command::Build(_) | Command::Submit(_) | Command::Clean(_) => {
             dispatch_project_command(app, cli)
