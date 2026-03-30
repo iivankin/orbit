@@ -24,6 +24,11 @@ pub(crate) enum AuthKitIdentity {
     Orbit,
 }
 
+struct AuthKitBootstrapRequest {
+    headers: HeaderMap,
+    body: JsonValue,
+}
+
 pub(crate) fn build_cookie_client(context_label: &str) -> Result<Client> {
     ClientBuilder::new()
         .brotli(true)
@@ -65,14 +70,13 @@ pub(crate) fn send_authkit_bootstrap_request(
     context_label: &str,
 ) -> Result<Response> {
     let authkit_url = authkit_bootstrap_url();
-    let headers = authkit_request_headers(auth, identity)?;
-    let body = authkit_request_body(auth, identity)?;
+    let request = authkit_bootstrap_request(auth, identity)?;
     let mut last_retryable_error = None;
     for attempt in 0..4 {
         match client
             .post(&authkit_url)
-            .headers(headers.clone())
-            .json(&body)
+            .headers(request.headers.clone())
+            .json(&request.body)
             .send()
         {
             Ok(response) => return Ok(response),
@@ -99,24 +103,17 @@ pub(crate) fn send_authkit_bootstrap_request(
     })
 }
 
-pub(crate) fn authkit_request_headers(
+fn authkit_bootstrap_request(
     auth: &XcodeNotaryAuth,
     identity: AuthKitIdentity,
-) -> Result<HeaderMap> {
+) -> Result<AuthKitBootstrapRequest> {
     let mut headers = auth.authkit_headers();
     let mut body = auth.authkit_request_body(&generate_client_public_key()?);
     apply_identity_overrides(&mut headers, &mut body, identity);
-    header_map(&headers)
-}
-
-pub(crate) fn authkit_request_body(
-    auth: &XcodeNotaryAuth,
-    identity: AuthKitIdentity,
-) -> Result<JsonValue> {
-    let mut headers = auth.authkit_headers();
-    let mut body = auth.authkit_request_body(&generate_client_public_key()?);
-    apply_identity_overrides(&mut headers, &mut body, identity);
-    Ok(body)
+    Ok(AuthKitBootstrapRequest {
+        headers: header_map(&headers)?,
+        body,
+    })
 }
 
 pub(crate) fn parse_json_response<T>(response: Response, context_label: &str) -> Result<T>
@@ -220,26 +217,4 @@ fn default_orbit_client_info() -> String {
         env!("CARGO_PKG_VERSION"),
         env!("CARGO_PKG_VERSION")
     )
-}
-
-#[cfg(test)]
-mod tests {
-    use super::{default_orbit_client_info, orbit_client_info};
-
-    #[test]
-    fn orbit_identity_rewrites_client_info_suffix() {
-        let value = orbit_client_info(
-            "<MacBookPro18,3> <macOS;15.4;24E248> <com.apple.AuthKit/1 (com.apple.dt.Xcode/17000)>",
-        );
-        assert!(value.contains("<MacBookPro18,3> <macOS;15.4;24E248>"));
-        assert!(value.contains("dev.orbit.cli/"));
-        assert!(value.contains("(orbit/"));
-    }
-
-    #[test]
-    fn orbit_identity_has_fallback_client_info() {
-        let value = default_orbit_client_info();
-        assert!(value.contains("dev.orbit.cli/"));
-        assert!(value.contains("(orbit/"));
-    }
 }

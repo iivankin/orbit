@@ -2,12 +2,14 @@ mod support;
 
 use std::fs;
 
+#[cfg(target_os = "macos")]
 use support::notary_mock::{spawn_notary_mock, write_xcode_notary_auth_fixture};
 use support::submit_mock::spawn_submit_mock;
+#[cfg(target_os = "macos")]
+use support::write_executable;
 use support::{
     base_command, create_api_key, create_build_xcrun_mock, create_home, create_signing_workspace,
     create_submit_swinfo_mock, latest_receipt_path, read_log, run_and_capture, spawn_asc_mock,
-    write_executable,
 };
 
 #[test]

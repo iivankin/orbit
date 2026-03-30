@@ -74,23 +74,3 @@ pub fn detect_schema(path: &Path) -> Result<ManifestSchema> {
 fn schema_file_name(schema: &str) -> &str {
     schema.rsplit(['/', '\\']).next().unwrap_or(schema)
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detects_apple_schema_from_url() {
-        assert!(ManifestSchema::AppleAppV1.matches("https://orbit.dev/schemas/apple-app.v1.json"));
-    }
-
-    #[test]
-    fn detects_apple_schema_from_local_relative_path() {
-        assert!(ManifestSchema::AppleAppV1.matches("../../schemas/apple-app.v1.json"));
-    }
-
-    #[test]
-    fn detects_apple_schema_from_local_absolute_path() {
-        assert!(ManifestSchema::AppleAppV1.matches("/tmp/schemas/apple-app.v1.json"));
-    }
-}

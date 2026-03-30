@@ -39,7 +39,7 @@ cargo test --test e2e_lifecycle
 
 These tests create real Apple Developer resources. Use a disposable namespace and a real Apple account you control.
 
-The live suite is Apple ID only. The helpers explicitly clear `ORBIT_ASC_*` / `EXPO_ASC_*` variables and run each test with isolated `ORBIT_DATA_DIR` / `ORBIT_CACHE_DIR` paths so a previously cached API key cannot leak into the test process.
+The live suite is Apple ID only. The helpers explicitly clear `ORBIT_ASC_*` variables and run each test with isolated `ORBIT_DATA_DIR` / `ORBIT_CACHE_DIR` paths so a previously cached API key cannot leak into the test process.
 
 Required environment:
 

@@ -10,7 +10,8 @@ use crate::apple::asc_api::{
     JsonApiListDocument, ProfileAttributes, RelationshipData, Resource, ResourceLink,
 };
 use crate::apple::capabilities::{
-    RemoteCapability, RemoteCapabilityOption, RemoteCapabilitySetting,
+    CapabilityRelationships, CapabilityUpdate, RemoteCapability, RemoteCapabilityOption,
+    RemoteCapabilitySetting,
 };
 use crate::apple::developer_services::DeveloperServicesClient;
 use crate::context::AppContext;
@@ -93,18 +94,9 @@ pub struct ProvisioningProfile {
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProvisioningCapabilityUpdate {
+pub struct ProvisioningCapabilityPatch {
     pub remote_id: Option<String>,
-    pub capability_type: String,
-    pub option: String,
-    pub relationships: ProvisioningCapabilityRelationships,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct ProvisioningCapabilityRelationships {
-    pub app_groups: Option<Vec<String>>,
-    pub merchant_ids: Option<Vec<String>>,
-    pub cloud_containers: Option<Vec<String>>,
+    pub update: CapabilityUpdate,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -597,7 +589,7 @@ impl ProvisioningClient {
     pub fn update_bundle_capabilities(
         &mut self,
         bundle_id: &ProvisioningBundleId,
-        updates: &[ProvisioningCapabilityUpdate],
+        updates: &[ProvisioningCapabilityPatch],
     ) -> Result<()> {
         if updates.is_empty() {
             return Ok(());
@@ -810,22 +802,22 @@ fn relationship_many_ids(
 }
 
 fn build_capability_relationship(
-    update: &ProvisioningCapabilityUpdate,
+    update: &ProvisioningCapabilityPatch,
 ) -> Result<serde_json::Value> {
-    let mut relationships = capability_relationships(&update.relationships);
+    let mut relationships = capability_relationships(&update.update.relationships);
     relationships.insert(
         "capability".to_owned(),
         json!({
             "data": {
-                "id": update.capability_type,
+                "id": update.update.capability_type,
                 "type": "capabilities",
             }
         }),
     );
     let mut value = json!({
         "attributes": {
-            "enabled": update.option != "OFF",
-            "settings": capability_settings(update)?,
+            "enabled": update.update.option != "OFF",
+            "settings": capability_settings(&update.update)?,
         },
         "relationships": relationships,
         "type": "bundleIdCapabilities",
@@ -836,7 +828,7 @@ fn build_capability_relationship(
     Ok(value)
 }
 
-fn capability_settings(update: &ProvisioningCapabilityUpdate) -> Result<Vec<serde_json::Value>> {
+fn capability_settings(update: &CapabilityUpdate) -> Result<Vec<serde_json::Value>> {
     if update.option.is_empty() || update.option == "OFF" {
         return Ok(Vec::new());
     }
@@ -875,7 +867,7 @@ fn capability_settings(update: &ProvisioningCapabilityUpdate) -> Result<Vec<serd
 }
 
 fn capability_relationships(
-    relationships: &ProvisioningCapabilityRelationships,
+    relationships: &CapabilityRelationships,
 ) -> serde_json::Map<String, serde_json::Value> {
     let mut map = serde_json::Map::new();
 

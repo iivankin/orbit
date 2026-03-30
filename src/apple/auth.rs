@@ -50,7 +50,6 @@ pub struct ApiKeyAuth {
     pub key_id: String,
     pub issuer_id: String,
     pub team_id: Option<String>,
-    pub team_type: Option<String>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -99,11 +98,10 @@ pub fn ensure_project_authenticated(project: &ProjectContext) -> Result<()> {
 }
 
 pub fn resolve_api_key_auth(app: &AppContext) -> Result<Option<ApiKeyAuth>> {
-    let env_path = env_path(["ORBIT_ASC_API_KEY_PATH", "EXPO_ASC_API_KEY_PATH"])?;
-    let env_key_id = env_string(["ORBIT_ASC_KEY_ID", "EXPO_ASC_KEY_ID"]);
-    let env_issuer_id = env_string(["ORBIT_ASC_ISSUER_ID", "EXPO_ASC_ISSUER_ID"]);
-    let env_team_id = env_string(["ORBIT_APPLE_TEAM_ID", "EXPO_APPLE_TEAM_ID"]);
-    let env_team_type = env_string(["ORBIT_APPLE_TEAM_TYPE", "EXPO_APPLE_TEAM_TYPE"]);
+    let env_path = env_path("ORBIT_ASC_API_KEY_PATH")?;
+    let env_key_id = env_string("ORBIT_ASC_KEY_ID");
+    let env_issuer_id = env_string("ORBIT_ASC_ISSUER_ID");
+    let env_team_id = env_string("ORBIT_APPLE_TEAM_ID");
 
     if let (Some(api_key_path), Some(key_id), Some(issuer_id)) =
         (env_path, env_key_id, env_issuer_id)
@@ -113,7 +111,6 @@ pub fn resolve_api_key_auth(app: &AppContext) -> Result<Option<ApiKeyAuth>> {
             key_id,
             issuer_id,
             team_id: env_team_id,
-            team_type: env_team_type,
         }));
     }
 
@@ -122,9 +119,9 @@ pub fn resolve_api_key_auth(app: &AppContext) -> Result<Option<ApiKeyAuth>> {
 
 pub fn resolve_user_auth_metadata(app: &AppContext) -> Result<Option<UserAuth>> {
     let state = load_state(app)?;
-    let apple_id = env_string(["ORBIT_APPLE_ID", "EXPO_APPLE_ID"]);
-    let team_id = env_string(["ORBIT_APPLE_TEAM_ID", "EXPO_APPLE_TEAM_ID"]);
-    let provider_id = env_string(["ORBIT_APPLE_PROVIDER_ID", "EXPO_APPLE_PROVIDER_ID"]);
+    let apple_id = env_string("ORBIT_APPLE_ID");
+    let team_id = env_string("ORBIT_APPLE_TEAM_ID");
+    let provider_id = env_string("ORBIT_APPLE_PROVIDER_ID");
 
     if let Some(apple_id) = apple_id {
         let mut user = state
@@ -210,7 +207,7 @@ fn resolve_user_inputs(
     let apple_id = request
         .apple_id
         .clone()
-        .or_else(|| env_string(["ORBIT_APPLE_ID", "EXPO_APPLE_ID"]))
+        .or_else(|| env_string("ORBIT_APPLE_ID"))
         .or_else(|| state.user.as_ref().map(|user| user.apple_id.clone()))
         .or_else(|| {
             if request.prompt_for_missing && app.interactive {
@@ -237,12 +234,11 @@ fn resolve_user_inputs(
             last_validated_at_unix: None,
         });
     user.apple_id = apple_id.clone();
-    user.team_id = env_string(["ORBIT_APPLE_TEAM_ID", "EXPO_APPLE_TEAM_ID"])
-        .or_else(|| request.team_id.clone());
-    user.provider_id = env_string(["ORBIT_APPLE_PROVIDER_ID", "EXPO_APPLE_PROVIDER_ID"])
-        .or_else(|| request.provider_id.clone());
+    user.team_id = env_string("ORBIT_APPLE_TEAM_ID").or_else(|| request.team_id.clone());
+    user.provider_id =
+        env_string("ORBIT_APPLE_PROVIDER_ID").or_else(|| request.provider_id.clone());
 
-    let password = match env_string(["ORBIT_APPLE_PASSWORD", "EXPO_APPLE_PASSWORD"]) {
+    let password = match env_string("ORBIT_APPLE_PASSWORD") {
         Some(password) => Some(password),
         None => load_secret(APPLE_PASSWORD_SERVICE, &apple_id)?,
     };
@@ -342,8 +338,8 @@ where
 }
 
 fn persist_project_auth_selection(project: &ProjectContext, user: &UserAuth) -> Result<()> {
-    if env_string(["ORBIT_APPLE_TEAM_ID", "EXPO_APPLE_TEAM_ID"]).is_some()
-        || env_string(["ORBIT_APPLE_PROVIDER_ID", "EXPO_APPLE_PROVIDER_ID"]).is_some()
+    if env_string("ORBIT_APPLE_TEAM_ID").is_some()
+        || env_string("ORBIT_APPLE_PROVIDER_ID").is_some()
     {
         return Ok(());
     }
@@ -428,12 +424,12 @@ fn looks_like_provider_id(value: &str) -> bool {
     !value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit())
 }
 
-fn env_string<const N: usize>(keys: [&str; N]) -> Option<String> {
-    keys.into_iter().find_map(|key| std::env::var(key).ok())
+fn env_string(key: &str) -> Option<String> {
+    std::env::var(key).ok()
 }
 
-fn env_path<const N: usize>(keys: [&str; N]) -> Result<Option<PathBuf>> {
-    let Some(value) = env_string(keys) else {
+fn env_path(key: &str) -> Result<Option<PathBuf>> {
+    let Some(value) = env_string(key) else {
         return Ok(None);
     };
     let path = PathBuf::from(value);
@@ -447,7 +443,7 @@ fn env_path<const N: usize>(keys: [&str; N]) -> Result<Option<PathBuf>> {
 }
 
 fn keychain_enabled() -> bool {
-    env_string(["ORBIT_NO_KEYCHAIN", "EXPO_NO_KEYCHAIN"]).is_none()
+    env_string("ORBIT_NO_KEYCHAIN").is_none()
 }
 
 fn store_secret(service: &str, account: &str, secret: &str) -> Result<()> {

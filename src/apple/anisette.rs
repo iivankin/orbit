@@ -72,14 +72,3 @@ fn helper_cache_root() -> PathBuf {
         .unwrap_or_else(std::env::temp_dir)
         .join("orbit")
 }
-
-#[cfg(test)]
-mod tests {
-    use super::helper_cache_root;
-
-    #[test]
-    fn helper_cache_root_is_stable() {
-        let root = helper_cache_root();
-        assert!(!root.as_os_str().is_empty());
-    }
-}

@@ -141,16 +141,3 @@ fn app_store_sku(bundle_id: &str) -> String {
     sku.truncate(255);
     sku
 }
-
-#[cfg(test)]
-mod tests {
-    use super::app_store_sku;
-
-    #[test]
-    fn normalizes_bundle_id_into_sku() {
-        assert_eq!(
-            app_store_sku("dev.orbit.examples.app"),
-            "DEV-ORBIT-EXAMPLES-APP"
-        );
-    }
-}

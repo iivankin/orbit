@@ -350,7 +350,6 @@ fn current_machine_device(platform: DevicePlatform) -> Result<ImportedDevice> {
 fn resolve_team_id(app: &AppContext) -> Result<String> {
     std::env::var("ORBIT_APPLE_TEAM_ID")
         .ok()
-        .or_else(|| std::env::var("EXPO_APPLE_TEAM_ID").ok())
         .or_else(|| {
             resolve_user_auth_metadata(app)
                 .ok()

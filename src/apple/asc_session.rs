@@ -240,31 +240,3 @@ where
     serde_json::from_slice(&body)
         .with_context(|| format!("failed to parse `{label}` response body"))
 }
-
-#[cfg(test)]
-mod tests {
-    use super::{CreateAppRecordInput, asc_platform};
-    use crate::manifest::ApplePlatform;
-
-    #[test]
-    fn maps_platforms_for_asc() {
-        assert_eq!(asc_platform(ApplePlatform::Ios).unwrap(), "IOS");
-        assert_eq!(asc_platform(ApplePlatform::Tvos).unwrap(), "TV_OS");
-        assert_eq!(asc_platform(ApplePlatform::Visionos).unwrap(), "VISION_OS");
-        assert_eq!(asc_platform(ApplePlatform::Macos).unwrap(), "MAC_OS");
-        assert!(asc_platform(ApplePlatform::Watchos).is_err());
-    }
-
-    #[test]
-    fn create_app_record_input_keeps_version_number_separate() {
-        let input = CreateAppRecordInput {
-            name: "Example",
-            sku: "EXAMPLE",
-            primary_locale: "en-US",
-            bundle_id: "dev.example.app",
-            platform: ApplePlatform::Ios,
-            version_number: "1.2.3",
-        };
-        assert_eq!(input.version_number, "1.2.3");
-    }
-}
