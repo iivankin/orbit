@@ -3,6 +3,7 @@ use anyhow::Result;
 use crate::apple;
 use crate::cli::{
     AppleCommand, AppleDeviceCommand, AppleSigningCommand, Cli, Command, DepsCommand, IdeCommand,
+    UiCommand,
 };
 use crate::context::AppContext;
 
@@ -15,6 +16,49 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
             let project = app.load_project(cli.manifest.as_deref())?;
             apple::testing::run_tests(&project, args)
         }
+        Command::Ui(ui_args) => match &ui_args.command {
+            UiCommand::ResetIdb(_) => apple::ui::reset_idb(),
+            UiCommand::DumpTree(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::dump_tree(&project, args)
+            }
+            UiCommand::DescribePoint(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::describe_point(&project, args)
+            }
+            UiCommand::Focus(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::focus(&project, args)
+            }
+            UiCommand::Logs(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::logs(&project, args)
+            }
+            UiCommand::AddMedia(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::add_media(&project, args)
+            }
+            UiCommand::Open(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::open(&project, args)
+            }
+            UiCommand::InstallDylib(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::install_dylib(&project, args)
+            }
+            UiCommand::Instruments(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::instruments(&project, args)
+            }
+            UiCommand::UpdateContacts(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::update_contacts(&project, args)
+            }
+            UiCommand::Crash(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::crash(&project, args)
+            }
+        },
         Command::Deps(deps_args) => match &deps_args.command {
             DepsCommand::Update(args) => {
                 apple::deps::update_dependencies(app, args, cli.manifest.as_deref())

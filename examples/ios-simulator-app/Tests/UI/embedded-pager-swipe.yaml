@@ -1,0 +1,12 @@
+appId: dev.orbit.examples.exampleiosapp
+name: Embedded Pager Swipe Demo
+---
+- launchApp
+- tapOn: Open Swipe Lab
+- tapOn: Embedded Pager Card
+- assertVisible: Embedded Pager Intro
+- swipe:
+    start: "85%, 45%"
+    end: "15%, 45%"
+- assertVisible: Embedded Pager Email
+- takeScreenshot: embedded-pager-swipe

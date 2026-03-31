@@ -1,0 +1,11 @@
+appId: dev.orbit.examples.exampleiosapp
+name: Carousel Swipe Demo
+---
+- launchApp
+- tapOn: Open Swipe Lab
+- tapOn: Horizontal Card Carousel
+- assertVisible: Orion Card
+- swipe: LEFT
+- swipe: LEFT
+- assertVisible: Aurora Card
+- takeScreenshot: carousel-swipe

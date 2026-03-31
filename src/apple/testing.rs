@@ -4,6 +4,9 @@ use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
+#[path = "testing/ui.rs"]
+pub(crate) mod ui;
+
 use crate::apple::build::external::resolve_swift_package_dependency;
 use crate::cli::TestArgs;
 use crate::context::ProjectContext;
@@ -19,12 +22,17 @@ const GENERATED_TESTS_DIR: &str = "tests/swift-testing";
 const C_FAMILY_SOURCE_EXTENSIONS: &[&str] = &["c", "m", "mm", "cpp", "cc", "cxx"];
 const SWIFT_SOURCE_EXTENSIONS: &[&str] = &["swift"];
 
-pub fn run_tests(project: &ProjectContext, _args: &TestArgs) -> Result<()> {
+pub fn run_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
+    if args.ui {
+        return ui::run_ui_tests(project, args);
+    }
+    if args.platform.is_some() {
+        bail!("`orbit test --platform ...` is only supported together with `--ui`");
+    }
+
     let Some(unit_tests) = project.resolved_manifest.tests.unit.as_ref() else {
         if project.resolved_manifest.tests.ui.is_some() {
-            bail!(
-                "Orbit currently supports only `tests.unit` through Swift Testing; `tests.ui` is not supported yet"
-            );
+            bail!("manifest does not declare `tests.unit`; pass `orbit test --ui` to run UI tests");
         }
         bail!("manifest does not declare `tests.unit`");
     };

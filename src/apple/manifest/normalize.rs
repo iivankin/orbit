@@ -8,7 +8,8 @@ use semver::Version;
 use serde_json::Value as JsonValue;
 
 use super::authoring::{
-    AppManifest, DependencySpec, EntitlementsManifest, ExtensionConfig, ExtensionKind, InfoManifest,
+    AppManifest, DependencySpec, EntitlementsManifest, ExtensionConfig, ExtensionKind,
+    InfoManifest, TestFormat,
 };
 use super::entitlements::build_entitlements_dictionary;
 use super::{
@@ -180,25 +181,37 @@ fn validate_root_manifest(app: &AppManifest) -> Result<()> {
     if non_watch_platforms == 0 {
         bail!("the root app must declare at least one non-watch platform");
     }
-    validate_test_target_sources(
+    validate_test_target_manifest(
         "tests.unit",
         app.tests.as_ref().and_then(|tests| tests.unit.as_ref()),
+        false,
     )?;
-    validate_test_target_sources(
+    validate_test_target_manifest(
         "tests.ui",
         app.tests.as_ref().and_then(|tests| tests.ui.as_ref()),
+        true,
     )?;
     Ok(())
 }
 
-fn validate_test_target_sources(
+fn validate_test_target_manifest(
     field_name: &str,
     target: Option<&super::authoring::TestTargetManifest>,
+    require_maestro_format: bool,
 ) -> Result<()> {
-    if let Some(target) = target
-        && target.sources.is_empty()
-    {
-        bail!("`{field_name}` must declare at least one source root");
+    if let Some(target) = target {
+        if target.sources.is_empty() {
+            bail!("`{field_name}` must declare at least one source root");
+        }
+        if require_maestro_format {
+            if target.format != Some(TestFormat::Maestro) {
+                bail!("`{field_name}.format` must be set to `maestro`");
+            }
+        } else if let Some(format) = target.format
+            && format != TestFormat::SwiftTesting
+        {
+            bail!("`{field_name}.format` currently supports only `swift-testing`");
+        }
     }
     Ok(())
 }

@@ -23,6 +23,14 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
     pipeline::build_artifact(project, args)
 }
 
+pub fn build_for_testing_destination(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    destination: DestinationKind,
+) -> Result<pipeline::BuildOutcome> {
+    pipeline::build_for_testing_destination(project, platform, destination)
+}
+
 pub fn prepare_for_ide(
     project: &ProjectContext,
     platform: ApplePlatform,

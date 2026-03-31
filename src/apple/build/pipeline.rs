@@ -167,6 +167,27 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
     Ok(())
 }
 
+pub fn build_for_testing_destination(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    destination: DestinationKind,
+) -> Result<BuildOutcome> {
+    let target = build_target_for_platform(project, platform)?;
+    let profile = profile_for_run();
+    let request = BuildRequest {
+        target_name: target.name.clone(),
+        platform,
+        profile,
+        destination,
+        output: None,
+        provisioning_udids: None,
+    };
+    if build_requires_signing(&request.profile, request.destination) {
+        crate::apple::auth::ensure_project_authenticated(project)?;
+    }
+    build_project(project, &request)
+}
+
 pub fn prepare_for_ide(
     project: &ProjectContext,
     platform: ApplePlatform,

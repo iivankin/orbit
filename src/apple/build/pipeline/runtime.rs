@@ -1,4 +1,3 @@
-use std::collections::BTreeMap;
 use std::fs;
 use std::os::unix::process::CommandExt;
 use std::os::unix::process::ExitStatusExt;
@@ -12,11 +11,11 @@ use serde::Deserialize;
 use tempfile::NamedTempFile;
 
 use crate::apple::build::receipt::BuildReceipt;
+use crate::apple::logs::SimulatorAppLogStream;
+use crate::apple::simulator::SimulatorDevice;
 use crate::context::ProjectContext;
 use crate::manifest::ApplePlatform;
-use crate::util::{
-    CliSpinner, command_output, command_output_allow_failure, prompt_select, run_command,
-};
+use crate::util::{CliSpinner, command_output_allow_failure, prompt_select, run_command};
 
 pub(super) fn validate_run_platform(platform: ApplePlatform) -> Result<()> {
     match platform {
@@ -62,6 +61,7 @@ pub(super) fn debug_on_macos(receipt: &BuildReceipt) -> Result<()> {
 
 pub(super) fn run_on_simulator(project: &ProjectContext, receipt: &BuildReceipt) -> Result<()> {
     let device = prepare_simulator_installation(project, receipt)?;
+    let _app_logs = start_simulator_app_logs(&device, receipt);
 
     println!(
         "Launching {} on {}. Orbit will stay attached to the simulator console; press Ctrl-C to stop.",
@@ -114,11 +114,16 @@ pub(super) fn debug_on_simulator(project: &ProjectContext, receipt: &BuildReceip
 
 pub(super) fn run_on_device(device: &PhysicalDevice, receipt: &BuildReceipt) -> Result<()> {
     let installed = install_on_device(device, receipt)?;
+    println!(
+        "Launching {} on {}. Orbit will stay attached to the device console; press Ctrl-C to stop.",
+        receipt.bundle_id,
+        device.name()
+    );
     if receipt.platform == ApplePlatform::Ios {
-        launch_ios_app_by_bundle_id(device, &receipt.bundle_id)?;
+        launch_device_console_process(device, &receipt.bundle_id)?;
     } else {
         let remote_bundle_path = remote_app_bundle_path(&installed.installation_url)?;
-        launch_device_app(device, &remote_bundle_path, false)?;
+        launch_device_console_process(device, &remote_bundle_path)?;
     }
     Ok(())
 }
@@ -202,24 +207,6 @@ pub(super) fn select_physical_device(
         .collect::<Vec<_>>();
     let index = prompt_select("Select a physical device", &labels)?;
     Ok(devices.remove(index))
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SimctlList {
-    devices: BTreeMap<String, Vec<SimulatorDevice>>,
-}
-
-#[derive(Debug, Clone, Deserialize)]
-struct SimulatorDevice {
-    udid: String,
-    name: String,
-    state: String,
-}
-
-impl SimulatorDevice {
-    fn is_booted(&self) -> bool {
-        self.state.eq_ignore_ascii_case("Booted")
-    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -385,32 +372,24 @@ fn debug_on_ios_device(
     result
 }
 
-fn launch_ios_app_by_bundle_id(
-    device: &PhysicalDevice,
-    bundle_id: &str,
-) -> Result<DeviceLaunchedProcess> {
-    let output_path = NamedTempFile::new()?;
+fn launch_device_console_process(device: &PhysicalDevice, bundle_id_or_path: &str) -> Result<()> {
     let mut launch = Command::new("xcrun");
     launch.args([
         "devicectl",
         "device",
         "process",
         "launch",
+        "--console",
+        "--terminate-existing",
         "--device",
         device.provisioning_udid(),
-        "--json-output",
-        output_path
-            .path()
-            .to_str()
-            .context("temporary path contains invalid UTF-8")?,
-        bundle_id,
     ]);
-    run_command(&mut launch)?;
-    let contents = fs::read_to_string(output_path.path())
-        .with_context(|| format!("failed to read {}", output_path.path().display()))?;
-    let launched: DeviceCtlEnvelope<LaunchedProcessResult> = serde_json::from_str(&contents)
-        .context("failed to parse `devicectl device process launch` output")?;
-    Ok(launched.result.process)
+    apply_device_console_environment(&mut launch);
+    launch.arg(bundle_id_or_path);
+    launch.stdin(Stdio::inherit());
+    launch.stdout(Stdio::inherit());
+    launch.stderr(Stdio::inherit());
+    run_command(&mut launch)
 }
 
 fn spawn_ios_debug_launch_session(device: &PhysicalDevice, bundle_id: &str) -> Result<Child> {
@@ -425,8 +404,9 @@ fn spawn_ios_debug_launch_session(device: &PhysicalDevice, bundle_id: &str) -> R
         "--terminate-existing",
         "--device",
         device.provisioning_udid(),
-        bundle_id,
     ]);
+    apply_device_console_environment(&mut launch);
+    launch.arg(bundle_id);
     launch.stdin(Stdio::inherit());
     launch.stdout(Stdio::inherit());
     launch.stderr(Stdio::inherit());
@@ -547,8 +527,9 @@ fn launch_device_app(
             .path()
             .to_str()
             .context("temporary path contains invalid UTF-8")?,
-        remote_bundle_path,
     ]);
+    apply_device_console_environment(&mut launch);
+    launch.arg(remote_bundle_path);
     run_command(&mut launch)?;
     let contents = fs::read_to_string(output_path.path())
         .with_context(|| format!("failed to read {}", output_path.path().display()))?;
@@ -579,6 +560,15 @@ fn list_device_processes(device: &PhysicalDevice) -> Result<Vec<DeviceRunningPro
     let processes: DeviceCtlEnvelope<RunningProcessesResult> = serde_json::from_str(&contents)
         .context("failed to parse `devicectl device info processes` output")?;
     Ok(processes.result.running_processes)
+}
+
+fn apply_device_console_environment(command: &mut Command) {
+    // Xcode launches apps in a developer-tools logging mode so os_log/Logger messages
+    // are mirrored into the attached debug console. Mirror that behavior for device runs.
+    command.args([
+        "--environment-variables",
+        r#"{"OS_ACTIVITY_DT_MODE":"1","IDEPreferLogStreaming":"YES"}"#,
+    ]);
 }
 
 fn wait_for_device_process_for_installation(
@@ -744,45 +734,28 @@ fn simulator_process_name(receipt: &BuildReceipt) -> &str {
     receipt.target.as_str()
 }
 
+fn start_simulator_app_logs(
+    device: &SimulatorDevice,
+    receipt: &BuildReceipt,
+) -> Option<SimulatorAppLogStream> {
+    match SimulatorAppLogStream::start(&device.udid, simulator_process_name(receipt)) {
+        Ok(stream) => Some(stream),
+        Err(error) => {
+            eprintln!(
+                "warning: failed to start app logs for `{}` on {}: {error:#}",
+                simulator_process_name(receipt),
+                device.name
+            );
+            None
+        }
+    }
+}
+
 fn select_simulator_device(
     project: &ProjectContext,
     platform: ApplePlatform,
 ) -> Result<SimulatorDevice> {
-    let output = command_output(Command::new("xcrun").args([
-        "simctl",
-        "list",
-        "devices",
-        "available",
-        "--json",
-    ]))?;
-    let devices: SimctlList = serde_json::from_str(&output)?;
-    let mut flattened = devices
-        .devices
-        .into_iter()
-        .filter(|(runtime, _)| simulator_runtime_matches_platform(runtime, platform))
-        .flat_map(|(_, devices)| devices)
-        .collect::<Vec<_>>();
-    flattened.sort_by(|left, right| {
-        right
-            .is_booted()
-            .cmp(&left.is_booted())
-            .then_with(|| left.name.cmp(&right.name))
-    });
-
-    if flattened.is_empty() {
-        bail!("no available {platform} simulators were found");
-    }
-
-    let display = flattened
-        .iter()
-        .map(|device| format!("{} ({})", device.name, device.state))
-        .collect::<Vec<_>>();
-    let index = if project.app.interactive {
-        prompt_select("Select a simulator", &display)?
-    } else {
-        0
-    };
-    Ok(flattened.remove(index))
+    crate::apple::simulator::select_simulator_device(project, platform)
 }
 
 fn list_devicectl_devices(platform: ApplePlatform) -> Result<Vec<PhysicalDevice>> {
@@ -1228,19 +1201,6 @@ fn devicectl_platform_name(platform: ApplePlatform) -> &'static str {
         ApplePlatform::Tvos => "tvOS",
         ApplePlatform::Visionos => "visionOS",
         ApplePlatform::Watchos => "watchOS",
-    }
-}
-
-fn simulator_runtime_matches_platform(runtime_identifier: &str, platform: ApplePlatform) -> bool {
-    match platform {
-        ApplePlatform::Ios => runtime_identifier.contains(".SimRuntime.iOS-"),
-        ApplePlatform::Tvos => runtime_identifier.contains(".SimRuntime.tvOS-"),
-        ApplePlatform::Visionos => {
-            runtime_identifier.contains(".SimRuntime.xrOS-")
-                || runtime_identifier.contains(".SimRuntime.visionOS-")
-        }
-        ApplePlatform::Watchos => runtime_identifier.contains(".SimRuntime.watchOS-"),
-        ApplePlatform::Macos => runtime_identifier.contains(".SimRuntime.macOS-"),
     }
 }
 

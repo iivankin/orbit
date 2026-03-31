@@ -380,9 +380,18 @@ pub struct TestsManifest {
     pub ui: Option<TestTargetManifest>,
 }
 
+#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum TestFormat {
+    SwiftTesting,
+    Maestro,
+}
+
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 pub struct TestTargetManifest {
+    #[serde(default)]
+    pub format: Option<TestFormat>,
     #[serde(default)]
     pub sources: Vec<PathBuf>,
 }

@@ -3,7 +3,9 @@ pub mod init;
 
 use anyhow::Result;
 
-use crate::cli::{AppleCommand, AppleDeviceCommand, Cli, Command, DepsCommand, IdeCommand};
+use crate::cli::{
+    AppleCommand, AppleDeviceCommand, Cli, Command, DepsCommand, IdeCommand, UiCommand,
+};
 use crate::context::AppContext;
 use crate::manifest::{ManifestBackend, detect_schema};
 
@@ -13,6 +15,19 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
         Command::Lint(_) | Command::Format(_) | Command::Test(_) | Command::Bsp(_) => {
             dispatch_project_command(app, cli)
         }
+        Command::Ui(ui_args) => match &ui_args.command {
+            UiCommand::ResetIdb(_) => apple::execute(app, cli),
+            UiCommand::DumpTree(_)
+            | UiCommand::DescribePoint(_)
+            | UiCommand::Focus(_)
+            | UiCommand::Logs(_)
+            | UiCommand::AddMedia(_)
+            | UiCommand::Open(_)
+            | UiCommand::InstallDylib(_)
+            | UiCommand::Instruments(_)
+            | UiCommand::UpdateContacts(_)
+            | UiCommand::Crash(_) => dispatch_project_command(app, cli),
+        },
         Command::Deps(deps_args) => match &deps_args.command {
             DepsCommand::Update(_) => dispatch_project_command(app, cli),
         },

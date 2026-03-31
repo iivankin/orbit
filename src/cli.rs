@@ -20,7 +20,7 @@ pub const CLAP_STYLING: Styles = Styles::styled()
 #[command(arg_required_else_help = true)]
 #[command(styles = CLAP_STYLING)]
 #[command(
-    after_help = "Examples:\n  orbit init\n  orbit lint\n  orbit lint --platform ios\n  orbit format\n  orbit format --write\n  orbit test\n  orbit deps update\n  orbit deps update OrbitGreeting\n  orbit ide install-build-server\n  orbit ide dump-args\n  orbit ide dump-args --platform ios --file Sources/App/App.swift\n  orbit run --platform ios --simulator\n  orbit build --platform ios --distribution development\n  orbit build --platform ios --distribution app-store --release\n  orbit submit --platform ios --wait\n  orbit clean --all\n  orbit apple device list --refresh\n  orbit apple signing export --platform ios --distribution development\n  orbit apple signing import --platform ios --distribution development --p12 ./signing.p12 --password secret"
+    after_help = "Examples:\n  orbit init\n  orbit lint\n  orbit lint --platform ios\n  orbit format\n  orbit format --write\n  orbit test\n  orbit test --ui --platform ios\n  orbit ui dump-tree --platform ios\n  orbit ui describe-point --platform ios --x 140 --y 142\n  orbit ui open --platform ios https://example.com\n  orbit ui crash --platform ios list\n  orbit deps update\n  orbit deps update OrbitGreeting\n  orbit ide install-build-server\n  orbit ide dump-args\n  orbit ide dump-args --platform ios --file Sources/App/App.swift\n  orbit run --platform ios --simulator\n  orbit build --platform ios --distribution development\n  orbit build --platform ios --distribution app-store --release\n  orbit submit --platform ios --wait\n  orbit clean --all\n  orbit apple device list --refresh\n  orbit apple signing export --platform ios --distribution development\n  orbit apple signing import --platform ios --distribution development --p12 ./signing.p12 --password secret"
 )]
 pub struct Cli {
     #[arg(long, global = true)]
@@ -39,6 +39,7 @@ pub enum Command {
     Lint(LintArgs),
     Format(FormatArgs),
     Test(TestArgs),
+    Ui(UiArgs),
     Deps(DepsArgs),
     Ide(Box<IdeArgs>),
     Bsp(BspArgs),
@@ -65,7 +66,169 @@ pub struct FormatArgs {
 }
 
 #[derive(Debug, Args)]
-pub struct TestArgs {}
+pub struct TestArgs {
+    #[arg(long)]
+    pub ui: bool,
+
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+}
+
+#[derive(Debug, Args)]
+#[command(arg_required_else_help = true)]
+pub struct UiArgs {
+    #[command(subcommand)]
+    pub command: UiCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum UiCommand {
+    DumpTree(UiDumpTreeArgs),
+    DescribePoint(UiDescribePointArgs),
+    Focus(UiFocusArgs),
+    Logs(UiLogsArgs),
+    AddMedia(UiAddMediaArgs),
+    Open(UiOpenArgs),
+    InstallDylib(UiInstallDylibArgs),
+    Instruments(UiInstrumentsArgs),
+    UpdateContacts(UiUpdateContactsArgs),
+    Crash(UiCrashArgs),
+    ResetIdb(UiResetIdbArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct UiDumpTreeArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiDescribePointArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    #[arg(long)]
+    pub x: f64,
+
+    #[arg(long)]
+    pub y: f64,
+}
+
+#[derive(Debug, Args)]
+pub struct UiFocusArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+}
+
+#[derive(Debug, Args)]
+#[command(trailing_var_arg = true)]
+pub struct UiLogsArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    #[arg(allow_hyphen_values = true)]
+    pub log_args: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiAddMediaArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    #[arg(required = true)]
+    pub paths: Vec<PathBuf>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiOpenArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    pub url: String,
+}
+
+#[derive(Debug, Args)]
+pub struct UiInstallDylibArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Args)]
+#[command(trailing_var_arg = true)]
+pub struct UiInstrumentsArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    #[arg(long)]
+    pub template: String,
+
+    #[arg(allow_hyphen_values = true)]
+    pub instrument_args: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiUpdateContactsArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    pub path: PathBuf,
+}
+
+#[derive(Debug, Args)]
+#[command(arg_required_else_help = true)]
+pub struct UiCrashArgs {
+    #[arg(long, value_enum)]
+    pub platform: Option<TargetPlatform>,
+
+    #[command(subcommand)]
+    pub command: UiCrashCommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub enum UiCrashCommand {
+    List(UiCrashListArgs),
+    Show(UiCrashShowArgs),
+    Delete(UiCrashDeleteArgs),
+}
+
+#[derive(Debug, Args)]
+pub struct UiCrashListArgs {
+    #[arg(long)]
+    pub before: Option<String>,
+
+    #[arg(long)]
+    pub since: Option<String>,
+
+    #[arg(long)]
+    pub bundle_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiCrashShowArgs {
+    pub name: String,
+}
+
+#[derive(Debug, Args)]
+pub struct UiCrashDeleteArgs {
+    pub name: Option<String>,
+
+    #[arg(long)]
+    pub before: Option<String>,
+
+    #[arg(long)]
+    pub since: Option<String>,
+
+    #[arg(long)]
+    pub bundle_id: Option<String>,
+
+    #[arg(long)]
+    pub all: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UiResetIdbArgs {}
 
 #[derive(Debug, Args)]
 #[command(arg_required_else_help = true)]

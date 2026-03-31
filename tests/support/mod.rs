@@ -23,13 +23,13 @@ pub use self::live::{
     live_command, remote_capabilities_for_bundle_id, require_live_apple_config,
 };
 pub use self::tool_mocks::{
-    create_build_xcrun_mock, create_ditto_mock, create_passthrough_mock, create_quality_swift_mock,
-    create_security_mock, create_submit_swinfo_mock, create_testing_swift_mock,
-    create_watch_xcrun_mock,
+    create_build_xcrun_mock, create_ditto_mock, create_idb_mock, create_passthrough_mock,
+    create_quality_swift_mock, create_security_mock, create_submit_swinfo_mock,
+    create_testing_swift_mock, create_watch_xcrun_mock,
 };
 pub use self::workspaces::{
     create_git_swift_package_workspace, create_mixed_language_workspace,
     create_semver_git_swift_package_workspace, create_signing_workspace,
-    create_swift_package_workspace, create_testing_workspace, create_watch_workspace,
-    create_xcframework_workspace,
+    create_swift_package_workspace, create_testing_workspace, create_ui_testing_workspace,
+    create_watch_workspace, create_xcframework_workspace,
 };

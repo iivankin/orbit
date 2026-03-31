@@ -184,6 +184,114 @@ fi
     );
 }
 
+pub fn create_idb_mock(mock_bin: &Path) {
+    write_executable(
+        &mock_bin.join("idb"),
+        r#"#!/bin/sh
+set -eu
+echo "idb $@" >> "$MOCK_LOG"
+cmd=""
+if [ "$#" -ge 2 ] && [ "$1" = "ui" ]; then
+  cmd="$2"
+elif [ "$#" -ge 1 ]; then
+  cmd="$1"
+fi
+case "$cmd" in
+  describe-all)
+    cat <<'JSON'
+[
+  {
+    "AXLabel": "ExampleApp",
+    "frame": { "x": 0, "y": 0, "width": 393, "height": 852 }
+  },
+  {
+    "AXLabel": "Continue",
+    "frame": { "x": 40, "y": 120, "width": 200, "height": 44 }
+  },
+  {
+    "AXIdentifier": "email-value",
+    "AXLabel": "qa@example.com",
+    "frame": { "x": 40, "y": 180, "width": 200, "height": 44 }
+  },
+  {
+    "AXLabel": "Welcome",
+    "frame": { "x": 40, "y": 200, "width": 200, "height": 44 }
+  }
+]
+JSON
+    ;;
+  describe-point)
+    cat <<'JSON'
+{
+  "AXLabel": "Continue",
+  "frame": { "x": 40, "y": 120, "width": 200, "height": 44 }
+}
+JSON
+    ;;
+  video|record-video)
+    out="$2"
+    mkdir -p "$(dirname "$out")"
+    printf 'mp4' > "$out"
+    ;;
+  log)
+    printf 'mock log line\n'
+    ;;
+  crash)
+    sub="$2"
+    case "$sub" in
+      list)
+        printf 'mock-crash-1.ips\n'
+        ;;
+      show)
+        printf 'mock crash payload\n'
+        ;;
+      delete)
+        ;;
+      *)
+        echo "unexpected idb crash command: $@" >&2
+        exit 1
+        ;;
+    esac
+    ;;
+  contacts)
+    if [ "$#" -ge 2 ] && [ "$2" = "update" ]; then
+      :
+    else
+      echo "unexpected idb contacts command: $@" >&2
+      exit 1
+    fi
+    ;;
+  dylib)
+    if [ "$#" -ge 2 ] && [ "$2" = "install" ]; then
+      :
+    else
+      echo "unexpected idb dylib command: $@" >&2
+      exit 1
+    fi
+    ;;
+  instruments)
+    printf 'mock instruments trace\n'
+    ;;
+  tap|text|swipe|clear-keychain|set-location|uninstall|approve|launch|focus|add-media|kill|open)
+    ;;
+  button|key|key-sequence)
+    ;;
+  *)
+    echo "unexpected idb command: $@" >&2
+    exit 1
+    ;;
+esac
+"#,
+    );
+    write_executable(
+        &mock_bin.join("idb_companion"),
+        r#"#!/bin/sh
+set -eu
+echo "idb_companion $@" >> "$MOCK_LOG"
+"#,
+    );
+}
+
 pub fn create_ditto_mock(mock_bin: &Path) {
     write_executable(
         &mock_bin.join("ditto"),
@@ -277,6 +385,41 @@ fn create_xcrun_mock(mock_bin: &Path, sdk_root: &Path, kind: XcrunMockKind) {
     let extra_commands = match kind {
         XcrunMockKind::Build => {
             r#"if [ "$1" = "altool" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "list" ] && [ "$3" = "devices" ]; then
+  cat <<'JSON'
+{"devices":{"com.apple.CoreSimulator.SimRuntime.iOS-18-0":[{"udid":"IOS-UDID","name":"iPhone 16","state":"Booted"}]}}
+JSON
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "boot" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "bootstatus" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "install" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "launch" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "terminate" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "openurl" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "privacy" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "location" ] && [ "$4" = "start" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "io" ] && [ "$4" = "screenshot" ]; then
+  mkdir -p "$(dirname "$5")"
+  printf 'png' > "$5"
   exit 0
 fi"#
         }

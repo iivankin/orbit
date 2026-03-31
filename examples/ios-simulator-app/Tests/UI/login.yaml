@@ -1,0 +1,14 @@
+appId: dev.orbit.examples.exampleiosapp
+name: Login Demo
+---
+- launchApp
+- assertVisible: Orbit UI Demo
+- tapOn: Open Form
+- assertVisible: Email
+- tapOn: Email
+- inputText: ilya@orbit.dev
+- tapOn: Password
+- inputText: secret123
+- tapOn: Continue
+- assertVisible: Ready for automation
+- takeScreenshot: login-ready

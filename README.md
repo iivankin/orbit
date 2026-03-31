@@ -366,6 +366,7 @@ package and invoking `swift test`.
     "sources": ["Tests/Unit"]
   },
   "ui": {
+    "format": "maestro",
     "sources": ["Tests/UI"]
   }
 }
@@ -377,8 +378,28 @@ Run unit tests with:
 orbit test
 ```
 
-`tests.ui` is reserved for future support. The current runner targets Swift-only
-unit test suites that use `Swift Testing`.
+Run UI tests with:
+
+```sh
+orbit test --ui --platform ios
+```
+
+`tests.ui` currently supports an Orbit-native runner that executes a
+Maestro-style YAML subset against iOS simulators. Common commands such as
+`assertVisible`, `assertNotVisible`, and `tapOn` include built-in polling, and
+each top-level flow writes an `.mp4` screen recording alongside screenshots and
+the JSON report. Orbit also streams app logs to the terminal during
+`orbit test --ui`, `orbit run --platform ios --simulator`, and iOS device runs.
+
+Current iOS simulator command support includes:
+`launchApp`, `stopApp`, `killApp`, `clearState`, `clearKeychain`, `tapOn`,
+`tapOnPoint`, `doubleTapOn`, `longPressOn`, `swipe`, `scroll`,
+`scrollUntilVisible`, `inputText`, `pasteText`, `setClipboard`,
+`copyTextFrom`, `eraseText`, `pressKey`, `pressKeyCode`, `keySequence`,
+`pressButton`, `hideKeyboard`, `assertVisible`, `assertNotVisible`,
+`extendedWaitUntil`, `waitForAnimationToEnd`, `takeScreenshot`,
+`startRecording`, `stopRecording`, `openLink`, `setLocation`,
+`setPermissions`, `travel`, `addMedia`, `runFlow`, `repeat`, and `retry`.
 
 ## CLI
 
@@ -390,6 +411,74 @@ Run the manifest's `tests.unit` suite with Swift Testing:
 
 ```sh
 orbit test
+```
+
+Run the manifest's `tests.ui` suite on an iOS simulator:
+
+```sh
+orbit test --ui --platform ios
+```
+
+Inspect the launched app's accessibility tree on an iOS simulator:
+
+```sh
+orbit ui dump-tree --platform ios
+```
+
+Inspect the accessibility element at a specific point:
+
+```sh
+orbit ui describe-point --platform ios --x 140 --y 142
+```
+
+Bring the simulator window to the foreground:
+
+```sh
+orbit ui focus --platform ios
+```
+
+Tail simulator logs through `idb log`:
+
+```sh
+orbit ui logs --platform ios -- --timeout 1s
+```
+
+Import media into the simulator camera roll:
+
+```sh
+orbit ui add-media --platform ios ./Tests/Fixtures/cat.jpg
+```
+
+Open a URL or deep link through `idb open`:
+
+```sh
+orbit ui open --platform ios https://example.com
+```
+
+Install a simulator dylib with `idb dylib install`:
+
+```sh
+orbit ui install-dylib --platform ios ./Tests/Fixtures/TestAgent.dylib
+```
+
+Run Instruments against the selected simulator:
+
+```sh
+orbit ui instruments --platform ios --template "Time Profiler" -- --operation-duration 5
+```
+
+Overwrite the simulator contacts database:
+
+```sh
+orbit ui update-contacts --platform ios ./Tests/Fixtures/contacts.sqlite
+```
+
+Inspect or delete crash logs:
+
+```sh
+orbit ui crash --platform ios list --bundle-id dev.orbit.fixture.ui
+orbit ui crash --platform ios show mock-crash-1.ips
+orbit ui crash --platform ios delete --all --since 1710000000
 ```
 
 ### Run

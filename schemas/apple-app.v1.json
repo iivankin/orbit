@@ -1328,10 +1328,20 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
+        "format": {
+          "$ref": "#/$defs/testFormat"
+        },
         "sources": {
           "$ref": "#/$defs/pathArray"
         }
       }
+    },
+    "testFormat": {
+      "type": "string",
+      "enum": [
+        "swift-testing",
+        "maestro"
+      ]
     },
     "qualitySeverity": {
       "type": "string",

@@ -1,0 +1,38 @@
+appId: dev.orbit.examples.exampleiosapp
+name: Advanced Commands Demo
+---
+- launchApp:
+    clearState: true
+    clearKeychain: true
+    arguments:
+      orbitAutomation: true
+      seededEmail: copied@example.com
+    permissions:
+      location: allow
+      photos: deny
+      microphone: allow
+- assertVisible: Orbit UI Demo
+- copyTextFrom: Orbit UI Demo
+- startRecording: advanced-demo
+- tapOn: Open Form
+- extendedWaitUntil:
+    visible: Email
+    timeout: 2s
+- tapOn: Email
+- pasteText: {}
+- eraseText: 4
+- inputText: demo
+- pressKey: ENTER
+- hideKeyboard
+- waitForAnimationToEnd:
+    timeout: 750ms
+- setPermissions:
+    permissions:
+      reminders: unset
+- travel:
+    points:
+      - 55.7558,37.6173
+      - 55.7568,37.6183
+    speed: 42
+- stopRecording
+- takeScreenshot: advanced-demo

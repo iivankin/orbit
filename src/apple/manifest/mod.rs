@@ -14,7 +14,7 @@ pub const SCHEMA_FILENAME: &str = "apple-app.v1.json";
 
 pub use authoring::{
     AppManifest, FormatQualityManifest, HooksManifest, LintQualityManifest, QualityManifest,
-    TestTargetManifest, TestsManifest,
+    TestFormat, TestTargetManifest, TestsManifest,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

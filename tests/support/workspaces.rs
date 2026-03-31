@@ -179,6 +179,47 @@ pub fn create_testing_workspace(root: &Path) -> PathBuf {
     )
 }
 
+pub fn create_ui_testing_workspace(root: &Path) -> PathBuf {
+    create_workspace(
+        root,
+        "ui-testing-workspace",
+        &[
+            (
+                "Sources/App/App.swift",
+                "import SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(\"App\") } } }\n",
+            ),
+            (
+                "Tests/UI/login.yaml",
+                "appId: dev.orbit.fixture.ui\nname: Login\n---\n- clearKeychain\n- launchApp\n- assertVisible: Continue\n- swipe: LEFT\n- tapOn: Continue\n- inputText: hello orbit\n- openLink: https://example.com\n- takeScreenshot: after-login\n- setLocation:\n    latitude: 55.7558\n    longitude: 37.6173\n",
+            ),
+            (
+                "Tests/UI/advanced.yaml",
+                "appId: dev.orbit.fixture.ui\nname: Advanced\n---\n- launchApp:\n    stopApp: false\n    clearState: true\n    clearKeychain: true\n    arguments:\n      onboardingComplete: true\n      seedUser: qa@example.com\n    permissions:\n      location: allow\n      photos: deny\n- assertVisible:\n    text: Continue\n- tapOnPoint: 140, 142\n- pressButton: SIRI\n- setClipboard: orbit clipboard\n- copyTextFrom:\n    id: email-value\n- pasteText: {}\n- eraseText: 4\n- pressKey: ENTER\n- pressKeyCode:\n    keyCode: 41\n    duration: 200ms\n- keySequence:\n    - 4\n    - 5\n    - 6\n- hideKeyboard\n- extendedWaitUntil:\n    visible:\n      text: Continue\n    timeout: 1500ms\n- waitForAnimationToEnd:\n    timeout: 500ms\n- setPermissions:\n    permissions:\n      microphone: allow\n      reminders: unset\n- addMedia:\n    - ../Fixtures/cat.jpg\n- startRecording: advanced-clip\n- stopRecording\n- travel:\n    points:\n      - 55.7558,37.6173\n      - 55.7568,37.6183\n    speed: 42\n",
+            ),
+            ("Tests/Fixtures/cat.jpg", "jpeg"),
+            ("Tests/Fixtures/TestAgent.dylib", "dylib"),
+            ("Tests/Fixtures/contacts.sqlite", "sqlite"),
+        ],
+        &serde_json::json!({
+            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "name": "ExampleApp",
+            "bundle_id": "dev.orbit.fixture.ui",
+            "version": "0.1.0",
+            "build": 1,
+            "platforms": {
+                "ios": "18.0"
+            },
+            "sources": ["Sources/App"],
+            "tests": {
+                "ui": {
+                    "format": "maestro",
+                    "sources": ["Tests/UI"]
+                }
+            }
+        }),
+    )
+}
+
 pub fn create_xcframework_workspace(root: &Path) -> PathBuf {
     create_workspace(
         root,
