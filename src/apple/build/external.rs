@@ -1,21 +1,26 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::ffi::{OsStr, OsString};
+use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use anyhow::{Context, Result, bail};
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::apple::build::swiftc::{
     SwiftPackageTargetCompilePlan, package_target_swiftc_invocation,
 };
 use crate::apple::build::toolchain::{DestinationKind, Toolchain};
+use crate::apple::git_dependencies::materialize_git_dependency;
 use crate::context::ProjectContext;
 use crate::manifest::{
-    ApplePlatform, ProfileManifest, SwiftPackageDependency, TargetManifest, XcframeworkDependency,
+    ApplePlatform, ProfileManifest, SwiftPackageDependency, SwiftPackageSource, TargetManifest,
+    XcframeworkDependency,
 };
 use crate::util::{
-    collect_files_with_extensions, command_output, ensure_dir, resolve_path, run_command,
+    collect_files_with_extensions, command_output, ensure_dir, read_json_file_if_exists,
+    resolve_path, run_command, write_json_file,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -36,20 +41,32 @@ pub(crate) struct PackageBuildOutput {
     pub link_libraries: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct SwiftPackageBuildCacheInfo {
+    fingerprint: String,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+struct SwiftPackageManifestCacheInfo {
+    fingerprint: String,
+    description: String,
+    manifest: SwiftPackageManifest,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct SwiftPackageManifest {
     pub name: String,
     pub products: Vec<SwiftPackageProduct>,
     pub targets: Vec<SwiftPackageTarget>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct SwiftPackageProduct {
     pub name: String,
     pub targets: Vec<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct SwiftPackageTarget {
     pub name: String,
     pub path: Option<String>,
@@ -59,7 +76,7 @@ pub(crate) struct SwiftPackageTarget {
     pub kind: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(untagged)]
 pub(crate) enum SwiftPackageTargetDependency {
     ByName {
@@ -130,6 +147,28 @@ pub(crate) fn resolve_external_link_inputs(
     dedup_vec(&mut inputs.embedded_payloads);
 
     Ok(inputs)
+}
+
+pub(crate) fn target_dependency_watch_roots(
+    project: &ProjectContext,
+    target: &TargetManifest,
+) -> Vec<PathBuf> {
+    let mut roots = BTreeSet::new();
+    for dependency in &target.swift_packages {
+        if let SwiftPackageSource::Path { path } = &dependency.source {
+            let root = resolve_path(&project.root, path);
+            if root.starts_with(&project.root) {
+                roots.insert(root);
+            }
+        }
+    }
+    for dependency in &target.xcframeworks {
+        let root = resolve_path(&project.root, &dependency.path);
+        if root.starts_with(&project.root) {
+            roots.insert(root);
+        }
+    }
+    roots.into_iter().collect()
 }
 
 pub(crate) fn resolve_xcframework_dependency(
@@ -275,23 +314,12 @@ pub(crate) fn compile_swift_package(
     project: &ProjectContext,
     toolchain: &Toolchain,
     profile: &ProfileManifest,
-    intermediates_dir: &Path,
+    _intermediates_dir: &Path,
     index_store_path: Option<&Path>,
     dependency: &SwiftPackageDependency,
 ) -> Result<PackageBuildOutput> {
-    let package_root = resolve_path(&project.root, &dependency.path);
-    let description = command_output(
-        Command::new("swift")
-            .args(["package", "--package-path"])
-            .arg(&package_root)
-            .arg("dump-package"),
-    )?;
-    let package: SwiftPackageManifest = serde_json::from_str(&description).with_context(|| {
-        format!(
-            "failed to parse Swift package description for {}",
-            package_root.display()
-        )
-    })?;
+    let package_root = swift_package_root(project, dependency)?;
+    let (description, package) = load_swift_package_manifest(project, &package_root)?;
 
     let product = package
         .products
@@ -306,14 +334,17 @@ pub(crate) fn compile_swift_package(
         })?;
 
     let built_target_names = ordered_package_targets(&package, &product.targets)?;
-    let module_dir = intermediates_dir
-        .join("swiftpackages")
-        .join(&dependency.product)
-        .join("modules");
-    let library_dir = intermediates_dir
-        .join("swiftpackages")
-        .join(&dependency.product)
-        .join("libs");
+    let cache_root = swift_package_cache_root(
+        project,
+        &package_root,
+        dependency,
+        toolchain,
+        profile,
+        index_store_path,
+    );
+    let module_dir = cache_root.join("modules");
+    let library_dir = cache_root.join("libs");
+    let cache_info_path = cache_root.join("build-info.json");
     ensure_dir(&module_dir)?;
     ensure_dir(&library_dir)?;
 
@@ -322,7 +353,34 @@ pub(crate) fn compile_swift_package(
         .iter()
         .map(|target| (target.name.as_str(), target))
         .collect::<HashMap<_, _>>();
-    let mut built_libraries = Vec::new();
+    let built_libraries = built_target_names
+        .iter()
+        .map(|target_name| swift_package_library_name(&package.name, target_name))
+        .collect::<Vec<_>>();
+    let fingerprint = swift_package_build_fingerprint(
+        &description,
+        &package_root,
+        toolchain,
+        profile,
+        &built_target_names,
+        &targets_by_name,
+    )?;
+    if let Some(cache_info) =
+        read_json_file_if_exists::<SwiftPackageBuildCacheInfo>(&cache_info_path)?
+        && cache_info.fingerprint == fingerprint
+        && swift_package_cache_outputs_exist(
+            &module_dir,
+            &library_dir,
+            &built_target_names,
+            &built_libraries,
+        )
+    {
+        return Ok(PackageBuildOutput {
+            module_dir,
+            library_dir,
+            link_libraries: built_libraries,
+        });
+    }
 
     for target_name in &built_target_names {
         let package_target = targets_by_name
@@ -371,14 +429,37 @@ pub(crate) fn compile_swift_package(
                 "failed to compile Swift package target `{target_name}` from {source_count} source file(s)"
             )
         })?;
-        built_libraries.push(library_name);
     }
+    write_json_file(
+        &cache_info_path,
+        &SwiftPackageBuildCacheInfo { fingerprint },
+    )?;
 
     Ok(PackageBuildOutput {
         module_dir,
         library_dir,
         link_libraries: built_libraries,
     })
+}
+
+fn swift_package_root(
+    project: &ProjectContext,
+    dependency: &SwiftPackageDependency,
+) -> Result<PathBuf> {
+    match &dependency.source {
+        SwiftPackageSource::Path { path } => Ok(resolve_path(&project.root, path)),
+        SwiftPackageSource::Git {
+            url,
+            version,
+            revision,
+        } => match (version.as_deref(), revision.as_deref()) {
+            (_, Some(revision)) => materialize_git_dependency(&project.app, url, revision),
+            (Some(_), None) => unreachable!(
+                "versioned git dependencies must be resolved through orbit.lock before build resolution"
+            ),
+            (None, None) => unreachable!("git dependencies are validated before build resolution"),
+        },
+    }
 }
 
 pub(crate) fn ordered_package_targets(
@@ -571,5 +652,180 @@ fn sanitize_library_name_component(value: &str) -> String {
                 '_'
             }
         })
+        .collect()
+}
+
+fn swift_package_cache_root(
+    project: &ProjectContext,
+    package_root: &Path,
+    dependency: &SwiftPackageDependency,
+    toolchain: &Toolchain,
+    profile: &ProfileManifest,
+    index_store_path: Option<&Path>,
+) -> PathBuf {
+    let package_key = short_hash(
+        &[
+            package_root.to_string_lossy().as_ref(),
+            dependency.product.as_str(),
+            toolchain.target_triple.as_str(),
+            profile.variant_name().as_str(),
+            &index_store_cache_key(index_store_path),
+        ]
+        .join("\n"),
+    );
+    project
+        .app
+        .global_paths
+        .cache_dir
+        .join("swiftpackages")
+        .join(format!("{}-{}", dependency.product, package_key))
+}
+
+fn load_swift_package_manifest(
+    project: &ProjectContext,
+    package_root: &Path,
+) -> Result<(String, SwiftPackageManifest)> {
+    let cache_root = swift_package_manifest_cache_root(project, package_root);
+    let cache_info_path = cache_root.join("manifest.json");
+    ensure_dir(&cache_root)?;
+
+    let fingerprint = swift_package_manifest_fingerprint(package_root)?;
+    if let Some(cache_info) =
+        read_json_file_if_exists::<SwiftPackageManifestCacheInfo>(&cache_info_path)?
+        && cache_info.fingerprint == fingerprint
+    {
+        return Ok((cache_info.description, cache_info.manifest));
+    }
+
+    let description = command_output(
+        Command::new("swift")
+            .args(["package", "--package-path"])
+            .arg(package_root)
+            .arg("dump-package"),
+    )?;
+    let manifest: SwiftPackageManifest = serde_json::from_str(&description).with_context(|| {
+        format!(
+            "failed to parse Swift package description for {}",
+            package_root.display()
+        )
+    })?;
+    write_json_file(
+        &cache_info_path,
+        &SwiftPackageManifestCacheInfo {
+            fingerprint,
+            description: description.clone(),
+            manifest: manifest.clone(),
+        },
+    )?;
+    Ok((description, manifest))
+}
+
+fn swift_package_manifest_cache_root(project: &ProjectContext, package_root: &Path) -> PathBuf {
+    project
+        .app
+        .global_paths
+        .cache_dir
+        .join("swiftpackage-manifests")
+        .join(short_hash(package_root.to_string_lossy().as_ref()))
+}
+
+fn swift_package_manifest_fingerprint(package_root: &Path) -> Result<String> {
+    let mut hasher = Sha256::new();
+    hash_optional_file(&mut hasher, &package_root.join("Package.swift"))?;
+    hash_optional_file(&mut hasher, &package_root.join("Package.resolved"))?;
+    hash_optional_file(
+        &mut hasher,
+        &package_root.join(".swiftpm").join("Package.resolved"),
+    )?;
+    Ok(hex_digest(hasher.finalize()))
+}
+
+fn swift_package_build_fingerprint(
+    package_description: &str,
+    package_root: &Path,
+    toolchain: &Toolchain,
+    profile: &ProfileManifest,
+    built_target_names: &[String],
+    targets_by_name: &HashMap<&str, &SwiftPackageTarget>,
+) -> Result<String> {
+    let mut hasher = Sha256::new();
+    hasher.update(package_description.as_bytes());
+    hasher.update(toolchain.target_triple.as_bytes());
+    hasher.update(toolchain.sdk_name.as_bytes());
+    hasher.update(profile.variant_name().as_bytes());
+    for target_name in built_target_names {
+        hasher.update(target_name.as_bytes());
+        let package_target = targets_by_name
+            .get(target_name.as_str())
+            .copied()
+            .with_context(|| format!("missing Swift package target `{target_name}`"))?;
+        let source_root = package_target
+            .path
+            .as_ref()
+            .map(|path| package_root.join(path))
+            .unwrap_or_else(|| package_root.join("Sources").join(target_name));
+        for source in collect_files_with_extensions(&source_root, &["swift"])? {
+            let metadata = fs::metadata(&source)
+                .with_context(|| format!("failed to read metadata for {}", source.display()))?;
+            hasher.update(source.to_string_lossy().as_bytes());
+            hasher.update(metadata.len().to_string().as_bytes());
+            let modified = metadata
+                .modified()
+                .with_context(|| format!("failed to read mtime for {}", source.display()))?
+                .duration_since(std::time::UNIX_EPOCH)
+                .with_context(|| format!("mtime for {} was before UNIX_EPOCH", source.display()))?;
+            hasher.update(modified.as_nanos().to_string().as_bytes());
+        }
+    }
+    Ok(hex_digest(hasher.finalize()))
+}
+
+fn swift_package_cache_outputs_exist(
+    module_dir: &Path,
+    library_dir: &Path,
+    built_target_names: &[String],
+    built_libraries: &[String],
+) -> bool {
+    built_target_names.iter().all(|target_name| {
+        module_dir
+            .join(format!("{target_name}.swiftmodule"))
+            .exists()
+    }) && built_libraries
+        .iter()
+        .all(|library_name| library_dir.join(format!("lib{library_name}.a")).exists())
+}
+
+fn index_store_cache_key(index_store_path: Option<&Path>) -> String {
+    match index_store_path {
+        Some(path) => format!("indexed:{}", short_hash(path.to_string_lossy().as_ref())),
+        None => "no-index".to_owned(),
+    }
+}
+
+fn hash_optional_file(hasher: &mut Sha256, path: &Path) -> Result<()> {
+    hasher.update(path.to_string_lossy().as_bytes());
+    if !path.exists() {
+        hasher.update(b"missing");
+        return Ok(());
+    }
+    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
+    hasher.update(bytes.len().to_string().as_bytes());
+    hasher.update(&bytes);
+    Ok(())
+}
+
+fn short_hash(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    digest[..8]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
+}
+
+fn hex_digest(digest: impl AsRef<[u8]>) -> String {
+    digest
+        .as_ref()
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
         .collect()
 }

@@ -8,7 +8,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::apple::analysis::{
     SemanticCompilationArtifact, SemanticCompilerInvocation, build_semantic_compilation_artifact,
-    collect_project_swift_files, load_analysis_project,
+    collect_project_swift_files, load_cached_analysis_project,
 };
 use crate::apple::runtime::apple_platform_from_cli;
 use crate::cli::{FormatArgs, LintArgs};
@@ -25,7 +25,7 @@ pub fn lint_project(
     args: &LintArgs,
     requested_manifest: Option<&Path>,
 ) -> Result<()> {
-    let analysis_project = load_analysis_project(app, requested_manifest)?;
+    let analysis_project = load_cached_analysis_project(app, requested_manifest)?;
     let project = &analysis_project.project;
     let lint_quality = lint_quality_config(project)?;
     let include_source = |path: &Path| {
@@ -89,7 +89,7 @@ pub fn format_project(
     args: &FormatArgs,
     requested_manifest: Option<&Path>,
 ) -> Result<()> {
-    let analysis_project = load_analysis_project(app, requested_manifest)?;
+    let analysis_project = load_cached_analysis_project(app, requested_manifest)?;
     let project = &analysis_project.project;
     let ignore_matcher = format_ignore_matcher(project)?;
     let include_source = |path: &Path| {

@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde::Serialize;
 
 use crate::apple::analysis::{
-    SemanticCompilerInvocation, build_semantic_compilation_artifact, load_analysis_project,
+    SemanticCompilerInvocation, build_semantic_compilation_artifact, load_cached_analysis_project,
 };
 use crate::apple::runtime::apple_platform_from_cli;
 use crate::cli::IdeDumpArgs;
@@ -25,7 +25,7 @@ pub fn dump_args(
     args: &IdeDumpArgs,
     requested_manifest: Option<&Path>,
 ) -> Result<()> {
-    let analysis_project = load_analysis_project(app, requested_manifest)?;
+    let analysis_project = load_cached_analysis_project(app, requested_manifest)?;
     let requested_file = args
         .file
         .as_deref()

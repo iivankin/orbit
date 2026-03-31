@@ -98,6 +98,17 @@ pub fn create_quality_swift_mock(mock_bin: &Path) {
         r#"#!/bin/sh
 set -eu
 echo "swift $@" >> "$MOCK_LOG"
+if [ "$#" -ge 4 ] && [ "$1" = "package" ] && [ "$2" = "--package-path" ] && [ "$4" = "dump-package" ]; then
+  package_path="$3"
+  if [ -f "$package_path/Sources/OrbitPkg/OrbitPkg.swift" ]; then
+    cat <<'JSON'
+{"name":"OrbitPkg","products":[{"name":"OrbitPkg","targets":["OrbitPkg"]}],"targets":[{"name":"OrbitPkg","path":"Sources/OrbitPkg","dependencies":[],"type":"regular"}]}
+JSON
+    exit 0
+  fi
+  echo "unexpected package path: $package_path" >&2
+  exit 1
+fi
 scratch=""
 product=""
 show_bin_path=0

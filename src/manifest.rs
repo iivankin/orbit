@@ -9,7 +9,7 @@ pub use crate::apple::manifest::{
     ApplePlatform, BuildConfiguration, DistributionKind, ExtensionManifest, IosDeviceFamily,
     IosInterfaceOrientation, IosSupportedOrientationsManifest, IosTargetManifest, PlatformManifest,
     ProfileManifest, PushManifest, QualityManifest, ResolvedManifest, SwiftPackageDependency,
-    TargetKind, TargetManifest, XcframeworkDependency,
+    SwiftPackageSource, TargetKind, TargetManifest, XcframeworkDependency,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

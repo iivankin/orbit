@@ -8,11 +8,12 @@ use serde::Serialize;
 use serde_json::{Value, json};
 
 use crate::apple::analysis::{
-    AnalysisProject, SemanticCompilationArtifact, SemanticCompilerInvocation,
-    build_semantic_compilation_artifact, collect_target_header_files,
-    load_persistent_analysis_project,
+    AnalysisProject, C_FAMILY_HEADER_EXTENSIONS, C_FAMILY_SOURCE_EXTENSIONS,
+    SemanticCompilationArtifact, SemanticCompilerInvocation, build_semantic_compilation_artifact,
+    collect_target_header_files, load_persistent_analysis_project,
 };
 use crate::apple::build;
+use crate::apple::build::external::target_dependency_watch_roots;
 use crate::apple::build::toolchain::DestinationKind;
 use crate::context::AppContext;
 use crate::manifest::{ApplePlatform, TargetKind};
@@ -150,20 +151,10 @@ impl BspServer {
             "workspace/didChangeWatchedFiles" => {
                 // Source edits can temporarily leave the workspace in a broken state.
                 // Keep serving the last known-good snapshot instead of crashing the BSP server.
-                let changed_files = watched_file_paths_from_params(&params);
-                match self.reload_snapshot(changed_files.as_slice()) {
+                let changes = watched_file_changes_from_params(&params);
+                match self.handle_watched_file_changes(changes.as_slice(), writer) {
                     Ok(()) => {
-                        self.emit_log_message(
-                            writer,
-                            4,
-                            "Orbit BSP reloaded build settings after watched file changes.",
-                            None,
-                            None,
-                            Some(structured_log_payload("report", None)),
-                        )?;
-                        if let Some(notification) = self.take_pending_did_change_notification() {
-                            write_jsonrpc_message(writer, &notification)?;
-                        }
+                        // Notifications are emitted by the watched-file handler itself.
                     }
                     Err(error) => {
                         self.emit_log_message(
@@ -188,6 +179,56 @@ impl BspServer {
             write_jsonrpc_message(writer, &response)?;
         }
         Ok(true)
+    }
+
+    fn handle_watched_file_changes<W: Write>(
+        &mut self,
+        changes: &[WatchedFileChange],
+        writer: &mut W,
+    ) -> Result<()> {
+        if self.snapshot.is_none() {
+            self.reload_snapshot(&[])?;
+        }
+        if self.can_skip_snapshot_reload_for_watched_file_changes(changes) {
+            let changed_files = changes
+                .iter()
+                .map(|change| change.path.clone())
+                .collect::<Vec<_>>();
+            self.emit_log_message(
+                writer,
+                4,
+                "Orbit BSP updated target change notifications from watched source edits without rebuilding the semantic snapshot.",
+                None,
+                None,
+                Some(structured_log_payload("report", None)),
+            )?;
+            if let Some(notification) = build_target_did_change_notification_with_changed_files(
+                self.snapshot.as_ref(),
+                self.snapshot.as_ref(),
+                &changed_files,
+            ) {
+                write_jsonrpc_message(writer, &notification)?;
+            }
+            return Ok(());
+        }
+
+        let changed_files = changes
+            .iter()
+            .map(|change| change.path.clone())
+            .collect::<Vec<_>>();
+        self.reload_snapshot(changed_files.as_slice())?;
+        self.emit_log_message(
+            writer,
+            4,
+            "Orbit BSP reloaded build settings after watched file changes.",
+            None,
+            None,
+            Some(structured_log_payload("report", None)),
+        )?;
+        if let Some(notification) = self.take_pending_did_change_notification() {
+            write_jsonrpc_message(writer, &notification)?;
+        }
+        Ok(())
     }
 
     fn initialize(&mut self) -> Result<Value> {
@@ -559,6 +600,34 @@ impl BspServer {
             .and_then(|snapshot| snapshot.pending_did_change_notification.take())
     }
 
+    fn can_skip_snapshot_reload_for_watched_file_changes(
+        &self,
+        changes: &[WatchedFileChange],
+    ) -> bool {
+        let Some(snapshot) = self.snapshot.as_ref() else {
+            return false;
+        };
+        if changes.is_empty() {
+            return true;
+        }
+        changes.iter().all(|change| {
+            if watched_file_change_affects_build_graph(&change.path) {
+                return false;
+            }
+            if watched_file_change_is_quality_only(&change.path) {
+                return true;
+            }
+            if snapshot.contains_dependency_input_path(&change.path) {
+                return false;
+            }
+            if !watched_file_change_is_source_like(&change.path) {
+                return true;
+            }
+            change.kind == WatchedFileChangeKind::Changed
+                && snapshot.targets_by_source_path.contains_key(&change.path)
+        })
+    }
+
     fn new_task_id(&mut self) -> Value {
         let task_id = format!("orbit-task-{}", self.next_task_id);
         self.next_task_id += 1;
@@ -695,6 +764,21 @@ struct BspSnapshot {
     targets: Vec<BspTarget>,
     targets_by_id: HashMap<String, BspTarget>,
     targets_by_source_path: HashMap<PathBuf, Vec<String>>,
+    targets_by_dependency_root: Vec<(PathBuf, Vec<String>)>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct WatchedFileChange {
+    path: PathBuf,
+    kind: WatchedFileChangeKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WatchedFileChangeKind {
+    Created,
+    Changed,
+    Deleted,
+    Unknown,
 }
 
 impl BspSnapshot {
@@ -796,6 +880,30 @@ impl BspSnapshot {
             target_ids.sort();
             target_ids.dedup();
         }
+        let mut targets_by_dependency_root = BTreeMap::<PathBuf, Vec<String>>::new();
+        for target in &targets {
+            let manifest_target = targets_by_name
+                .get(target.target_name.as_str())
+                .copied()
+                .with_context(|| {
+                    format!(
+                        "missing target `{}` in resolved manifest",
+                        target.target_name
+                    )
+                })?;
+            for root in target_dependency_watch_roots(project, manifest_target) {
+                targets_by_dependency_root
+                    .entry(root)
+                    .or_default()
+                    .push(target.id.clone());
+            }
+        }
+        let mut targets_by_dependency_root =
+            targets_by_dependency_root.into_iter().collect::<Vec<_>>();
+        for (_, target_ids) in &mut targets_by_dependency_root {
+            target_ids.sort();
+            target_ids.dedup();
+        }
         Ok(Self {
             _analysis_project: analysis_project,
             project_root_uri,
@@ -805,7 +913,14 @@ impl BspSnapshot {
             targets,
             targets_by_id,
             targets_by_source_path,
+            targets_by_dependency_root,
         })
+    }
+
+    fn contains_dependency_input_path(&self, path: &Path) -> bool {
+        self.targets_by_dependency_root
+            .iter()
+            .any(|(root, _)| path.starts_with(root))
     }
 }
 
@@ -1188,6 +1303,7 @@ fn build_watchers() -> Vec<Value> {
         "**/.swift-format",
         "**/.swift-format.json",
         "**/.editorconfig",
+        "**/*.swift",
         "**/*.c",
         "**/*.m",
         "**/*.mm",
@@ -1198,6 +1314,8 @@ fn build_watchers() -> Vec<Value> {
         "**/*.hh",
         "**/*.hpp",
         "**/*.hxx",
+        "**/*.xcframework",
+        "**/*.xcframework/**",
     ]
     .into_iter()
     .map(|glob_pattern| {
@@ -1314,23 +1432,60 @@ fn targets_for_changed_file(
         if let Some(target_ids) = snapshot.targets_by_source_path.get(changed_file) {
             targets.extend(target_ids.iter().cloned());
         }
+        for (root, target_ids) in &snapshot.targets_by_dependency_root {
+            if changed_file.starts_with(root) {
+                targets.extend(target_ids.iter().cloned());
+            }
+        }
     }
     targets
 }
 
-fn watched_file_paths_from_params(params: &Value) -> Vec<PathBuf> {
+fn watched_file_changes_from_params(params: &Value) -> Vec<WatchedFileChange> {
     params
         .get("changes")
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
         .filter_map(|change| {
-            change
+            let path = change
                 .get("uri")
                 .and_then(Value::as_str)
-                .and_then(|uri| file_path_from_uri(uri).ok())
+                .and_then(|uri| file_path_from_uri(uri).ok())?;
+            let kind = match change.get("type").and_then(Value::as_i64) {
+                Some(1) => WatchedFileChangeKind::Created,
+                Some(2) => WatchedFileChangeKind::Changed,
+                Some(3) => WatchedFileChangeKind::Deleted,
+                _ => WatchedFileChangeKind::Unknown,
+            };
+            Some(WatchedFileChange { path, kind })
         })
         .collect()
+}
+
+fn watched_file_change_affects_build_graph(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some("orbit.json" | "Package.swift" | "Package.resolved")
+    )
+}
+
+fn watched_file_change_is_quality_only(path: &Path) -> bool {
+    matches!(
+        path.file_name().and_then(|name| name.to_str()),
+        Some(".swift-format" | ".swift-format.json" | ".editorconfig")
+    )
+}
+
+fn watched_file_change_is_source_like(path: &Path) -> bool {
+    match path.extension().and_then(|extension| extension.to_str()) {
+        Some("swift") => true,
+        Some(extension) => C_FAMILY_SOURCE_EXTENSIONS
+            .iter()
+            .chain(C_FAMILY_HEADER_EXTENSIONS.iter())
+            .any(|candidate| extension.eq_ignore_ascii_case(candidate)),
+        None => false,
+    }
 }
 
 fn origin_id_from_params(params: &Value) -> Option<String> {

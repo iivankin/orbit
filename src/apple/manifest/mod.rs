@@ -257,7 +257,20 @@ impl TargetKind {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SwiftPackageDependency {
     pub product: String,
-    pub path: PathBuf,
+    pub source: SwiftPackageSource,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "kebab-case")]
+pub enum SwiftPackageSource {
+    Path {
+        path: PathBuf,
+    },
+    Git {
+        url: String,
+        version: Option<String>,
+        revision: Option<String>,
+    },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -284,7 +297,9 @@ pub struct ExtensionManifest {
 
 impl ResolvedManifest {
     pub fn load(path: &Path, orbit_dir: &Path) -> Result<Self> {
-        normalize::load_manifest(path, orbit_dir)
+        let mut manifest = normalize::load_manifest(path, orbit_dir)?;
+        crate::apple::lockfile::apply_lockfile(path, &mut manifest)?;
+        Ok(manifest)
     }
 
     pub fn validate_distribution(

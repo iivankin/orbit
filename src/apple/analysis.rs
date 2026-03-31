@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use serde::Serialize;
-use tempfile::TempDir;
+use sha2::{Digest, Sha256};
 
 use crate::apple::build::clang::{
     ClangCompilePlan, ClangSourceLanguage, object_file_name, target_clang_invocation,
@@ -25,7 +25,6 @@ pub(crate) const C_FAMILY_HEADER_EXTENSIONS: &[&str] = &["h", "hh", "hpp", "hxx"
 
 pub(crate) struct AnalysisProject {
     pub(crate) project: ProjectContext,
-    _scratch: Option<TempDir>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -52,41 +51,26 @@ pub(crate) struct SemanticCompilerInvocation {
     pub output_path: Option<String>,
 }
 
-pub(crate) fn load_analysis_project(
-    app: &AppContext,
-    requested_manifest: Option<&Path>,
-) -> Result<AnalysisProject> {
-    let manifest_path = app.resolve_manifest_path_for_dispatch(requested_manifest)?;
-    let manifest_path = manifest_path
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize {}", manifest_path.display()))?;
-    let manifest_schema = detect_schema(&manifest_path)?;
-    let scratch = tempfile::tempdir().context("failed to create Orbit analysis workspace")?;
-    let orbit_dir = scratch.path().join("orbit");
-    load_analysis_project_with_orbit_dir(
-        app,
-        manifest_path,
-        manifest_schema,
-        orbit_dir,
-        Some(scratch),
-    )
-}
-
 pub(crate) fn load_persistent_analysis_project(
     app: &AppContext,
     requested_manifest: Option<&Path>,
 ) -> Result<AnalysisProject> {
-    let manifest_path = app.resolve_manifest_path_for_dispatch(requested_manifest)?;
-    let manifest_path = manifest_path
-        .canonicalize()
-        .with_context(|| format!("failed to canonicalize {}", manifest_path.display()))?;
-    let manifest_schema = detect_schema(&manifest_path)?;
+    let (manifest_path, manifest_schema) = resolve_analysis_manifest(app, requested_manifest)?;
     let root = manifest_path
         .parent()
         .context("manifest path did not contain a parent directory")?
         .to_path_buf();
     let orbit_dir = root.join(".orbit").join("ide");
-    load_analysis_project_with_orbit_dir(app, manifest_path, manifest_schema, orbit_dir, None)
+    load_analysis_project_with_orbit_dir(app, manifest_path, manifest_schema, orbit_dir)
+}
+
+pub(crate) fn load_cached_analysis_project(
+    app: &AppContext,
+    requested_manifest: Option<&Path>,
+) -> Result<AnalysisProject> {
+    let (manifest_path, manifest_schema) = resolve_analysis_manifest(app, requested_manifest)?;
+    let orbit_dir = cached_analysis_orbit_dir(app, &manifest_path);
+    load_analysis_project_with_orbit_dir(app, manifest_path, manifest_schema, orbit_dir)
 }
 
 fn load_analysis_project_with_orbit_dir(
@@ -94,7 +78,6 @@ fn load_analysis_project_with_orbit_dir(
     manifest_path: PathBuf,
     manifest_schema: ManifestSchema,
     orbit_dir: PathBuf,
-    scratch: Option<TempDir>,
 ) -> Result<AnalysisProject> {
     let root = manifest_path
         .parent()
@@ -125,10 +108,35 @@ fn load_analysis_project_with_orbit_dir(
         },
     };
 
-    Ok(AnalysisProject {
-        project,
-        _scratch: scratch,
-    })
+    Ok(AnalysisProject { project })
+}
+
+fn resolve_analysis_manifest(
+    app: &AppContext,
+    requested_manifest: Option<&Path>,
+) -> Result<(PathBuf, ManifestSchema)> {
+    let manifest_path = app.resolve_manifest_path_for_dispatch(requested_manifest)?;
+    let manifest_path = manifest_path
+        .canonicalize()
+        .with_context(|| format!("failed to canonicalize {}", manifest_path.display()))?;
+    let manifest_schema = detect_schema(&manifest_path)?;
+    Ok((manifest_path, manifest_schema))
+}
+
+fn cached_analysis_orbit_dir(app: &AppContext, manifest_path: &Path) -> PathBuf {
+    let manifest_key = short_hash(manifest_path.to_string_lossy().as_ref());
+    app.global_paths
+        .cache_dir
+        .join("analysis")
+        .join(manifest_key)
+}
+
+fn short_hash(value: &str) -> String {
+    let digest = Sha256::digest(value.as_bytes());
+    digest[..8]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub(crate) fn build_semantic_compilation_artifact<F>(

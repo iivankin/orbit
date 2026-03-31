@@ -1701,6 +1701,7 @@ dependencies = [
  "pbkdf2",
  "plist",
  "reqwest",
+ "semver",
  "serde",
  "serde_json",
  "sha1",

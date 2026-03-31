@@ -164,12 +164,38 @@ Example:
 ```json
 "dependencies": {
   "OrbitGreeting": { "path": "Packages/OrbitGreeting" },
+  "PinnedGreeting": {
+    "git": "https://github.com/example/PinnedGreeting.git",
+    "version": "1.2.0"
+  },
   "NetworkExtension": { "framework": true },
   "VendorSDK": { "xcframework": "Vendor/VendorSDK.xcframework" }
 }
 ```
 
 This keeps the public schema cleaner than separate arrays for `swift_packages`, `frameworks`, `weak_frameworks`, and `xcframeworks`.
+
+For git-backed Swift packages:
+
+- omit `version` to pin directly to an exact `revision`
+- set `version` to request an exact release tag, then resolve it into `orbit.lock`
+
+Versioned git dependencies require `orbit.lock`. Generate or refresh it with:
+
+```bash
+orbit deps lock
+```
+
+`orbit deps update` refreshes git dependency intent and then rewrites `orbit.lock`:
+
+- to remote `HEAD` when there is no `version`
+- to the latest remote semver tag in the same major when `version` is present, rewriting `version` in `orbit.json` and the resolved `revision` in `orbit.lock`
+
+```bash
+orbit deps lock
+orbit deps update
+orbit deps update PinnedGreeting
+```
 
 Orbit should auto-detect whether a dependency needs embedding.
 

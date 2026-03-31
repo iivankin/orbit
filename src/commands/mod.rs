@@ -3,7 +3,7 @@ pub mod init;
 
 use anyhow::Result;
 
-use crate::cli::{AppleCommand, AppleDeviceCommand, Cli, Command, IdeCommand};
+use crate::cli::{AppleCommand, AppleDeviceCommand, Cli, Command, DepsCommand, IdeCommand};
 use crate::context::AppContext;
 use crate::manifest::{ManifestBackend, detect_schema};
 
@@ -13,6 +13,10 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
         Command::Lint(_) | Command::Format(_) | Command::Bsp(_) => {
             dispatch_project_command(app, cli)
         }
+        Command::Deps(deps_args) => match &deps_args.command {
+            DepsCommand::Lock(_) => dispatch_project_command(app, cli),
+            DepsCommand::Update(_) => dispatch_project_command(app, cli),
+        },
         Command::Ide(ide_args) => match &ide_args.command {
             IdeCommand::InstallBuildServer(_) | IdeCommand::DumpArgs(_) => {
                 dispatch_project_command(app, cli)

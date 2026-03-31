@@ -4,6 +4,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 use plist::Value as PlistValue;
+use semver::Version;
 use serde_json::Value as JsonValue;
 
 use super::authoring::{
@@ -12,7 +13,8 @@ use super::authoring::{
 use super::entitlements::build_entitlements_dictionary;
 use super::{
     ApplePlatform, ExtensionManifest, IosTargetManifest, PlatformManifest, PushManifest,
-    ResolvedManifest, SwiftPackageDependency, TargetKind, TargetManifest, XcframeworkDependency,
+    ResolvedManifest, SwiftPackageDependency, SwiftPackageSource, TargetKind, TargetManifest,
+    XcframeworkDependency,
 };
 use crate::util::ensure_dir;
 
@@ -378,6 +380,7 @@ fn normalize_external_dependencies(
     for (name, dependency) in dependencies {
         let choices = [
             dependency.path.is_some(),
+            dependency.git.is_some(),
             dependency.framework == Some(true),
             dependency.xcframework.is_some(),
         ]
@@ -386,13 +389,50 @@ fn normalize_external_dependencies(
         .count();
         if choices != 1 {
             bail!(
-                "dependency `{name}` must set exactly one of `path`, `framework`, or `xcframework`"
+                "dependency `{name}` must set exactly one of `path`, `git`, `framework`, or `xcframework`"
             );
+        }
+        if (dependency.revision.is_some() || dependency.version.is_some())
+            && dependency.git.is_none()
+        {
+            bail!("dependency `{name}` can only set `version` or `revision` together with `git`");
         }
         if let Some(path) = &dependency.path {
             swift_packages.push(SwiftPackageDependency {
                 product: name.clone(),
-                path: path.clone(),
+                source: SwiftPackageSource::Path { path: path.clone() },
+            });
+            continue;
+        }
+        if let Some(url) = &dependency.git {
+            let version = dependency.version.clone();
+            if let Some(version) = version.as_deref() {
+                validate_git_version(name, version)?;
+            }
+            let revision = dependency.revision.clone();
+            if let Some(revision) = revision.as_deref() {
+                validate_git_revision(name, revision)?;
+            }
+            match (version.as_ref(), revision.as_ref()) {
+                (None, None) => {
+                    bail!(
+                        "dependency `{name}` must declare exactly one of `version` or `revision` with `git`"
+                    );
+                }
+                (Some(_), Some(_)) => {
+                    bail!(
+                        "dependency `{name}` cannot declare both `version` and `revision`; use `version` with orbit.lock or `revision` directly"
+                    );
+                }
+                _ => {}
+            }
+            swift_packages.push(SwiftPackageDependency {
+                product: name.clone(),
+                source: SwiftPackageSource::Git {
+                    url: url.clone(),
+                    version,
+                    revision,
+                },
             });
             continue;
         }
@@ -418,6 +458,20 @@ fn normalize_external_dependencies(
         xcframeworks,
         swift_packages,
     })
+}
+
+fn validate_git_revision(name: &str, revision: &str) -> Result<()> {
+    let is_full_sha = revision.len() == 40 && revision.chars().all(|ch| ch.is_ascii_hexdigit());
+    if is_full_sha {
+        return Ok(());
+    }
+    bail!("dependency `{name}` must use an exact 40-character git `revision` SHA")
+}
+
+fn validate_git_version(name: &str, version: &str) -> Result<()> {
+    Version::parse(version)
+        .with_context(|| format!("dependency `{name}` must use an exact semver `version`"))?;
+    Ok(())
 }
 
 fn normalize_info_plist(info: &InfoManifest) -> BTreeMap<String, JsonValue> {

@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 
 use support::{
     base_command, create_build_xcrun_mock, create_home, create_mixed_language_workspace,
-    create_signing_workspace, orbit_bin, read_log, run_and_capture,
+    create_signing_workspace, create_xcframework_workspace, orbit_bin, read_log, run_and_capture,
 };
 
 #[test]
@@ -156,6 +156,14 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
         initialize["result"]["data"]["watchers"][0]["globPattern"],
         "orbit.json"
     );
+    let watchers = initialize["result"]["data"]["watchers"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter_map(|watcher| watcher["globPattern"].as_str())
+        .collect::<Vec<_>>();
+    assert!(watchers.contains(&"**/*.swift"));
+    assert!(watchers.contains(&"**/*.xcframework/**"));
 
     write_jsonrpc_message(
         &mut stdin,
@@ -431,6 +439,11 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
         message["method"] == Value::String("build/taskFinish".to_owned())
             && message["params"]["status"] == Value::from(1)
     }));
+    let log_before_watch = read_log(&log_path);
+    let sdk_path_requests_before_watch = count_occurrences(
+        &log_before_watch,
+        "xcrun --sdk iphonesimulator --show-sdk-path",
+    );
 
     write_jsonrpc_message(
         &mut stdin,
@@ -450,7 +463,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
         message["method"] == Value::String("build/logMessage".to_owned())
             && message["params"]["message"]
                 .as_str()
-                .is_some_and(|value| value.contains("reloaded build settings"))
+                .is_some_and(|value| value.contains("without rebuilding the semantic snapshot"))
     }));
     assert!(watched_file_notifications.iter().any(|message| {
         message["method"] == Value::String("buildTarget/didChange".to_owned())
@@ -489,10 +502,162 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     assert!(status.success(), "{stderr_output}");
 
     let log = read_log(&log_path);
+    assert_eq!(
+        count_occurrences(&log, "xcrun --sdk iphonesimulator --show-sdk-path"),
+        sdk_path_requests_before_watch
+    );
     assert!(log.contains("xcrun --sdk iphonesimulator --show-sdk-path"));
     assert!(log.contains("xcrun --find swiftc"));
     assert!(log.contains("xcrun --sdk iphonesimulator swiftc"));
     assert!(log.contains("xcrun --sdk iphonesimulator clang"));
+}
+
+#[test]
+fn bsp_server_reloads_for_xcframework_dependency_changes() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = create_xcframework_workspace(temp.path());
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    let sdk_root = temp.path().join("sdk");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    create_build_xcrun_mock(&mock_bin, &sdk_root);
+
+    let manifest_path = workspace.join("orbit.json");
+    let info_plist_path = workspace
+        .join("Vendor/VendorSDK.xcframework/Info.plist")
+        .canonicalize()
+        .unwrap();
+    let info_plist_uri = Url::from_file_path(&info_plist_path).unwrap().to_string();
+
+    let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+    command.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "bsp",
+    ]);
+
+    let mut child = command.spawn().unwrap();
+    let mut stdin = child.stdin.take().unwrap();
+    let stdout = child.stdout.take().unwrap();
+    let mut stderr = child.stderr.take().unwrap();
+    let mut reader = BufReader::new(stdout);
+
+    write_jsonrpc_message(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "build/initialize",
+            "params": {
+                "displayName": "orbit-test",
+                "version": "0.0.0",
+                "bspVersion": "2.2.0",
+                "rootUri": Url::from_file_path(&workspace).unwrap().to_string(),
+                "capabilities": {}
+            }
+        }),
+    );
+    let initialize = read_jsonrpc_message(&mut reader);
+    assert_eq!(initialize["id"], 1);
+
+    write_jsonrpc_message(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "build/initialized",
+            "params": {}
+        }),
+    );
+
+    write_jsonrpc_message(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 2,
+            "method": "workspace/buildTargets",
+            "params": {}
+        }),
+    );
+    let targets = read_jsonrpc_message(&mut reader);
+    let target_uri = targets["result"]["targets"][0]["id"]["uri"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+
+    let log_before_watch = read_log(&log_path);
+    let sdk_path_requests_before_watch = count_occurrences(
+        &log_before_watch,
+        "xcrun --sdk iphonesimulator --show-sdk-path",
+    );
+
+    write_jsonrpc_message(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "workspace/didChangeWatchedFiles",
+            "params": {
+                "changes": [{
+                    "uri": info_plist_uri,
+                    "type": 2
+                }]
+            }
+        }),
+    );
+    let watched_file_notifications = read_jsonrpc_notifications(&mut reader, 2);
+    assert!(watched_file_notifications.iter().any(|message| {
+        message["method"] == Value::String("build/logMessage".to_owned())
+            && message["params"]["message"].as_str().is_some_and(|value| {
+                value.contains("reloaded build settings after watched file changes")
+            })
+    }));
+    assert!(watched_file_notifications.iter().any(|message| {
+        message["method"] == Value::String("buildTarget/didChange".to_owned())
+            && message["params"]["changes"]
+                == json!([{
+                    "target": { "uri": target_uri.clone() },
+                    "kind": 2
+                }])
+    }));
+
+    write_jsonrpc_message(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "id": 3,
+            "method": "build/shutdown",
+            "params": {}
+        }),
+    );
+    let shutdown = read_jsonrpc_message(&mut reader);
+    assert_eq!(shutdown["id"], 3);
+
+    write_jsonrpc_message(
+        &mut stdin,
+        &json!({
+            "jsonrpc": "2.0",
+            "method": "build/exit",
+            "params": {}
+        }),
+    );
+
+    drop(stdin);
+    let status = child.wait().unwrap();
+    let mut stderr_output = String::new();
+    stderr.read_to_string(&mut stderr_output).unwrap();
+    assert!(status.success(), "{stderr_output}");
+
+    let log = read_log(&log_path);
+    assert!(
+        count_occurrences(&log, "xcrun --sdk iphonesimulator --show-sdk-path")
+            > sdk_path_requests_before_watch
+    );
 }
 
 fn write_jsonrpc_message<W: Write>(writer: &mut W, message: &Value) {
@@ -540,4 +705,8 @@ fn read_jsonrpc_messages_until_response<R: BufRead>(
 
 fn read_jsonrpc_notifications<R: BufRead>(reader: &mut R, count: usize) -> Vec<Value> {
     (0..count).map(|_| read_jsonrpc_message(reader)).collect()
+}
+
+fn count_occurrences(haystack: &str, needle: &str) -> usize {
+    haystack.matches(needle).count()
 }

@@ -27,5 +27,7 @@ pub use self::tool_mocks::{
     create_security_mock, create_submit_swinfo_mock, create_watch_xcrun_mock,
 };
 pub use self::workspaces::{
-    create_mixed_language_workspace, create_signing_workspace, create_watch_workspace,
+    create_git_swift_package_workspace, create_mixed_language_workspace,
+    create_semver_git_swift_package_workspace, create_signing_workspace,
+    create_swift_package_workspace, create_watch_workspace, create_xcframework_workspace,
 };

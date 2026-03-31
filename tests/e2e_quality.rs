@@ -5,8 +5,10 @@ use std::fs;
 use serde_json::json;
 
 use support::{
-    base_command, create_build_xcrun_mock, create_home, create_mixed_language_workspace,
-    create_quality_swift_mock, create_signing_workspace, create_watch_workspace, read_log,
+    base_command, clear_log, create_build_xcrun_mock, create_git_swift_package_workspace,
+    create_home, create_mixed_language_workspace, create_quality_swift_mock,
+    create_semver_git_swift_package_workspace, create_signing_workspace,
+    create_swift_package_workspace, create_watch_workspace, orbit_cache_dir, read_log,
     run_and_capture,
 };
 
@@ -125,6 +127,211 @@ fn lint_runs_compiler_backed_c_family_diagnostics_for_mixed_targets() {
     assert!(log.contains("-fsyntax-only"));
     assert!(log.contains("Sources/App/Bridge.m"));
     assert!(!log.contains("Bridge.m.o"));
+}
+
+#[test]
+fn lint_reuses_cached_swift_package_outputs_between_runs() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = create_swift_package_workspace(temp.path());
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    let sdk_root = temp.path().join("sdk");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    create_build_xcrun_mock(&mock_bin, &sdk_root);
+    create_quality_swift_mock(&mock_bin);
+
+    let manifest_path = workspace.join("orbit.json");
+
+    let mut first = base_command(&workspace, &home, &mock_bin, &log_path);
+    first.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "lint",
+    ]);
+    let first_output = run_and_capture(&mut first);
+    assert!(
+        first_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+
+    let first_log = read_log(&log_path);
+    assert!(first_log.contains("swift package --package-path"));
+    assert!(first_log.contains("xcrun --sdk iphonesimulator swiftc"));
+
+    clear_log(&log_path);
+
+    let mut second = base_command(&workspace, &home, &mock_bin, &log_path);
+    second.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "lint",
+    ]);
+    let second_output = run_and_capture(&mut second);
+    assert!(
+        second_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+
+    let second_log = read_log(&log_path);
+    assert!(!second_log.contains("swift package --package-path"));
+    assert!(!second_log.contains("xcrun --sdk iphonesimulator swiftc"));
+    assert!(!workspace.join(".orbit").exists());
+}
+
+#[test]
+fn lint_resolves_git_swift_package_dependencies_from_pinned_revisions() {
+    let temp = tempfile::tempdir().unwrap();
+    let (workspace, fixture) = create_git_swift_package_workspace(temp.path());
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    let sdk_root = temp.path().join("sdk");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    create_build_xcrun_mock(&mock_bin, &sdk_root);
+    create_quality_swift_mock(&mock_bin);
+
+    let manifest_path = workspace.join("orbit.json");
+
+    let mut first = base_command(&workspace, &home, &mock_bin, &log_path);
+    first.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "lint",
+    ]);
+    let first_output = run_and_capture(&mut first);
+    assert!(
+        first_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&first_output.stderr)
+    );
+
+    let cache_root = orbit_cache_dir(&home)
+        .join("git-swift-packages")
+        .read_dir()
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.join("checkout").exists())
+        .expect("expected a cached git Swift package checkout");
+    let cached_head = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(cache_root.join("checkout"))
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(cached_head.status.success());
+    assert_eq!(
+        String::from_utf8(cached_head.stdout).unwrap().trim(),
+        fixture.initial_revision
+    );
+
+    clear_log(&log_path);
+
+    let mut second = base_command(&workspace, &home, &mock_bin, &log_path);
+    second.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "lint",
+    ]);
+    let second_output = run_and_capture(&mut second);
+    assert!(
+        second_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&second_output.stderr)
+    );
+
+    let second_log = read_log(&log_path);
+    assert!(!second_log.contains("swift package --package-path"));
+    assert!(!second_log.contains("xcrun --sdk iphonesimulator swiftc"));
+}
+
+#[test]
+fn lint_accepts_semver_pinned_git_swift_package_dependencies() {
+    let temp = tempfile::tempdir().unwrap();
+    let (workspace, fixture) = create_semver_git_swift_package_workspace(temp.path());
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    let sdk_root = temp.path().join("sdk");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    create_build_xcrun_mock(&mock_bin, &sdk_root);
+    create_quality_swift_mock(&mock_bin);
+
+    let manifest_path = workspace.join("orbit.json");
+
+    let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "lint",
+    ]);
+    let output = run_and_capture(&mut command);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let cache_root = orbit_cache_dir(&home)
+        .join("git-swift-packages")
+        .read_dir()
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .find(|path| path.join("checkout").exists())
+        .expect("expected a cached git Swift package checkout");
+    let cached_head = std::process::Command::new("git")
+        .args(["-C"])
+        .arg(cache_root.join("checkout"))
+        .args(["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    assert!(cached_head.status.success());
+    assert_eq!(
+        String::from_utf8(cached_head.stdout).unwrap().trim(),
+        fixture.initial_revision
+    );
+}
+
+#[test]
+fn lint_requires_orbit_lock_for_versioned_git_swift_package_dependencies() {
+    let temp = tempfile::tempdir().unwrap();
+    let (workspace, _) = create_semver_git_swift_package_workspace(temp.path());
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    let sdk_root = temp.path().join("sdk");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    let manifest_path = workspace.join("orbit.json");
+    fs::remove_file(workspace.join("orbit.lock")).unwrap();
+
+    create_build_xcrun_mock(&mock_bin, &sdk_root);
+    create_quality_swift_mock(&mock_bin);
+
+    let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command.args([
+        "--non-interactive",
+        "--manifest",
+        manifest_path.to_str().unwrap(),
+        "lint",
+    ]);
+    let output = run_and_capture(&mut command);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stderr).contains("run `orbit deps lock`"),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
 }
 
 #[test]

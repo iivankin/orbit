@@ -244,6 +244,46 @@
           "type": "object",
           "additionalProperties": false,
           "required": [
+            "git",
+            "revision"
+          ],
+          "properties": {
+            "git": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Git URL for a Swift package repository."
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^[A-Fa-f0-9]{40}$",
+              "description": "Exact pinned git commit SHA."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "git",
+            "version"
+          ],
+          "properties": {
+            "git": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Git URL for a Swift package repository."
+            },
+            "version": {
+              "type": "string",
+              "minLength": 1,
+              "description": "Exact semver release label resolved from a remote tag."
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
             "framework"
           ],
           "properties": {

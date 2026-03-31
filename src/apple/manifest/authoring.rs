@@ -347,6 +347,12 @@ pub struct DependencySpec {
     #[serde(default)]
     pub path: Option<PathBuf>,
     #[serde(default)]
+    pub git: Option<String>,
+    #[serde(default)]
+    pub version: Option<String>,
+    #[serde(default)]
+    pub revision: Option<String>,
+    #[serde(default)]
     pub framework: Option<bool>,
     #[serde(default)]
     pub xcframework: Option<PathBuf>,
