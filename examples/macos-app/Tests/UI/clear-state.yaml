@@ -1,0 +1,15 @@
+appId: dev.orbit.examples.macos
+name: macos-clear-state
+---
+- launchApp
+- assertVisible: Clean slate
+- tapOn:
+    id: persist-state-button
+- assertVisible: Persisted state restored
+- stopApp
+- launchApp
+- assertVisible: Persisted state restored
+- clearState
+- launchApp
+- assertVisible: Clean slate
+- takeScreenshot: macos-clear-state

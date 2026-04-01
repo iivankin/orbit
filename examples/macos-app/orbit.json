@@ -14,5 +14,13 @@
   ],
   "resources": [
     "Resources"
-  ]
+  ],
+  "tests": {
+    "ui": {
+      "format": "maestro",
+      "sources": [
+        "Tests/UI"
+      ]
+    }
+  }
 }

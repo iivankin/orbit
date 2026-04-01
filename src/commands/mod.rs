@@ -17,7 +17,8 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
         }
         Command::Ui(ui_args) => match &ui_args.command {
             UiCommand::ResetIdb(_) => apple::execute(app, cli),
-            UiCommand::DumpTree(_)
+            UiCommand::Doctor(_)
+            | UiCommand::DumpTree(_)
             | UiCommand::DescribePoint(_)
             | UiCommand::Focus(_)
             | UiCommand::Logs(_)

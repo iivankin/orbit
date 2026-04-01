@@ -15,6 +15,7 @@ use std::process::Command;
 
 use self::artifacts::export_artifact;
 use self::compile::{CompileOutputMode, compile_target, embed_dependencies};
+pub(crate) use self::runtime::macos_executable_path;
 use self::runtime::{
     debug_on_device, debug_on_macos, debug_on_simulator, run_on_device, run_on_macos,
     run_on_simulator, select_physical_device, validate_run_platform,

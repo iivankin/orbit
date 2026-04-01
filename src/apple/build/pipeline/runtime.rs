@@ -311,7 +311,7 @@ struct DeviceRunningProcess {
     process_identifier: u64,
 }
 
-fn macos_executable_path(receipt: &BuildReceipt) -> Result<PathBuf> {
+pub(crate) fn macos_executable_path(receipt: &BuildReceipt) -> Result<PathBuf> {
     let bundle_binary = receipt
         .bundle_path
         .join("Contents")

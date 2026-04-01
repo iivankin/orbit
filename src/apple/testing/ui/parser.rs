@@ -6,9 +6,10 @@ use yaml_rust2::yaml::Hash as YamlHash;
 use yaml_rust2::{Yaml, YamlLoader};
 
 use super::{
-    UiCommand, UiCoordinate, UiExtendedWaitUntil, UiFlow, UiFlowConfig, UiHardwareButton,
-    UiLaunchApp, UiLocationPoint, UiPermissionConfig, UiPermissionSetting, UiPermissionState,
-    UiPointExpr, UiPressKey, UiScrollUntilVisible, UiSelector, UiSwipe, UiSwipeDirection, UiTravel,
+    UiCommand, UiCoordinate, UiDragAndDrop, UiElementScroll, UiElementSwipe, UiExtendedWaitUntil,
+    UiFlow, UiFlowConfig, UiHardwareButton, UiKeyModifier, UiKeyPress, UiLaunchApp,
+    UiLocationPoint, UiPermissionConfig, UiPermissionSetting, UiPermissionState, UiPointExpr,
+    UiPressKey, UiScrollUntilVisible, UiSelector, UiSwipe, UiSwipeDirection, UiTravel,
 };
 
 pub fn parse_ui_flow(path: &Path) -> Result<UiFlow> {
@@ -123,11 +124,16 @@ fn parse_mapping_command(map: &YamlHash) -> Result<UiCommand> {
         "killApp" => parse_app_target_command("killApp", value).map(UiCommand::KillApp),
         "clearState" => parse_app_target_command("clearState", value).map(UiCommand::ClearState),
         "tapOn" => Ok(UiCommand::TapOn(parse_selector(value)?)),
+        "hoverOn" => Ok(UiCommand::HoverOn(parse_selector(value)?)),
+        "rightClickOn" => Ok(UiCommand::RightClickOn(parse_selector(value)?)),
         "tapOnPoint" => Ok(UiCommand::TapOnPoint(parse_point_expr(value)?)),
         "doubleTapOn" => Ok(UiCommand::DoubleTapOn(parse_selector(value)?)),
         "longPressOn" => parse_long_press(value),
         "swipe" => parse_swipe(value),
+        "swipeOn" => parse_swipe_on(value),
+        "dragAndDrop" => parse_drag_and_drop(value),
         "scroll" => parse_scroll(value),
+        "scrollOn" => parse_scroll_on(value),
         "scrollUntilVisible" => parse_scroll_until_visible(value),
         "inputText" => Ok(UiCommand::InputText(yaml_string(value)?.to_owned())),
         "pasteText" => parse_paste_text(value),
@@ -284,6 +290,68 @@ fn parse_scroll(value: &Yaml) -> Result<UiCommand> {
     }
 }
 
+fn parse_swipe_on(value: &Yaml) -> Result<UiCommand> {
+    let Yaml::Hash(map) = value else {
+        bail!("`swipeOn` expects a mapping");
+    };
+    let target = if let Some(target) = get_optional(map, "element") {
+        parse_selector(target)?
+    } else {
+        bail!("`swipeOn` expects `element`");
+    };
+    let direction = parse_swipe_direction(required_field(map, "direction")?)?;
+    let duration_ms = get_optional(map, "duration")
+        .map(parse_duration_ms)
+        .transpose()?;
+    let delta = get_optional(map, "delta").map(yaml_u32).transpose()?;
+    Ok(UiCommand::SwipeOn(UiElementSwipe {
+        target,
+        direction,
+        duration_ms,
+        delta,
+    }))
+}
+
+fn parse_drag_and_drop(value: &Yaml) -> Result<UiCommand> {
+    let Yaml::Hash(map) = value else {
+        bail!("`dragAndDrop` expects a mapping");
+    };
+    let source = get_optional(map, "from")
+        .or_else(|| get_optional(map, "source"))
+        .map(parse_selector)
+        .transpose()?
+        .context("`dragAndDrop` expects `from`")?;
+    let destination = get_optional(map, "to")
+        .or_else(|| get_optional(map, "destination"))
+        .map(parse_selector)
+        .transpose()?
+        .context("`dragAndDrop` expects `to`")?;
+    Ok(UiCommand::DragAndDrop(UiDragAndDrop {
+        source,
+        destination,
+        duration_ms: get_optional(map, "duration")
+            .map(parse_duration_ms)
+            .transpose()?,
+        delta: get_optional(map, "delta").map(yaml_u32).transpose()?,
+    }))
+}
+
+fn parse_scroll_on(value: &Yaml) -> Result<UiCommand> {
+    let Yaml::Hash(map) = value else {
+        bail!("`scrollOn` expects a mapping");
+    };
+    let target = if let Some(target) = get_optional(map, "element") {
+        parse_selector(target)?
+    } else {
+        bail!("`scrollOn` expects `element`");
+    };
+    let direction = get_optional(map, "direction")
+        .map(parse_swipe_direction)
+        .transpose()?
+        .unwrap_or(UiSwipeDirection::Down);
+    Ok(UiCommand::ScrollOn(UiElementScroll { target, direction }))
+}
+
 fn hydrate_swipe_options(map: &YamlHash, swipe: &mut UiSwipe) -> Result<()> {
     if let Some(duration) = get_optional(map, "duration") {
         swipe.duration_ms = Some(parse_duration_ms(duration)?);
@@ -388,18 +456,14 @@ fn parse_selector(value: &Yaml) -> Result<UiSelector> {
     }
 }
 
-fn parse_press_key(value: &Yaml) -> Result<UiPressKey> {
-    match yaml_string(value)?.to_ascii_uppercase().as_str() {
-        "HOME" => Ok(UiPressKey::Home),
-        "LOCK" => Ok(UiPressKey::Lock),
-        "ENTER" => Ok(UiPressKey::Enter),
-        "BACKSPACE" | "DELETE" => Ok(UiPressKey::Backspace),
-        "TAB" => Ok(UiPressKey::Tab),
-        "VOLUME_UP" => Ok(UiPressKey::VolumeUp),
-        "VOLUME_DOWN" => Ok(UiPressKey::VolumeDown),
-        "BACK" => Ok(UiPressKey::Back),
-        "POWER" => Ok(UiPressKey::Power),
-        other => bail!("unsupported `pressKey` value `{other}`"),
+fn parse_press_key(value: &Yaml) -> Result<UiKeyPress> {
+    match value {
+        Yaml::String(_) => Ok(UiKeyPress::plain(parse_key_token(value)?)),
+        Yaml::Hash(map) => Ok(UiKeyPress {
+            key: parse_key_token(required_field(map, "key")?)?,
+            modifiers: parse_key_modifiers(get_optional(map, "modifiers"))?,
+        }),
+        _ => bail!("`pressKey` expects a string or mapping"),
     }
 }
 
@@ -408,14 +472,70 @@ fn parse_press_key_code(value: &Yaml) -> Result<UiCommand> {
         Yaml::Integer(_) | Yaml::String(_) => Ok(UiCommand::PressKeyCode {
             keycode: yaml_u32(value)?,
             duration_ms: None,
+            modifiers: Vec::new(),
         }),
         Yaml::Hash(map) => Ok(UiCommand::PressKeyCode {
             keycode: yaml_u32(required_field(map, "keyCode")?)?,
             duration_ms: get_optional(map, "duration")
                 .map(parse_duration_ms)
                 .transpose()?,
+            modifiers: parse_key_modifiers(get_optional(map, "modifiers"))?,
         }),
         _ => bail!("`pressKeyCode` expects an integer or mapping"),
+    }
+}
+
+fn parse_key_token(value: &Yaml) -> Result<UiPressKey> {
+    let token = yaml_string(value)?.trim();
+    let uppercase = token.to_ascii_uppercase();
+    match uppercase.as_str() {
+        "HOME" => Ok(UiPressKey::Home),
+        "LOCK" => Ok(UiPressKey::Lock),
+        "ENTER" | "RETURN" => Ok(UiPressKey::Enter),
+        "BACKSPACE" | "DELETE" => Ok(UiPressKey::Backspace),
+        "ESCAPE" | "ESC" => Ok(UiPressKey::Escape),
+        "SPACE" => Ok(UiPressKey::Space),
+        "TAB" => Ok(UiPressKey::Tab),
+        "VOLUME_UP" => Ok(UiPressKey::VolumeUp),
+        "VOLUME_DOWN" => Ok(UiPressKey::VolumeDown),
+        "BACK" => Ok(UiPressKey::Back),
+        "POWER" => Ok(UiPressKey::Power),
+        "LEFT" | "LEFT_ARROW" => Ok(UiPressKey::LeftArrow),
+        "RIGHT" | "RIGHT_ARROW" => Ok(UiPressKey::RightArrow),
+        "UP" | "UP_ARROW" => Ok(UiPressKey::UpArrow),
+        "DOWN" | "DOWN_ARROW" => Ok(UiPressKey::DownArrow),
+        _ if token.chars().count() == 1 => Ok(UiPressKey::Character(
+            token.chars().next().expect("count already checked"),
+        )),
+        other => bail!("unsupported `pressKey` value `{other}`"),
+    }
+}
+
+fn parse_key_modifiers(value: Option<&Yaml>) -> Result<Vec<UiKeyModifier>> {
+    let Some(value) = value else {
+        return Ok(Vec::new());
+    };
+
+    match value {
+        Yaml::Array(values) => values.iter().map(parse_key_modifier).collect(),
+        Yaml::String(raw) => raw
+            .split(',')
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(|entry| parse_key_modifier(&Yaml::String(entry.to_owned())))
+            .collect(),
+        _ => bail!("`modifiers` must be a string or sequence"),
+    }
+}
+
+fn parse_key_modifier(value: &Yaml) -> Result<UiKeyModifier> {
+    match yaml_string(value)?.trim().to_ascii_uppercase().as_str() {
+        "COMMAND" | "CMD" => Ok(UiKeyModifier::Command),
+        "SHIFT" => Ok(UiKeyModifier::Shift),
+        "OPTION" | "ALT" => Ok(UiKeyModifier::Option),
+        "CONTROL" | "CTRL" => Ok(UiKeyModifier::Control),
+        "FUNCTION" | "FN" => Ok(UiKeyModifier::Function),
+        other => bail!("unsupported keyboard modifier `{other}`"),
     }
 }
 
@@ -803,8 +923,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        UiCommand, UiHardwareButton, UiLaunchApp, UiScrollUntilVisible, UiSelector, UiSwipe,
-        UiSwipeDirection, parse_ui_flow,
+        UiCommand, UiDragAndDrop, UiElementScroll, UiElementSwipe, UiHardwareButton,
+        UiKeyModifier, UiKeyPress, UiLaunchApp, UiPressKey, UiScrollUntilVisible, UiSelector,
+        UiSwipe, UiSwipeDirection, parse_ui_flow,
     };
 
     #[test]
@@ -900,30 +1021,100 @@ mod tests {
         let path = temp.path().join("flow.yaml");
         fs::write(
             &path,
-            "- doubleTapOn: Continue\n- longPressOn:\n    element: Continue\n    duration: 1200ms\n- scroll: DOWN\n- killApp\n",
+            "- hoverOn:\n    id: hover-target\n- rightClickOn:\n    id: context-target\n- doubleTapOn: Continue\n- longPressOn:\n    element: Continue\n    duration: 1200ms\n- swipeOn:\n    element:\n      id: pager\n    direction: LEFT\n    duration: 650ms\n    delta: 4\n- dragAndDrop:\n    from:\n      id: drag-source\n    to:\n      id: drop-target\n    duration: 800ms\n    delta: 3\n- scroll: DOWN\n- scrollOn:\n    element:\n      id: feed\n    direction: UP\n- killApp\n",
         )
         .unwrap();
 
         let flow = parse_ui_flow(&path).unwrap();
         assert!(matches!(
             &flow.commands[0],
+            UiCommand::HoverOn(UiSelector {
+                text: None,
+                id: Some(target),
+            }) if target == "hover-target"
+        ));
+        assert!(matches!(
+            &flow.commands[1],
+            UiCommand::RightClickOn(UiSelector {
+                text: None,
+                id: Some(target),
+            }) if target == "context-target"
+        ));
+        assert!(matches!(
+            &flow.commands[2],
             UiCommand::DoubleTapOn(UiSelector {
                 text: Some(target),
                 id: None,
             }) if target == "Continue"
         ));
         assert!(matches!(
-            &flow.commands[1],
+            &flow.commands[3],
             UiCommand::LongPressOn {
                 target,
                 duration_ms: 1200,
             } if target.text.as_deref() == Some("Continue")
         ));
         assert!(matches!(
-            &flow.commands[2],
+            &flow.commands[4],
+            UiCommand::SwipeOn(UiElementSwipe {
+                target,
+                direction: UiSwipeDirection::Left,
+                duration_ms: Some(650),
+                delta: Some(4),
+            }) if target.id.as_deref() == Some("pager")
+        ));
+        assert!(matches!(
+            &flow.commands[5],
+            UiCommand::DragAndDrop(UiDragAndDrop {
+                source,
+                destination,
+                duration_ms: Some(800),
+                delta: Some(3),
+            }) if source.id.as_deref() == Some("drag-source")
+                && destination.id.as_deref() == Some("drop-target")
+        ));
+        assert!(matches!(
+            &flow.commands[6],
             UiCommand::Scroll(UiSwipeDirection::Down)
         ));
-        assert!(matches!(&flow.commands[3], UiCommand::KillApp(None)));
+        assert!(matches!(
+            &flow.commands[7],
+            UiCommand::ScrollOn(UiElementScroll {
+                target,
+                direction: UiSwipeDirection::Up,
+            }) if target.id.as_deref() == Some("feed")
+        ));
+        assert!(matches!(&flow.commands[8], UiCommand::KillApp(None)));
+    }
+
+    #[test]
+    fn rejects_scroll_on_without_element() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("flow.yaml");
+        fs::write(&path, "- scrollOn:\n    direction: DOWN\n").unwrap();
+
+        let error = parse_ui_flow(&path).unwrap_err();
+        assert!(error.to_string().contains("`scrollOn` expects `element`"));
+    }
+
+    #[test]
+    fn rejects_swipe_on_without_mapping() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("flow.yaml");
+        fs::write(&path, "- swipeOn: LEFT\n").unwrap();
+
+        let error = parse_ui_flow(&path).unwrap_err();
+        assert!(error.to_string().contains("`swipeOn` expects a mapping"));
+    }
+
+    #[test]
+    fn rejects_drag_and_drop_without_to() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("flow.yaml");
+        fs::write(&path, "- dragAndDrop:\n    from:\n      id: drag-source\n").unwrap();
+
+        let error = parse_ui_flow(&path).unwrap_err();
+        assert!(error.to_string().contains("`dragAndDrop` expects `to`"));
     }
 
     #[test]
@@ -932,7 +1123,7 @@ mod tests {
         let path = temp.path().join("flow.yaml");
         fs::write(
             &path,
-            "- launchApp:\n    appId: dev.orbit.fixture\n    stopApp: false\n    clearState: true\n    clearKeychain: true\n    arguments:\n      onboardingComplete: true\n      seedUser: qa@example.com\n    permissions:\n      location: allow\n      photos: deny\n- tapOnPoint: 140, 142\n- pressButton:\n    button: SIRI\n    duration: 500ms\n- setClipboard: copied value\n- copyTextFrom:\n    id: email-value\n- pasteText: {}\n- eraseText: 6\n- pressKey: ENTER\n- pressKeyCode:\n    keyCode: 41\n    duration: 200ms\n- keySequence:\n    - 4\n    - 5\n    - 6\n- hideKeyboard\n- extendedWaitUntil:\n    visible:\n      text: Ready\n    timeout: 2s\n- waitForAnimationToEnd:\n    timeout: 750ms\n- addMedia:\n    - ../Fixtures/cat.jpg\n- startRecording: login-clip\n- stopRecording\n- travel:\n    points:\n      - 55.7558,37.6173\n      - 55.7568,37.6183\n    speed: 42\n",
+            "- launchApp:\n    appId: dev.orbit.fixture\n    stopApp: false\n    clearState: true\n    clearKeychain: true\n    arguments:\n      onboardingComplete: true\n      seedUser: qa@example.com\n    permissions:\n      location: allow\n      photos: deny\n- tapOnPoint: 140, 142\n- pressButton:\n    button: SIRI\n    duration: 500ms\n- setClipboard: copied value\n- copyTextFrom:\n    id: email-value\n- pasteText: {}\n- eraseText: 6\n- pressKey:\n    key: K\n    modifiers:\n      - COMMAND\n      - SHIFT\n- pressKeyCode:\n    keyCode: 41\n    duration: 200ms\n    modifiers: CONTROL\n- keySequence:\n    - 4\n    - 5\n    - 6\n- hideKeyboard\n- extendedWaitUntil:\n    visible:\n      text: Ready\n    timeout: 2s\n- waitForAnimationToEnd:\n    timeout: 750ms\n- addMedia:\n    - ../Fixtures/cat.jpg\n- startRecording: login-clip\n- stopRecording\n- travel:\n    points:\n      - 55.7558,37.6173\n      - 55.7568,37.6183\n    speed: 42\n",
         )
         .unwrap();
 
@@ -968,13 +1159,20 @@ mod tests {
         ));
         assert!(matches!(&flow.commands[5], UiCommand::PasteText));
         assert!(matches!(&flow.commands[6], UiCommand::EraseText(6)));
-        assert!(matches!(&flow.commands[7], UiCommand::PressKey(_)));
+        assert!(matches!(
+            &flow.commands[7],
+            UiCommand::PressKey(UiKeyPress {
+                key: UiPressKey::Character('K'),
+                modifiers,
+            }) if modifiers == &vec![UiKeyModifier::Command, UiKeyModifier::Shift]
+        ));
         assert!(matches!(
             &flow.commands[8],
             UiCommand::PressKeyCode {
                 keycode: 41,
                 duration_ms: Some(200),
-            }
+                modifiers,
+            } if modifiers == &vec![UiKeyModifier::Control]
         ));
         assert!(matches!(
             &flow.commands[9],

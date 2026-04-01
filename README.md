@@ -401,6 +401,12 @@ Current iOS simulator command support includes:
 `startRecording`, `stopRecording`, `openLink`, `setLocation`,
 `setPermissions`, `travel`, `addMedia`, `runFlow`, `repeat`, and `retry`.
 
+Current macOS backend coverage includes `launchApp`, `stopApp`, `clearState`,
+`tapOn`, `hoverOn`, `rightClickOn`, `dragAndDrop`, `swipe`, `scroll`,
+`scrollUntilVisible`, `inputText`, `assertVisible`, `takeScreenshot`,
+window-scoped video recording, `openLink`, and `logs`. Modified keyboard
+shortcuts on macOS are not yet documented as stable.
+
 ## CLI
 
 Build intent comes from CLI flags.
@@ -417,6 +423,18 @@ Run the manifest's `tests.ui` suite on an iOS simulator:
 
 ```sh
 orbit test --ui --platform ios
+```
+
+Run the manifest's `tests.ui` suite on macOS:
+
+```sh
+orbit test --ui --platform macos
+```
+
+Preflight macOS UI automation permissions and tooling:
+
+```sh
+orbit ui doctor --platform macos
 ```
 
 Inspect the launched app's accessibility tree on an iOS simulator:

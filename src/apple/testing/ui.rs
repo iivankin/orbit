@@ -15,7 +15,7 @@ use serde::Serialize;
 use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
-use self::backend::{IosSimulatorBackend, UiBackend};
+use self::backend::{IosSimulatorBackend, MacosBackend, MacosDoctorStatus, UiBackend};
 use self::parser::parse_ui_flow;
 use crate::apple::build::toolchain::DestinationKind;
 use crate::apple::logs::SimulatorAppLogStream;
@@ -32,6 +32,7 @@ const DEFAULT_ELEMENT_TIMEOUT: Duration = Duration::from_secs(7);
 const DEFAULT_POLL_INTERVAL: Duration = Duration::from_millis(250);
 const DEFAULT_SWIPE_DURATION_MS: u32 = 500;
 const DEFAULT_SWIPE_DELTA: u32 = 5;
+const DEFAULT_DRAG_DURATION_MS: u32 = 650;
 
 #[derive(Debug, Clone)]
 pub struct UiFlow {
@@ -54,6 +55,8 @@ pub enum UiCommand {
     ClearState(Option<String>),
     ClearKeychain,
     TapOn(UiSelector),
+    HoverOn(UiSelector),
+    RightClickOn(UiSelector),
     TapOnPoint(UiPointExpr),
     DoubleTapOn(UiSelector),
     LongPressOn {
@@ -61,17 +64,21 @@ pub enum UiCommand {
         duration_ms: u32,
     },
     Swipe(UiSwipe),
+    SwipeOn(UiElementSwipe),
+    DragAndDrop(UiDragAndDrop),
     Scroll(UiSwipeDirection),
+    ScrollOn(UiElementScroll),
     ScrollUntilVisible(UiScrollUntilVisible),
     InputText(String),
     PasteText,
     SetClipboard(String),
     CopyTextFrom(UiSelector),
     EraseText(u32),
-    PressKey(UiPressKey),
+    PressKey(UiKeyPress),
     PressKeyCode {
         keycode: u32,
         duration_ms: Option<u32>,
+        modifiers: Vec<UiKeyModifier>,
     },
     KeySequence(Vec<u32>),
     PressButton {
@@ -109,6 +116,28 @@ pub enum UiCommand {
 pub struct UiSwipe {
     pub start: UiPointExpr,
     pub end: UiPointExpr,
+    pub duration_ms: Option<u32>,
+    pub delta: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiElementSwipe {
+    pub target: UiSelector,
+    pub direction: UiSwipeDirection,
+    pub duration_ms: Option<u32>,
+    pub delta: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiElementScroll {
+    pub target: UiSelector,
+    pub direction: UiSwipeDirection,
+}
+
+#[derive(Debug, Clone)]
+pub struct UiDragAndDrop {
+    pub source: UiSelector,
+    pub destination: UiSelector,
     pub duration_ms: Option<u32>,
     pub delta: Option<u32>,
 }
@@ -182,17 +211,62 @@ pub struct UiSelector {
     pub id: Option<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
+pub struct UiKeyPress {
+    pub key: UiPressKey,
+    pub modifiers: Vec<UiKeyModifier>,
+}
+
+impl UiKeyPress {
+    pub fn plain(key: UiPressKey) -> Self {
+        Self {
+            key,
+            modifiers: Vec::new(),
+        }
+    }
+
+    fn summary(&self) -> String {
+        if self.modifiers.is_empty() {
+            return self.key.summary();
+        }
+
+        let modifiers = self
+            .modifiers
+            .iter()
+            .map(|modifier| modifier.summary())
+            .collect::<Vec<_>>()
+            .join("+");
+        format!("{modifiers}+{}", self.key.summary())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UiKeyModifier {
+    Command,
+    Shift,
+    Option,
+    Control,
+    Function,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum UiPressKey {
     Home,
     Lock,
     Enter,
     Backspace,
+    Escape,
+    Space,
     VolumeUp,
     VolumeDown,
     Tab,
     Back,
     Power,
+    LeftArrow,
+    RightArrow,
+    UpArrow,
+    DownArrow,
+    Character(char),
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -253,13 +327,34 @@ impl UiCommand {
             },
             UiCommand::ClearKeychain => "clearKeychain".to_owned(),
             UiCommand::TapOn(target) => format!("tapOn {}", target.summary()),
+            UiCommand::HoverOn(target) => format!("hoverOn {}", target.summary()),
+            UiCommand::RightClickOn(target) => format!("rightClickOn {}", target.summary()),
             UiCommand::TapOnPoint(_) => "tapOnPoint".to_owned(),
             UiCommand::DoubleTapOn(target) => format!("doubleTapOn {}", target.summary()),
             UiCommand::LongPressOn { target, .. } => {
                 format!("longPressOn {}", target.summary())
             }
             UiCommand::Swipe(_) => "swipe".to_owned(),
+            UiCommand::SwipeOn(command) => {
+                format!(
+                    "swipeOn {} {:?}",
+                    command.target.summary(),
+                    command.direction
+                )
+            }
+            UiCommand::DragAndDrop(command) => format!(
+                "dragAndDrop {} -> {}",
+                command.source.summary(),
+                command.destination.summary()
+            ),
             UiCommand::Scroll(direction) => format!("scroll {:?}", direction),
+            UiCommand::ScrollOn(command) => {
+                format!(
+                    "scrollOn {} {:?}",
+                    command.target.summary(),
+                    command.direction
+                )
+            }
             UiCommand::ScrollUntilVisible(command) => {
                 format!("scrollUntilVisible {}", command.target.summary())
             }
@@ -271,7 +366,22 @@ impl UiCommand {
             }
             UiCommand::EraseText(count) => format!("eraseText {count}"),
             UiCommand::PressKey(key) => format!("pressKey {}", key.summary()),
-            UiCommand::PressKeyCode { keycode, .. } => format!("pressKeyCode {keycode}"),
+            UiCommand::PressKeyCode {
+                keycode,
+                modifiers,
+                ..
+            } => {
+                if modifiers.is_empty() {
+                    format!("pressKeyCode {keycode}")
+                } else {
+                    let modifiers = modifiers
+                        .iter()
+                        .map(|modifier| modifier.summary())
+                        .collect::<Vec<_>>()
+                        .join("+");
+                    format!("pressKeyCode {modifiers}+{keycode}")
+                }
+            }
             UiCommand::KeySequence(keycodes) => format!("keySequence {}", keycodes.len()),
             UiCommand::PressButton { button, .. } => {
                 format!("pressButton {}", button.summary())
@@ -334,17 +444,36 @@ impl UiSelector {
 }
 
 impl UiPressKey {
-    fn summary(self) -> &'static str {
+    fn summary(self) -> String {
         match self {
-            UiPressKey::Home => "HOME",
-            UiPressKey::Lock => "LOCK",
-            UiPressKey::Enter => "ENTER",
-            UiPressKey::Backspace => "BACKSPACE",
-            UiPressKey::VolumeUp => "VOLUME_UP",
-            UiPressKey::VolumeDown => "VOLUME_DOWN",
-            UiPressKey::Tab => "TAB",
-            UiPressKey::Back => "BACK",
-            UiPressKey::Power => "POWER",
+            UiPressKey::Home => "HOME".to_owned(),
+            UiPressKey::Lock => "LOCK".to_owned(),
+            UiPressKey::Enter => "ENTER".to_owned(),
+            UiPressKey::Backspace => "BACKSPACE".to_owned(),
+            UiPressKey::Escape => "ESCAPE".to_owned(),
+            UiPressKey::Space => "SPACE".to_owned(),
+            UiPressKey::VolumeUp => "VOLUME_UP".to_owned(),
+            UiPressKey::VolumeDown => "VOLUME_DOWN".to_owned(),
+            UiPressKey::Tab => "TAB".to_owned(),
+            UiPressKey::Back => "BACK".to_owned(),
+            UiPressKey::Power => "POWER".to_owned(),
+            UiPressKey::LeftArrow => "LEFT".to_owned(),
+            UiPressKey::RightArrow => "RIGHT".to_owned(),
+            UiPressKey::UpArrow => "UP".to_owned(),
+            UiPressKey::DownArrow => "DOWN".to_owned(),
+            UiPressKey::Character(character) => character.to_ascii_uppercase().to_string(),
+        }
+    }
+}
+
+impl UiKeyModifier {
+    fn summary(&self) -> &'static str {
+        match self {
+            UiKeyModifier::Command => "COMMAND",
+            UiKeyModifier::Shift => "SHIFT",
+            UiKeyModifier::Option => "OPTION",
+            UiKeyModifier::Control => "CONTROL",
+            UiKeyModifier::Function => "FUNCTION",
         }
     }
 }
@@ -376,8 +505,8 @@ struct UiTestRunReport {
     bundle_id: String,
     bundle_path: PathBuf,
     receipt_path: PathBuf,
-    simulator_name: String,
-    simulator_udid: String,
+    target_name: String,
+    target_id: String,
     report_path: PathBuf,
     artifacts_dir: PathBuf,
     started_at_unix: u64,
@@ -422,7 +551,7 @@ struct UiElementMatch {
 }
 
 #[derive(Debug, Clone, Copy)]
-struct UiFrame {
+pub(super) struct UiFrame {
     x: f64,
     y: f64,
     width: f64,
@@ -437,7 +566,7 @@ impl UiFrame {
 
 struct PreparedUiSession {
     build_outcome: crate::apple::build::pipeline::BuildOutcome,
-    backend: IosSimulatorBackend,
+    backend: Box<dyn UiBackend>,
 }
 
 pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
@@ -452,10 +581,10 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
         args.platform.map(runtime::apple_platform_from_cli),
         "Select a platform to test",
     )?;
-    if platform != ApplePlatform::Ios {
-        bail!("`tests.ui` currently supports only `--platform ios`");
+    if platform == ApplePlatform::Macos {
+        let status = backend::macos_doctor(project)?;
+        ensure_macos_ui_test_requirements(&status)?;
     }
-
     let flow_paths = collect_ui_flow_paths(project, ui_tests)?;
     if flow_paths.is_empty() {
         bail!("`tests.ui.sources` did not contain any `.yml` or `.yaml` files");
@@ -494,12 +623,12 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     let report = UiTestRunReport {
         id: run_id,
         platform,
-        backend: "orbit-idb-ios-simulator".to_owned(),
+        backend: runner.backend.backend_name().to_owned(),
         bundle_id: prepared.build_outcome.receipt.bundle_id.clone(),
         bundle_path: prepared.build_outcome.receipt.bundle_path.clone(),
         receipt_path: prepared.build_outcome.receipt_path.clone(),
-        simulator_name: runner.backend.simulator_name().to_owned(),
-        simulator_udid: runner.backend.simulator_udid().to_owned(),
+        target_name: runner.backend.target_name().to_owned(),
+        target_id: runner.backend.target_id().to_owned(),
         report_path: report_path.clone(),
         artifacts_dir: artifacts_dir.clone(),
         started_at_unix,
@@ -522,7 +651,7 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     print_success(format!(
         "UI tests passed for `{}` on {} using {} flow(s) in {}.",
         prepared.build_outcome.receipt.target,
-        runner.backend.simulator_name(),
+        runner.backend.target_name(),
         flow_paths.len(),
         format_elapsed(started.elapsed())
     ));
@@ -530,8 +659,11 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
 }
 
 fn start_ui_app_logs(prepared: &PreparedUiSession) -> Option<SimulatorAppLogStream> {
+    if prepared.build_outcome.receipt.platform != ApplePlatform::Ios {
+        return None;
+    }
     match SimulatorAppLogStream::start(
-        prepared.backend.simulator_udid(),
+        prepared.backend.target_id(),
         prepared.build_outcome.receipt.target.as_str(),
     ) {
         Ok(stream) => Some(stream),
@@ -539,7 +671,7 @@ fn start_ui_app_logs(prepared: &PreparedUiSession) -> Option<SimulatorAppLogStre
             eprintln!(
                 "warning: failed to start app logs for `{}` on {}: {error:#}",
                 prepared.build_outcome.receipt.target,
-                prepared.backend.simulator_name()
+                prepared.backend.target_name()
             );
             None
         }
@@ -571,8 +703,90 @@ pub(crate) fn reset_idb() -> Result<()> {
     crate::util::run_command(&mut command).context(idb_requirement_message())
 }
 
-struct UiFlowRunner<B> {
-    backend: B,
+pub(crate) fn doctor(project: &ProjectContext, platform: ApplePlatform) -> Result<()> {
+    match platform {
+        ApplePlatform::Ios => {
+            ensure_idb_tooling_available()?;
+            println!("ui backend: orbit-idb-ios-simulator");
+            println!("idb: ok");
+            println!("idb_companion: ok");
+            Ok(())
+        }
+        ApplePlatform::Macos => {
+            let status = backend::macos_doctor(project)?;
+            print_macos_doctor_status(&status);
+            ensure_macos_ui_test_requirements(&status)
+        }
+        _ => bail!(
+            "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
+        ),
+    }
+}
+
+pub(crate) fn attach_backend(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+) -> Result<Box<dyn UiBackend>> {
+    match platform {
+        ApplePlatform::Ios => {
+            ensure_idb_tooling_available()?;
+            Ok(Box::new(IosSimulatorBackend::attach(project)?))
+        }
+        ApplePlatform::Macos => {
+            let prepared = prepare_ui_session(project, platform, true)?;
+            Ok(prepared.backend)
+        }
+        _ => bail!(
+            "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
+        ),
+    }
+}
+
+fn print_macos_doctor_status(status: &MacosDoctorStatus) {
+    println!("ui backend: orbit-ax-macos");
+    println!(
+        "accessibility: {}",
+        if status.accessibility_trusted {
+            "ok"
+        } else {
+            "missing"
+        }
+    );
+    println!(
+        "screen recording: {}",
+        if status.screen_capture_access {
+            "ok"
+        } else {
+            "missing"
+        }
+    );
+}
+
+fn ensure_macos_ui_test_requirements(status: &MacosDoctorStatus) -> Result<()> {
+    if status.accessibility_trusted && status.screen_capture_access {
+        return Ok(());
+    }
+
+    let mut missing = Vec::new();
+    if !status.accessibility_trusted {
+        missing.push(
+            "Accessibility access for Orbit or the calling terminal in System Settings > Privacy & Security > Accessibility",
+        );
+    }
+    if !status.screen_capture_access {
+        missing.push(
+            "Screen Recording access for Orbit or the calling terminal in System Settings > Privacy & Security > Screen Recording",
+        );
+    }
+
+    bail!(
+        "macOS UI automation is not ready.\nMissing:\n  - {}",
+        missing.join("\n  - ")
+    )
+}
+
+struct UiFlowRunner {
+    backend: Box<dyn UiBackend>,
     artifacts_dir: PathBuf,
     bundle_id: String,
     stack: Vec<PathBuf>,
@@ -580,11 +794,8 @@ struct UiFlowRunner<B> {
     manual_recording: Option<PathBuf>,
 }
 
-impl<B> UiFlowRunner<B>
-where
-    B: UiBackend,
-{
-    fn new(backend: B, artifacts_dir: PathBuf, bundle_id: String) -> Self {
+impl UiFlowRunner {
+    fn new(backend: Box<dyn UiBackend>, artifacts_dir: PathBuf, bundle_id: String) -> Self {
         Self {
             backend,
             artifacts_dir,
@@ -622,14 +833,18 @@ where
                 flow.commands.as_slice(),
                 &mut HashSet::new(),
             )?;
+        let deferred_auto_video =
+            auto_video_enabled && self.backend.requires_running_target_for_recording();
         let video_path = if auto_video_enabled {
             Some(self.artifacts_dir.join(format!(
-                "{}.mp4",
-                sanitize_artifact_name(&flow_name_from_path(&flow_path))
+                "{}.{}",
+                sanitize_artifact_name(&flow_name_from_path(&flow_path)),
+                self.backend.video_extension()
             )))
         } else {
             None
         };
+        let mut auto_video_started = false;
         let mut report = FlowRunReport {
             name: flow_name_from_path(&flow_path),
             path: flow_path.clone(),
@@ -645,8 +860,11 @@ where
             steps: Vec::new(),
         };
 
-        if let Some(path) = video_path.as_deref() {
+        if let Some(path) = video_path.as_deref()
+            && !deferred_auto_video
+        {
             self.backend.start_video_recording(path)?;
+            auto_video_started = true;
         }
 
         let execution = (|| -> Result<()> {
@@ -661,6 +879,8 @@ where
             let result = self.execute_commands(
                 flow.path.as_path(),
                 flow.commands.as_slice(),
+                video_path.as_deref().filter(|_| deferred_auto_video),
+                &mut auto_video_started,
                 &mut report.steps,
                 reports,
             );
@@ -673,7 +893,9 @@ where
             report.error = Some(error.to_string());
             self.capture_failure_artifacts(&flow_path, &mut report)?;
         }
-        if let Some(path) = video_path.as_ref() {
+        if let Some(path) = video_path.as_ref()
+            && auto_video_started
+        {
             if let Err(error) = self.backend.stop_video_recording() {
                 report.status = RunStatus::Failed;
                 append_report_error(&mut report, error.to_string());
@@ -709,6 +931,8 @@ where
         &mut self,
         flow_path: &Path,
         commands: &[UiCommand],
+        deferred_auto_video_path: Option<&Path>,
+        auto_video_started: &mut bool,
         steps: &mut Vec<StepRunReport>,
         reports: &mut Vec<FlowRunReport>,
     ) -> Result<()> {
@@ -722,13 +946,42 @@ where
                 }
                 UiCommand::Repeat { times, commands } => {
                     for _ in 0..*times {
-                        self.execute_commands(flow_path, commands, steps, reports)?;
+                        self.execute_commands(
+                            flow_path,
+                            commands,
+                            deferred_auto_video_path,
+                            auto_video_started,
+                            steps,
+                            reports,
+                        )?;
                     }
                 }
-                UiCommand::Retry { times, commands } => {
-                    self.execute_retry_block(flow_path, *times, commands, steps, reports)?
+                UiCommand::Retry { times, commands } => self.execute_retry_block(
+                    flow_path,
+                    *times,
+                    commands,
+                    deferred_auto_video_path,
+                    auto_video_started,
+                    steps,
+                    reports,
+                )?,
+                _ => {
+                    if let Some(path) = deferred_auto_video_path
+                        && !*auto_video_started
+                        && !matches!(command, UiCommand::LaunchApp(_))
+                    {
+                        self.backend.start_video_recording(path)?;
+                        *auto_video_started = true;
+                    }
+                    self.execute_leaf_command(flow_path, command, steps)?;
+                    if let Some(path) = deferred_auto_video_path
+                        && !*auto_video_started
+                        && matches!(command, UiCommand::LaunchApp(_))
+                    {
+                        self.backend.start_video_recording(path)?;
+                        *auto_video_started = true;
+                    }
                 }
-                _ => self.execute_leaf_command(flow_path, command, steps)?,
             }
         }
         Ok(())
@@ -739,6 +992,8 @@ where
         flow_path: &Path,
         times: u32,
         commands: &[UiCommand],
+        deferred_auto_video_path: Option<&Path>,
+        auto_video_started: &mut bool,
         steps: &mut Vec<StepRunReport>,
         reports: &mut Vec<FlowRunReport>,
     ) -> Result<()> {
@@ -749,7 +1004,14 @@ where
         let mut last_error = None;
         for attempt in 1..=times {
             let mut attempt_steps = Vec::new();
-            match self.execute_commands(flow_path, commands, &mut attempt_steps, reports) {
+            match self.execute_commands(
+                flow_path,
+                commands,
+                deferred_auto_video_path,
+                auto_video_started,
+                &mut attempt_steps,
+                reports,
+            ) {
                 Ok(()) => {
                     steps.extend(attempt_steps);
                     return Ok(());
@@ -841,6 +1103,22 @@ where
                 self.backend.tap_point(x, y, None)?;
                 Ok(None)
             }
+            UiCommand::HoverOn(target) => {
+                let element = self.find_visible_element(target)?;
+                let frame = element.frame.expect("hover target must expose a frame");
+                let (x, y) = frame.center();
+                self.backend.hover_point(x, y)?;
+                Ok(None)
+            }
+            UiCommand::RightClickOn(target) => {
+                let element = self.find_tappable_element(target)?;
+                let frame = element
+                    .frame
+                    .expect("right-click target must expose a frame");
+                let (x, y) = frame.center();
+                self.backend.right_click_point(x, y)?;
+                Ok(None)
+            }
             UiCommand::TapOnPoint(point) => {
                 let screen = infer_screen_frame(&self.backend.describe_all()?).context(
                     "could not infer simulator screen bounds from the accessibility tree",
@@ -872,8 +1150,20 @@ where
                 self.perform_swipe(swipe)?;
                 Ok(None)
             }
+            UiCommand::SwipeOn(command) => {
+                self.perform_swipe_on(command)?;
+                Ok(None)
+            }
+            UiCommand::DragAndDrop(command) => {
+                self.perform_drag_and_drop(command)?;
+                Ok(None)
+            }
             UiCommand::Scroll(direction) => {
-                self.perform_swipe(&default_swipe_for_scroll(*direction))?;
+                self.perform_scroll(*direction)?;
+                Ok(None)
+            }
+            UiCommand::ScrollOn(command) => {
+                self.perform_scroll_on(command)?;
                 Ok(None)
             }
             UiCommand::ScrollUntilVisible(command) => {
@@ -910,19 +1200,21 @@ where
             }
             UiCommand::EraseText(characters) => {
                 for _ in 0..*characters {
-                    self.backend.press_key(UiPressKey::Backspace)?;
+                    self.backend.press_key(&UiKeyPress::plain(UiPressKey::Backspace))?;
                 }
                 Ok(None)
             }
             UiCommand::PressKey(key) => {
-                self.backend.press_key(*key)?;
+                self.backend.press_key(key)?;
                 Ok(None)
             }
             UiCommand::PressKeyCode {
                 keycode,
                 duration_ms,
+                modifiers,
             } => {
-                self.backend.press_key_code(*keycode, *duration_ms)?;
+                self.backend
+                    .press_key_code(*keycode, *duration_ms, modifiers.as_slice())?;
                 Ok(None)
             }
             UiCommand::KeySequence(keycodes) => {
@@ -937,7 +1229,7 @@ where
                 Ok(None)
             }
             UiCommand::HideKeyboard => {
-                self.hide_keyboard()?;
+                self.backend.hide_keyboard()?;
                 Ok(None)
             }
             UiCommand::AssertVisible(target) => {
@@ -967,7 +1259,10 @@ where
                         "video recording is already active; call `stopRecording` before starting another one"
                     );
                 }
-                let path = self.artifact_path(name.as_deref().unwrap_or("recording"), "mp4");
+                let path = self.artifact_path(
+                    name.as_deref().unwrap_or("recording"),
+                    self.backend.video_extension(),
+                );
                 self.backend.start_video_recording(&path)?;
                 self.manual_recording = Some(path);
                 Ok(None)
@@ -1137,10 +1432,11 @@ where
         let timeout = Duration::from_millis(u64::from(command.timeout_ms));
         let started = Instant::now();
         while started.elapsed() < timeout {
-            if self.find_element_once(&command.target)?.is_some() {
+            let tree = self.backend.describe_all()?;
+            if find_visible_element_by_selector(&tree, &command.target).is_some() {
                 return Ok(());
             }
-            self.perform_swipe(&default_swipe_for_scroll(command.direction))?;
+            self.perform_scroll_with_tree(command.direction, &tree)?;
             thread::sleep(Duration::from_millis(350));
         }
 
@@ -1164,9 +1460,56 @@ where
         Ok(())
     }
 
-    fn find_element_once(&self, selector: &UiSelector) -> Result<Option<UiElementMatch>> {
+    fn perform_swipe_on(&self, command: &UiElementSwipe) -> Result<()> {
+        let element = self.find_tappable_element(&command.target)?;
+        let frame = element.frame.expect("swipe target must expose a frame");
+        let (start, end) = directional_points_in_frame(frame, command.direction, false);
+        self.backend.swipe_points(
+            start,
+            end,
+            command.duration_ms.or(Some(DEFAULT_SWIPE_DURATION_MS)),
+            command.delta.or(Some(DEFAULT_SWIPE_DELTA)),
+        )?;
+        Ok(())
+    }
+
+    fn perform_drag_and_drop(&self, command: &UiDragAndDrop) -> Result<()> {
+        let source = self.find_tappable_element(&command.source)?;
+        let source_frame = source.frame.expect("drag source must expose a frame");
+        let destination = self.find_tappable_element(&command.destination)?;
+        let destination_frame = destination
+            .frame
+            .expect("drag destination must expose a frame");
+        self.backend.drag_points(
+            source_frame.center(),
+            destination_frame.center(),
+            command.duration_ms.or(Some(DEFAULT_DRAG_DURATION_MS)),
+            command.delta.or(Some(DEFAULT_SWIPE_DELTA)),
+        )
+    }
+
+    fn perform_scroll_on(&self, command: &UiElementScroll) -> Result<()> {
+        let element = self.find_tappable_element(&command.target)?;
+        let frame = element.frame.expect("scroll target must expose a frame");
+        self.backend
+            .scroll_at_point(command.direction, frame.center())
+    }
+
+    fn perform_scroll(&self, direction: UiSwipeDirection) -> Result<()> {
         let tree = self.backend.describe_all()?;
-        Ok(find_visible_element_by_selector(&tree, selector))
+        self.perform_scroll_with_tree(direction, &tree)
+    }
+
+    fn perform_scroll_with_tree(
+        &self,
+        direction: UiSwipeDirection,
+        tree: &JsonValue,
+    ) -> Result<()> {
+        if let Some(container) = find_visible_scroll_container(tree) {
+            self.backend.scroll_at_point(direction, container.center())
+        } else {
+            self.backend.scroll_in_direction(direction)
+        }
     }
 
     fn current_flow_path(&self) -> Result<&Path> {
@@ -1211,16 +1554,6 @@ where
             }
         }
         self.artifacts_dir.join(sanitized)
-    }
-
-    fn hide_keyboard(&self) -> Result<()> {
-        let screen = infer_screen_frame(&self.backend.describe_all()?)
-            .context("could not infer simulator screen bounds from the accessibility tree")?;
-        let start = resolve_point_expr(&screen, &parse_point_expr_literal("50%, 68%"));
-        let end = resolve_point_expr(&screen, &parse_point_expr_literal("50%, 54%"));
-        self.backend
-            .swipe_points(start, end, Some(120), Some(3))
-            .context("failed to dismiss the software keyboard")
     }
 
     fn extended_wait_until(&self, command: &UiExtendedWaitUntil) -> Result<()> {
@@ -1287,21 +1620,42 @@ fn prepare_ui_session(
     platform: ApplePlatform,
     launch_app: bool,
 ) -> Result<PreparedUiSession> {
-    if platform != ApplePlatform::Ios {
-        bail!("UI automation currently supports only `--platform ios`");
+    match platform {
+        ApplePlatform::Ios => {
+            ensure_idb_tooling_available()?;
+            let build_outcome = build::build_for_testing_destination(
+                project,
+                platform,
+                DestinationKind::Simulator,
+            )?;
+            let backend = IosSimulatorBackend::prepare(project, &build_outcome.receipt)?;
+            if launch_app {
+                backend.launch_app(&build_outcome.receipt.bundle_id, true, &[])?;
+            }
+            Ok(PreparedUiSession {
+                build_outcome,
+                backend: Box::new(backend),
+            })
+        }
+        ApplePlatform::Macos => {
+            let build_outcome = build::build_for_testing_destination(
+                project,
+                platform,
+                DestinationKind::Simulator,
+            )?;
+            let backend = MacosBackend::prepare(project, &build_outcome.receipt)?;
+            if launch_app {
+                backend.launch_app(&build_outcome.receipt.bundle_id, true, &[])?;
+            }
+            Ok(PreparedUiSession {
+                build_outcome,
+                backend: Box::new(backend),
+            })
+        }
+        _ => bail!(
+            "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
+        ),
     }
-
-    ensure_idb_tooling_available()?;
-    let build_outcome =
-        build::build_for_testing_destination(project, platform, DestinationKind::Simulator)?;
-    let backend = IosSimulatorBackend::prepare(project, &build_outcome.receipt)?;
-    if launch_app {
-        backend.launch_app(&build_outcome.receipt.bundle_id, true, &[])?;
-    }
-    Ok(PreparedUiSession {
-        build_outcome,
-        backend,
-    })
 }
 
 pub(super) fn idb_requirement_message() -> &'static str {
@@ -1505,48 +1859,35 @@ fn sanitize_extension_component(value: &str) -> String {
     }
 }
 
-fn default_swipe_for_scroll(direction: UiSwipeDirection) -> UiSwipe {
-    let (start, end) = match direction {
-        // `scroll` and `scrollUntilVisible` describe content movement.
-        // `idb ui swipe` describes the finger path, so the gesture is inverted.
-        UiSwipeDirection::Left => ("10%, 50%", "90%, 50%"),
-        UiSwipeDirection::Right => ("90%, 50%", "10%, 50%"),
-        UiSwipeDirection::Up => ("50%, 20%", "50%, 90%"),
-        UiSwipeDirection::Down => ("50%, 50%", "50%, 10%"),
+fn directional_points_in_frame(
+    frame: UiFrame,
+    direction: UiSwipeDirection,
+    invert_for_scroll: bool,
+) -> ((f64, f64), (f64, f64)) {
+    let direction = if invert_for_scroll {
+        match direction {
+            UiSwipeDirection::Left => UiSwipeDirection::Right,
+            UiSwipeDirection::Right => UiSwipeDirection::Left,
+            UiSwipeDirection::Up => UiSwipeDirection::Down,
+            UiSwipeDirection::Down => UiSwipeDirection::Up,
+        }
+    } else {
+        direction
     };
-    UiSwipe {
-        start: parse_point_expr_literal(start),
-        end: parse_point_expr_literal(end),
-        duration_ms: Some(DEFAULT_SWIPE_DURATION_MS),
-        delta: Some(DEFAULT_SWIPE_DELTA),
-    }
-}
 
-fn parse_point_expr_literal(value: &str) -> UiPointExpr {
-    let (x, y) = value
-        .split_once(',')
-        .expect("literal points are well-formed");
-    UiPointExpr {
-        x: parse_coordinate_literal(x.trim()),
-        y: parse_coordinate_literal(y.trim()),
-    }
-}
+    let left = frame.x + (frame.width * 0.20);
+    let right = frame.x + (frame.width * 0.80);
+    let top = frame.y + (frame.height * 0.20);
+    let bottom = frame.y + (frame.height * 0.80);
+    let center_x = frame.x + (frame.width * 0.50);
+    let center_y = frame.y + (frame.height * 0.50);
 
-fn parse_coordinate_literal(value: &str) -> UiCoordinate {
-    if let Some(percent) = value.strip_suffix('%') {
-        return UiCoordinate::Percent(
-            percent
-                .trim()
-                .parse::<f64>()
-                .expect("literal percent coordinates must parse"),
-        );
+    match direction {
+        UiSwipeDirection::Left => ((right, center_y), (left, center_y)),
+        UiSwipeDirection::Right => ((left, center_y), (right, center_y)),
+        UiSwipeDirection::Up => ((center_x, bottom), (center_x, top)),
+        UiSwipeDirection::Down => ((center_x, top), (center_x, bottom)),
     }
-    UiCoordinate::Absolute(
-        value
-            .trim()
-            .parse::<f64>()
-            .expect("literal absolute coordinates must parse"),
-    )
 }
 
 fn resolve_point_expr(screen: &UiFrame, point: &UiPointExpr) -> (f64, f64) {
@@ -1563,7 +1904,7 @@ fn resolve_coordinate(origin: f64, span: f64, coordinate: UiCoordinate) -> f64 {
     }
 }
 
-fn infer_screen_frame(tree: &JsonValue) -> Option<UiFrame> {
+pub(super) fn infer_screen_frame(tree: &JsonValue) -> Option<UiFrame> {
     let mut frames = Vec::new();
     collect_frames(tree, &mut frames);
     frames.into_iter().max_by(|left, right| {
@@ -1632,6 +1973,67 @@ fn find_visible_element_by_selector(
             .then_with(|| left.label.cmp(&right.label))
     });
     matches.into_iter().next()
+}
+
+fn find_visible_scroll_container(tree: &JsonValue) -> Option<UiFrame> {
+    let screen = infer_screen_frame(tree);
+    let mut frames = Vec::new();
+    collect_visible_scroll_frames(tree, screen, &mut frames);
+    frames.into_iter().max_by(|left, right| {
+        let left_area = left.width * left.height;
+        let right_area = right.width * right.height;
+        left_area
+            .partial_cmp(&right_area)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })
+}
+
+fn collect_visible_scroll_frames(
+    tree: &JsonValue,
+    screen: Option<UiFrame>,
+    frames: &mut Vec<UiFrame>,
+) {
+    match tree {
+        JsonValue::Array(values) => {
+            for value in values {
+                collect_visible_scroll_frames(value, screen, frames);
+            }
+        }
+        JsonValue::Object(map) => {
+            if let Some(frame) = extract_frame(map)
+                && frame.width > 1.0
+                && frame.height > 1.0
+                && screen
+                    .map(|screen| frames_intersect(screen, frame))
+                    .unwrap_or(true)
+                && map
+                    .get("AXRole")
+                    .and_then(JsonValue::as_str)
+                    .is_some_and(is_scrollable_role)
+            {
+                frames.push(frame);
+            }
+            for value in map.values() {
+                collect_visible_scroll_frames(value, screen, frames);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn is_scrollable_role(role: &str) -> bool {
+    matches!(
+        role,
+        "AXScrollArea"
+            | "AXScrollView"
+            | "AXTable"
+            | "AXOutline"
+            | "AXList"
+            | "AXCollectionView"
+            | "XCUIElementTypeCollectionView"
+            | "XCUIElementTypeScrollView"
+            | "XCUIElementTypeTable"
+    )
 }
 
 fn collect_element_matches(
@@ -1791,7 +2193,7 @@ mod tests {
 
     use super::{
         UiCommand, UiSelector, find_element_by_selector, find_visible_element_by_selector,
-        infer_screen_frame,
+        find_visible_scroll_container, infer_screen_frame,
     };
 
     #[test]
@@ -1878,5 +2280,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(matched.copied_text.as_deref(), Some("qa@example.com"));
+    }
+
+    #[test]
+    fn visible_scroll_container_prefers_largest_visible_scroll_role() {
+        let tree = json!([
+            { "frame": { "x": 0, "y": 0, "width": 500, "height": 500 } },
+            {
+                "AXRole": "AXScrollArea",
+                "frame": { "x": 20, "y": 20, "width": 260, "height": 180 }
+            },
+            {
+                "AXRole": "AXTable",
+                "frame": { "x": 30, "y": 30, "width": 120, "height": 80 }
+            },
+            {
+                "AXRole": "AXScrollArea",
+                "frame": { "x": 20, "y": 540, "width": 300, "height": 200 }
+            }
+        ]);
+
+        let frame = find_visible_scroll_container(&tree).unwrap();
+        assert_eq!(frame.x, 20.0);
+        assert_eq!(frame.y, 20.0);
+        assert_eq!(frame.width, 260.0);
+        assert_eq!(frame.height, 180.0);
     }
 }

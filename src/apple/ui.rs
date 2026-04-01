@@ -1,14 +1,22 @@
 use anyhow::Result;
 
 use crate::apple::runtime;
-use crate::apple::testing::ui::{
-    self, UiCrashDeleteRequest, UiCrashQuery, backend::IosSimulatorBackend, backend::UiBackend,
-};
+use crate::apple::testing::ui::{self, UiCrashDeleteRequest, UiCrashQuery, backend::UiBackend};
 use crate::cli::{
-    UiAddMediaArgs, UiCrashArgs, UiCrashCommand, UiDescribePointArgs, UiDumpTreeArgs, UiFocusArgs,
-    UiInstallDylibArgs, UiInstrumentsArgs, UiLogsArgs, UiOpenArgs, UiUpdateContactsArgs,
+    UiAddMediaArgs, UiCrashArgs, UiCrashCommand, UiDescribePointArgs, UiDoctorArgs, UiDumpTreeArgs,
+    UiFocusArgs, UiInstallDylibArgs, UiInstrumentsArgs, UiLogsArgs, UiOpenArgs,
+    UiUpdateContactsArgs,
 };
 use crate::context::ProjectContext;
+
+pub fn doctor(project: &ProjectContext, args: &UiDoctorArgs) -> Result<()> {
+    let platform = runtime::resolve_platform(
+        project,
+        args.platform.map(runtime::apple_platform_from_cli),
+        "Select a platform to inspect",
+    )?;
+    ui::doctor(project, platform)
+}
 
 pub fn dump_tree(project: &ProjectContext, args: &UiDumpTreeArgs) -> Result<()> {
     let platform = runtime::resolve_platform(
@@ -93,10 +101,7 @@ pub fn reset_idb() -> Result<()> {
 fn attach_backend(
     project: &ProjectContext,
     platform: Option<crate::manifest::ApplePlatform>,
-) -> Result<IosSimulatorBackend> {
+) -> Result<Box<dyn UiBackend>> {
     let platform = runtime::resolve_platform(project, platform, "Select a platform to inspect")?;
-    if platform != crate::manifest::ApplePlatform::Ios {
-        anyhow::bail!("Orbit UI automation currently supports only `--platform ios`");
-    }
-    IosSimulatorBackend::attach(project)
+    ui::attach_backend(project, platform)
 }

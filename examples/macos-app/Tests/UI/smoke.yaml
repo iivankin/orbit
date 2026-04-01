@@ -1,0 +1,13 @@
+appId: dev.orbit.examples.macos
+name: macos-smoke
+---
+- launchApp
+- assertVisible:
+    id: fixture-title
+- tapOn:
+    id: name-field
+- inputText: Orbit
+- tapOn:
+    id: apply-button
+- assertVisible: Hello, Orbit
+- takeScreenshot: macos-smoke

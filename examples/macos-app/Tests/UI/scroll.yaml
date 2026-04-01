@@ -1,0 +1,11 @@
+appId: dev.orbit.examples.macos
+name: macos-scroll
+---
+- launchApp
+- scrollUntilVisible:
+    element:
+      id: scroll-footer
+    direction: DOWN
+- assertVisible:
+    id: scroll-footer
+- takeScreenshot: macos-scroll-footer

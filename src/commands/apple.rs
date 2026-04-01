@@ -18,6 +18,10 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
         }
         Command::Ui(ui_args) => match &ui_args.command {
             UiCommand::ResetIdb(_) => apple::ui::reset_idb(),
+            UiCommand::Doctor(args) => {
+                let project = app.load_project(cli.manifest.as_deref())?;
+                apple::ui::doctor(&project, args)
+            }
             UiCommand::DumpTree(args) => {
                 let project = app.load_project(cli.manifest.as_deref())?;
                 apple::ui::dump_tree(&project, args)

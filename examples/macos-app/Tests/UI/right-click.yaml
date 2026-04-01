@@ -1,0 +1,8 @@
+appId: dev.orbit.examples.macos
+name: macos-right-click
+---
+- launchApp
+- rightClickOn:
+    id: secondary-click-area
+- assertVisible: Secondary click recognized
+- takeScreenshot: macos-right-click
