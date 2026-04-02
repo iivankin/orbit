@@ -619,7 +619,15 @@ pub(super) fn resolve_signing_identity(
     let _ = run_command(&mut settings);
     ensure_keychain_in_search_list(keychain_str)?;
 
-    let p12_password = load_p12_password(&certificate.p12_password_account)?;
+    let p12_password = match load_p12_password(&certificate.p12_password_account) {
+        Ok(password) => password,
+        Err(error) => {
+            if !can_repair_local_p12(certificate) {
+                return Err(error);
+            }
+            repair_local_p12_password(certificate)?
+        }
+    };
     if let Err(error) = import_p12_into_keychain(&certificate.p12_path, keychain_str, &p12_password)
     {
         if !certificate.private_key_path.exists() || !certificate.certificate_der_path.exists() {
@@ -679,4 +687,23 @@ pub(super) fn resolve_signing_identity(
         "failed to resolve imported signing identity for certificate {}",
         certificate.id
     )
+}
+
+fn can_repair_local_p12(certificate: &ManagedCertificate) -> bool {
+    !certificate.p12_password_account.is_empty()
+        && certificate.private_key_path.exists()
+        && certificate.certificate_der_path.exists()
+}
+
+fn repair_local_p12_password(certificate: &ManagedCertificate) -> Result<String> {
+    let repaired_password = uuid::Uuid::new_v4().to_string();
+    export_p12_from_der_certificate(
+        &certificate.private_key_path,
+        &certificate.certificate_der_path,
+        &certificate.p12_path,
+        &repaired_password,
+    )
+    .context("failed to repair local P12 after missing password lookup")?;
+    store_p12_password(&certificate.p12_password_account, &repaired_password)?;
+    Ok(repaired_password)
 }

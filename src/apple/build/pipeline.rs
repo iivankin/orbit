@@ -13,7 +13,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
-use self::artifacts::export_artifact;
+use self::artifacts::{export_artifact, remove_existing_path};
 use self::compile::{CompileOutputMode, compile_target, embed_dependencies};
 pub(crate) use self::runtime::macos_executable_path;
 use self::runtime::{
@@ -57,6 +57,8 @@ struct BuiltTarget {
     target_name: String,
     target_kind: TargetKind,
     bundle_path: PathBuf,
+    binary_path: PathBuf,
+    module_output_path: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone)]
@@ -64,6 +66,13 @@ struct ProductLayout {
     product_path: PathBuf,
     binary_path: PathBuf,
     module_output_path: Option<PathBuf>,
+}
+
+#[derive(Debug, Clone)]
+struct ArchitectureBuild {
+    toolchain: Toolchain,
+    build_root: PathBuf,
+    built_targets: HashMap<String, BuiltTarget>,
 }
 
 #[derive(Debug, Clone)]
@@ -107,6 +116,10 @@ fn profile_description(profile: &ProfileManifest) -> String {
     )
 }
 
+fn request_requires_signing(request: &BuildRequest) -> bool {
+    build_requires_signing(&request.profile, request.destination)
+}
+
 pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> {
     let platform = resolve_platform(
         project,
@@ -131,24 +144,12 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
         output: args.output.clone(),
         provisioning_udids: None,
     };
-    if build_requires_signing(&request.profile, request.destination) {
+    if request_requires_signing(&request) {
         crate::apple::auth::ensure_project_authenticated(project)?;
     }
 
-    let spinner = CliSpinner::new(format!(
-        "Building {} for {} ({})",
-        request.target_name,
-        profile_description(&request.profile),
-        request.destination.as_str()
-    ));
-    let outcome = match build_project(project, &request) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            spinner.finish_clear();
-            return Err(error);
-        }
-    };
-    spinner.finish_success(format!(
+    let outcome = build_project(project, &request)?;
+    crate::util::print_success(format!(
         "Built {} for {}.",
         outcome.receipt.target,
         profile_description(&request.profile)
@@ -183,7 +184,7 @@ pub fn build_for_testing_destination(
         output: None,
         provisioning_udids: None,
     };
-    if build_requires_signing(&request.profile, request.destination) {
+    if request_requires_signing(&request) {
         crate::apple::auth::ensure_project_authenticated(project)?;
     }
     build_project(project, &request)
@@ -206,6 +207,7 @@ pub fn prepare_for_ide(
         platform,
         platform_manifest.deployment_target.as_str(),
         destination,
+        project.selected_xcode.as_ref(),
     )?;
     let build_root = project
         .project_paths
@@ -225,6 +227,7 @@ pub fn prepare_for_ide(
             &profile,
             Some(index_store_path),
             CompileOutputMode::Silent,
+            None,
         )?;
     }
     Ok(())
@@ -269,24 +272,12 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
             .as_ref()
             .map(|device| vec![device.provisioning_udid().to_owned()]),
     };
-    if build_requires_signing(&request.profile, request.destination) {
+    if request_requires_signing(&request) {
         crate::apple::auth::ensure_project_authenticated(project)?;
     }
 
-    let spinner = CliSpinner::new(format!(
-        "Building {} for {} ({})",
-        request.target_name,
-        profile_description(&request.profile),
-        request.destination.as_str()
-    ));
-    let outcome = match build_project(project, &request) {
-        Ok(outcome) => outcome,
-        Err(error) => {
-            spinner.finish_clear();
-            return Err(error);
-        }
-    };
-    spinner.finish_success(format!(
+    let outcome = build_project(project, &request)?;
+    crate::util::print_success(format!(
         "Built {} for {}.",
         outcome.receipt.target,
         profile_description(&request.profile)
@@ -310,11 +301,12 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
         outcome.receipt.destination.as_str(),
         args.debug,
     ) {
-        (ApplePlatform::Macos, _, false) => run_on_macos(&outcome.receipt),
-        (ApplePlatform::Macos, _, true) => debug_on_macos(&outcome.receipt),
+        (ApplePlatform::Macos, _, false) => run_on_macos(project, &outcome.receipt),
+        (ApplePlatform::Macos, _, true) => debug_on_macos(project, &outcome.receipt),
         (_, "simulator", false) => run_on_simulator(project, &outcome.receipt),
         (_, "simulator", true) => debug_on_simulator(project, &outcome.receipt),
         (_, "device", false) => run_on_device(
+            project,
             selected_device
                 .as_ref()
                 .context("device run requested without a selected physical device")?,
@@ -390,71 +382,54 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
         .context("platform configuration missing from manifest")?;
     let profile = &request.profile;
 
-    let toolchain = Toolchain::resolve(
-        platform,
-        platform_manifest.deployment_target.as_str(),
-        request.destination,
-    )?;
-
     let build_root = project
         .project_paths
         .build_dir
         .join(platform.to_string())
         .join(profile.variant_name())
-        .join(toolchain.destination.as_str());
+        .join(request.destination.as_str());
     ensure_dir(&build_root)?;
 
     let ordered_targets = project
         .resolved_manifest
         .topological_targets(&root_target.name)?;
-    let mut built_targets = HashMap::new();
-    let signing_required = build_requires_signing(profile, request.destination);
-    for target in &ordered_targets {
-        let built = compile_target(
+    let signing_required = request_requires_signing(request);
+    let built_targets = if should_build_universal_macos(platform, platform_manifest) {
+        build_universal_macos_target_graph(
             project,
-            &toolchain,
-            target,
+            platform_manifest,
+            request,
+            &ordered_targets,
             &build_root,
             profile,
-            None,
-            CompileOutputMode::UserFacing,
+        )?
+    } else {
+        let toolchain = Toolchain::resolve(
+            platform,
+            platform_manifest.deployment_target.as_str(),
+            request.destination,
+            project.selected_xcode.as_ref(),
         )?;
-        built_targets.insert(target.name.clone(), built);
-    }
-
-    for target in &ordered_targets {
-        if target.kind.is_bundle() {
-            let built_targets_snapshot = built_targets.clone();
-            let built_target = built_targets
-                .get_mut(&target.name)
-                .with_context(|| format!("missing built target `{}`", target.name))?;
-            embed_dependencies(
-                project,
-                platform,
-                target,
-                &built_targets_snapshot,
-                built_target,
-            )?;
-        }
-
-        if signing_required && target.kind.is_bundle() {
-            let built_target = built_targets
-                .get(&target.name)
-                .with_context(|| format!("missing built target `{}`", target.name))?;
-            let material = crate::apple::signing::prepare_signing(
-                project,
-                target,
-                platform,
-                profile,
-                request.provisioning_udids.clone(),
-            )?;
-            crate::apple::signing::sign_bundle(
-                platform,
-                request.profile.distribution,
-                &built_target.bundle_path,
-                &material,
-            )?;
-        }
+        compile_target_graph(
+            project,
+            platform,
+            &toolchain,
+            &ordered_targets,
+            &build_root,
+            profile,
+            CompileOutputMode::UserFacing,
+            None,
+        )?
+    };
+    if signing_required {
+        sign_target_graph(
+            project,
+            request,
+            &ordered_targets,
+            &built_targets,
+            profile,
+            platform,
+        )?;
     }
 
     let root_target_built = built_targets
@@ -503,6 +478,253 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
         receipt,
         receipt_path,
     })
+}
+
+fn should_build_universal_macos(
+    platform: ApplePlatform,
+    platform_manifest: &crate::manifest::PlatformManifest,
+) -> bool {
+    platform == ApplePlatform::Macos && platform_manifest.universal_binary
+}
+
+fn compile_target_graph(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    toolchain: &Toolchain,
+    ordered_targets: &[&TargetManifest],
+    build_root: &Path,
+    profile: &ProfileManifest,
+    output_mode: CompileOutputMode,
+    log_prefix: Option<&str>,
+) -> Result<HashMap<String, BuiltTarget>> {
+    let mut built_targets = HashMap::new();
+    for target in ordered_targets {
+        let built = compile_target(
+            project,
+            toolchain,
+            target,
+            build_root,
+            profile,
+            None,
+            output_mode,
+            log_prefix,
+        )?;
+        built_targets.insert(target.name.clone(), built);
+    }
+
+    for target in ordered_targets {
+        if !target.kind.is_bundle() {
+            continue;
+        }
+        let built_targets_snapshot = built_targets.clone();
+        let built_target = built_targets
+            .get_mut(&target.name)
+            .with_context(|| format!("missing built target `{}`", target.name))?;
+        embed_dependencies(
+            project,
+            platform,
+            target,
+            &built_targets_snapshot,
+            built_target,
+        )?;
+    }
+
+    Ok(built_targets)
+}
+
+fn sign_target_graph(
+    project: &ProjectContext,
+    request: &BuildRequest,
+    ordered_targets: &[&TargetManifest],
+    built_targets: &HashMap<String, BuiltTarget>,
+    profile: &ProfileManifest,
+    platform: ApplePlatform,
+) -> Result<()> {
+    for target in ordered_targets {
+        if !target.kind.is_bundle() {
+            continue;
+        }
+        let built_target = built_targets
+            .get(&target.name)
+            .with_context(|| format!("missing built target `{}`", target.name))?;
+        let material = crate::apple::signing::prepare_signing(
+            project,
+            target,
+            platform,
+            profile,
+            request.provisioning_udids.clone(),
+        )?;
+        crate::apple::signing::sign_bundle(
+            platform,
+            request.profile.distribution,
+            &built_target.bundle_path,
+            &material,
+        )?;
+    }
+
+    Ok(())
+}
+
+fn build_universal_macos_target_graph(
+    project: &ProjectContext,
+    platform_manifest: &crate::manifest::PlatformManifest,
+    request: &BuildRequest,
+    ordered_targets: &[&TargetManifest],
+    build_root: &Path,
+    profile: &ProfileManifest,
+) -> Result<HashMap<String, BuiltTarget>> {
+    let arch_root = build_root.join("arch");
+    ensure_dir(&arch_root)?;
+
+    let architectures = ["arm64", "x86_64"];
+    let mut architecture_builds = Vec::with_capacity(architectures.len());
+    for architecture in architectures {
+        println!("universal macOS slice `{architecture}`:");
+        let toolchain = Toolchain::resolve_for_architecture(
+            request.platform,
+            platform_manifest.deployment_target.as_str(),
+            request.destination,
+            project.selected_xcode.as_ref(),
+            Some(architecture),
+        )?;
+        let arch_build_root = arch_root.join(architecture);
+        ensure_dir(&arch_build_root)?;
+        let built_targets = compile_target_graph(
+            project,
+            request.platform,
+            &toolchain,
+            ordered_targets,
+            &arch_build_root,
+            profile,
+            CompileOutputMode::UserFacing,
+            Some(architecture),
+        )?;
+        crate::util::print_success(format!(
+            "Built universal macOS slice `{architecture}` for {} target(s).",
+            built_targets.len()
+        ));
+        architecture_builds.push(ArchitectureBuild {
+            toolchain,
+            build_root: arch_build_root,
+            built_targets,
+        });
+    }
+
+    let primary = architecture_builds
+        .first()
+        .context("missing primary architecture build")?;
+    let secondary = architecture_builds
+        .get(1)
+        .context("missing secondary architecture build")?;
+    let merged_targets =
+        merge_universal_macos_targets(project, ordered_targets, primary, secondary, build_root)?;
+    crate::util::print_success(format!(
+        "Merged universal macOS slices for {} target(s).",
+        merged_targets.len()
+    ));
+    Ok(merged_targets)
+}
+
+fn merge_universal_macos_targets(
+    project: &ProjectContext,
+    ordered_targets: &[&TargetManifest],
+    primary: &ArchitectureBuild,
+    secondary: &ArchitectureBuild,
+    build_root: &Path,
+) -> Result<HashMap<String, BuiltTarget>> {
+    let mut merged_targets = HashMap::new();
+
+    for target in ordered_targets {
+        let primary_target = primary.built_targets.get(&target.name).with_context(|| {
+            format!("missing primary build output for target `{}`", target.name)
+        })?;
+        let secondary_target = secondary.built_targets.get(&target.name).with_context(|| {
+            format!(
+                "missing secondary build output for target `{}`",
+                target.name
+            )
+        })?;
+        let target_dir = build_root.join(&target.name);
+        let intermediates_dir = target_dir.join("intermediates");
+        let layout = product_layout(&target_dir, &intermediates_dir, target, &primary.toolchain);
+
+        remove_existing_path(&layout.product_path)?;
+        if primary_target.bundle_path.is_dir() {
+            copy_dir_recursive(&primary_target.bundle_path, &layout.product_path)?;
+        } else {
+            copy_file(&primary_target.bundle_path, &layout.product_path)?;
+        }
+
+        ensure_parent_dir(&layout.binary_path)?;
+        let mut lipo = primary.toolchain.lipo();
+        lipo.args(["-create", "-output"]);
+        lipo.arg(&layout.binary_path);
+        lipo.arg(&primary_target.binary_path);
+        lipo.arg(&secondary_target.binary_path);
+        run_command(&mut lipo)?;
+
+        if let Some(module_output_path) = &primary_target.module_output_path {
+            copy_arch_artifact_to_merged_root(&primary.build_root, module_output_path, build_root)?;
+        }
+        if let Some(module_output_path) = &secondary_target.module_output_path {
+            copy_arch_artifact_to_merged_root(
+                &secondary.build_root,
+                module_output_path,
+                build_root,
+            )?;
+        }
+
+        merged_targets.insert(
+            target.name.clone(),
+            BuiltTarget {
+                target_name: target.name.clone(),
+                target_kind: target.kind,
+                bundle_path: layout.product_path,
+                binary_path: layout.binary_path,
+                module_output_path: layout.module_output_path,
+            },
+        );
+    }
+
+    for target in ordered_targets {
+        if !target.kind.is_bundle() {
+            continue;
+        }
+        let built_targets_snapshot = merged_targets.clone();
+        let built_target = merged_targets
+            .get_mut(&target.name)
+            .with_context(|| format!("missing merged target `{}`", target.name))?;
+        embed_dependencies(
+            project,
+            ApplePlatform::Macos,
+            target,
+            &built_targets_snapshot,
+            built_target,
+        )?;
+    }
+
+    Ok(merged_targets)
+}
+
+fn copy_arch_artifact_to_merged_root(
+    architecture_root: &Path,
+    source: &Path,
+    merged_root: &Path,
+) -> Result<()> {
+    let relative = source.strip_prefix(architecture_root).with_context(|| {
+        format!(
+            "failed to relativize architecture artifact {} against {}",
+            source.display(),
+            architecture_root.display()
+        )
+    })?;
+    let destination = merged_root.join(relative);
+    if source.is_dir() {
+        copy_dir_recursive(source, &destination)?;
+    } else {
+        copy_file(source, &destination)?;
+    }
+    Ok(())
 }
 
 fn resolve_destination(

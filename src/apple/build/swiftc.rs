@@ -222,6 +222,7 @@ mod tests {
             deployment_target: "18.0".to_owned(),
             architecture: "arm64".to_owned(),
             target_triple: "arm64-apple-ios18.0-simulator".to_owned(),
+            selected_xcode: None,
         }
     }
 

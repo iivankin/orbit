@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 use std::process::Command;
 
+use crate::apple::xcode::{SelectedXcode, xcodebuild_command, xcrun_command};
 use crate::manifest::ApplePlatform;
 use crate::util::command_output;
 use anyhow::{Context, Result, bail};
@@ -29,6 +30,7 @@ pub struct Toolchain {
     pub deployment_target: String,
     pub architecture: String,
     pub target_triple: String,
+    pub(crate) selected_xcode: Option<SelectedXcode>,
 }
 
 #[derive(Debug, Clone)]
@@ -49,6 +51,23 @@ impl Toolchain {
         platform: ApplePlatform,
         deployment_target: &str,
         destination: DestinationKind,
+        selected_xcode: Option<&SelectedXcode>,
+    ) -> Result<Self> {
+        Self::resolve_for_architecture(
+            platform,
+            deployment_target,
+            destination,
+            selected_xcode,
+            None,
+        )
+    }
+
+    pub fn resolve_for_architecture(
+        platform: ApplePlatform,
+        deployment_target: &str,
+        destination: DestinationKind,
+        selected_xcode: Option<&SelectedXcode>,
+        architecture_override: Option<&str>,
     ) -> Result<Self> {
         let sdk_name = match (platform, destination) {
             (ApplePlatform::Ios, DestinationKind::Simulator) => "iphonesimulator",
@@ -63,21 +82,18 @@ impl Toolchain {
         }
         .to_owned();
 
-        let sdk_path = command_output(Command::new("xcrun").args([
-            "--sdk",
-            sdk_name.as_str(),
-            "--show-sdk-path",
-        ]))?;
+        let mut sdk_path_command = xcrun_command(selected_xcode);
+        sdk_path_command.args(["--sdk", sdk_name.as_str(), "--show-sdk-path"]);
+        let sdk_path = command_output(&mut sdk_path_command)?;
         let sdk_path = PathBuf::from(sdk_path.trim());
 
         let host_architecture = host_architecture()?;
-        let architecture = match (platform, destination) {
-            (ApplePlatform::Ios, DestinationKind::Device)
-            | (ApplePlatform::Tvos, DestinationKind::Device)
-            | (ApplePlatform::Visionos, DestinationKind::Device) => "arm64".to_owned(),
-            (ApplePlatform::Watchos, DestinationKind::Device) => "arm64_32".to_owned(),
-            _ => host_architecture.clone(),
-        };
+        let architecture = resolve_architecture(
+            platform,
+            destination,
+            architecture_override,
+            &host_architecture,
+        )?;
         let target_triple = match (platform, destination) {
             (ApplePlatform::Ios, DestinationKind::Simulator) => {
                 format!("{architecture}-apple-ios{deployment_target}-simulator")
@@ -114,17 +130,20 @@ impl Toolchain {
             deployment_target: deployment_target.to_owned(),
             architecture,
             target_triple,
+            selected_xcode: selected_xcode.cloned(),
         })
     }
 
     pub fn swiftc(&self) -> Command {
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
         command.args(["--sdk", self.sdk_name.as_str(), "swiftc"]);
         command
     }
 
     pub fn toolchain_root(&self) -> Result<PathBuf> {
-        let swiftc_path = command_output(Command::new("xcrun").args(["--find", "swiftc"]))?;
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
+        command.args(["--find", "swiftc"]);
+        let swiftc_path = command_output(&mut command)?;
         let swiftc_path = PathBuf::from(swiftc_path.trim());
         let usr_dir = swiftc_path
             .parent()
@@ -138,19 +157,25 @@ impl Toolchain {
 
     pub fn clang(&self, cpp: bool) -> Command {
         let tool = if cpp { "clang++" } else { "clang" };
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
         command.args(["--sdk", self.sdk_name.as_str(), tool]);
         command
     }
 
     pub fn libtool(&self) -> Command {
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
         command.args(["--sdk", self.sdk_name.as_str(), "libtool"]);
         command
     }
 
+    pub fn lipo(&self) -> Command {
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
+        command.arg("lipo");
+        command
+    }
+
     pub fn actool_command(&self) -> Command {
-        Command::new("xcrun")
+        xcrun_command(self.selected_xcode.as_ref())
     }
 
     pub fn info_plist_supported_platform(&self) -> &'static str {
@@ -194,7 +219,7 @@ impl Toolchain {
     pub fn bundle_build_metadata(&self) -> Result<BundleBuildMetadata> {
         let sdk_version = self.sdk_value("--show-sdk-version")?;
         let sdk_build = self.sdk_value("--show-sdk-build-version")?;
-        let (xcode, xcode_build) = xcode_metadata()?;
+        let (xcode, xcode_build) = xcode_metadata(self.selected_xcode.as_ref())?;
 
         Ok(BundleBuildMetadata {
             build_machine_os_build: macos_build_version()?,
@@ -210,10 +235,36 @@ impl Toolchain {
     }
 
     fn sdk_value(&self, flag: &str) -> Result<String> {
-        let value =
-            command_output(Command::new("xcrun").args(["--sdk", self.sdk_name.as_str(), flag]))?;
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
+        command.args(["--sdk", self.sdk_name.as_str(), flag]);
+        let value = command_output(&mut command)?;
         Ok(value.trim().to_owned())
     }
+}
+
+fn resolve_architecture(
+    platform: ApplePlatform,
+    destination: DestinationKind,
+    architecture_override: Option<&str>,
+    host_architecture: &str,
+) -> Result<String> {
+    if let Some(architecture) = architecture_override {
+        return match (platform, destination, architecture) {
+            (ApplePlatform::Macos, _, "arm64" | "x86_64") => Ok(architecture.to_owned()),
+            _ => bail!(
+                "architecture override `{architecture}` is unsupported for {platform} {} builds",
+                destination.as_str()
+            ),
+        };
+    }
+
+    Ok(match (platform, destination) {
+        (ApplePlatform::Ios, DestinationKind::Device)
+        | (ApplePlatform::Tvos, DestinationKind::Device)
+        | (ApplePlatform::Visionos, DestinationKind::Device) => "arm64".to_owned(),
+        (ApplePlatform::Watchos, DestinationKind::Device) => "arm64_32".to_owned(),
+        _ => host_architecture.to_owned(),
+    })
 }
 
 fn host_architecture() -> Result<String> {
@@ -230,8 +281,10 @@ fn macos_build_version() -> Result<String> {
     Ok(output.trim().to_owned())
 }
 
-fn xcode_metadata() -> Result<(String, String)> {
-    let output = command_output(Command::new("xcodebuild").arg("-version"))?;
+fn xcode_metadata(selected_xcode: Option<&SelectedXcode>) -> Result<(String, String)> {
+    let mut command = xcodebuild_command(selected_xcode);
+    command.arg("-version");
+    let output = command_output(&mut command)?;
     let mut xcode_version = None;
     let mut xcode_build = None;
     for line in output.lines() {

@@ -9,6 +9,9 @@
   "platforms": {
     "macos": "14.0"
   },
+  "macos": {
+    "universal_binary": true
+  },
   "sources": [
     "Sources/App"
   ],

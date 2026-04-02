@@ -13,14 +13,15 @@ pub const SCHEMA_URL: &str = "https://orbit.dev/schemas/apple-app.v1.json";
 pub const SCHEMA_FILENAME: &str = "apple-app.v1.json";
 
 pub use authoring::{
-    AppManifest, FormatQualityManifest, HooksManifest, LintQualityManifest, QualityManifest,
-    TestFormat, TestTargetManifest, TestsManifest,
+    AppManifest, FormatQualityManifest, HooksManifest, LintQualityManifest, MacosManifest,
+    QualityManifest, TestFormat, TestTargetManifest, TestsManifest,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ResolvedManifest {
     pub name: String,
     pub version: String,
+    pub xcode: Option<String>,
     pub team_id: Option<String>,
     pub provider_id: Option<String>,
     pub hooks: HooksManifest,
@@ -33,6 +34,8 @@ pub struct ResolvedManifest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PlatformManifest {
     pub deployment_target: String,
+    #[serde(default)]
+    pub universal_binary: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

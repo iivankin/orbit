@@ -45,7 +45,7 @@ fn current_machine_provisioning_udid() -> Option<String> {
 #[ignore = "manual live Apple account test"]
 fn live_developer_services_lists_configured_team() {
     let config = require_live_apple_config("ORBIT_RUN_LIVE_APPLE_E2E");
-    let app = AppContext::new(true).unwrap();
+    let app = AppContext::new(true, false).unwrap();
     let mut developer_services = DeveloperServicesClient::authenticate(&app).unwrap();
     let teams = developer_services.list_teams().unwrap();
     assert!(

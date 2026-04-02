@@ -1047,7 +1047,7 @@ fn asc_device_matches_platform(device_platform: &str, platform: ApplePlatform) -
         ApplePlatform::Tvos => device_platform == "TVOS",
         ApplePlatform::Visionos => device_platform == "VISIONOS",
         ApplePlatform::Watchos => device_platform == "WATCHOS",
-        ApplePlatform::Macos => device_platform == "MAC_OS",
+        ApplePlatform::Macos => device_platform == "MAC_OS" || device_platform == "MACOS",
     }
 }
 

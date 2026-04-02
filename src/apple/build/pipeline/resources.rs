@@ -93,7 +93,7 @@ pub(super) fn process_resources(
         compile_strings_resource(&source, &resources_root.join(relative))?;
     }
     for (source, relative) in core_data_jobs {
-        compile_core_data_model(&source, &resources_root.join(relative))?;
+        compile_core_data_model(toolchain, &source, &resources_root.join(relative))?;
     }
 
     for (source, relative) in copy_jobs {
@@ -362,7 +362,7 @@ fn compile_interface_resource(
     destination: &Path,
 ) -> Result<()> {
     ensure_parent_dir(destination)?;
-    let mut command = Command::new("xcrun");
+    let mut command = toolchain.actool_command();
     command.args(["--sdk", toolchain.sdk_name.as_str(), "ibtool"]);
     command.arg("--compile").arg(destination);
     command
@@ -387,9 +387,9 @@ fn compile_strings_resource(source: &Path, destination: &Path) -> Result<()> {
     run_command(&mut command)
 }
 
-fn compile_core_data_model(source: &Path, destination: &Path) -> Result<()> {
+fn compile_core_data_model(toolchain: &Toolchain, source: &Path, destination: &Path) -> Result<()> {
     ensure_parent_dir(destination)?;
-    let mut command = Command::new("xcrun");
+    let mut command = toolchain.actool_command();
     command.arg("momc");
     command.arg(source);
     command.arg(destination);

@@ -1,12 +1,37 @@
+import OSLog
 import SwiftUI
+
+private let appLogger = Logger(subsystem: "dev.orbit.examples.macos", category: "app")
+private let fixtureLogger = Logger(subsystem: "dev.orbit.examples.macos", category: "fixture")
 
 @main
 struct ExampleMacApp: App {
+    @StateObject private var automationMenu = AutomationMenuState()
+
+    init() {
+        appLogger.info("ExampleMacApp launched")
+        print("ExampleMacApp print launched")
+    }
+
     var body: some Scene {
         WindowGroup {
             FixtureView()
+                .environmentObject(automationMenu)
+        }
+        .commands {
+            CommandMenu("Automation") {
+            Button("Trigger Shortcut") {
+                automationMenu.status = "Menu action triggered"
+                appLogger.info("Automation menu shortcut triggered")
+            }
+            .keyboardShortcut("k", modifiers: [.command, .shift])
         }
     }
+}
+}
+
+final class AutomationMenuState: ObservableObject {
+    @Published var status = "Awaiting menu action"
 }
 
 private struct FixtureView: View {
@@ -15,7 +40,6 @@ private struct FixtureView: View {
     @State private var secondaryClickStatus = "Awaiting secondary click"
     @State private var dropStatus = "Drop target idle"
     @State private var hoverStatus = "Awaiting hover"
-    @State private var shortcutStatus = "Awaiting shortcut"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -34,6 +58,7 @@ private struct FixtureView: View {
             Button("Apply") {
                 let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
                 greeting = trimmed.isEmpty ? "Waiting for input" : "Hello, \(trimmed)"
+                fixtureLogger.info("Apply tapped with name: \(trimmed, privacy: .public)")
             }
             .keyboardShortcut(.defaultAction)
             .accessibilityIdentifier("apply-button")
@@ -53,7 +78,7 @@ private struct FixtureView: View {
 
             HStack(alignment: .top, spacing: 20) {
                 HoverFixture(status: $hoverStatus)
-                KeyboardShortcutFixture(status: $shortcutStatus)
+                AutomationMenuFixture()
             }
 
             Divider()
@@ -82,5 +107,9 @@ private struct FixtureView: View {
         }
         .padding(24)
         .frame(minWidth: 620, minHeight: 760)
+        .onAppear {
+            fixtureLogger.info("FixtureView appeared")
+            print("FixtureView print appeared")
+        }
     }
 }

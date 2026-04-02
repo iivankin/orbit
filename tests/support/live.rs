@@ -115,7 +115,7 @@ pub fn require_live_apple_config(enable_env: &str) -> LiveAppleConfig {
         "set {enable_env}=1 to run this live Apple account test"
     );
 
-    let saved_user = AppContext::new(true)
+    let saved_user = AppContext::new(true, false)
         .ok()
         .and_then(|app| resolve_user_auth_metadata(&app).ok().flatten());
     let apple_id = std::env::var("ORBIT_APPLE_ID")
@@ -228,7 +228,7 @@ pub fn remote_capabilities_for_bundle_id(
     config: &LiveAppleConfig,
     bundle_id: &str,
 ) -> Vec<RemoteCapability> {
-    let app = AppContext::new(true).unwrap();
+    let app = AppContext::new(true, false).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     for _ in 0..30 {
         if let Some(bundle) = provisioning.find_bundle_id(bundle_id).unwrap() {
@@ -240,7 +240,7 @@ pub fn remote_capabilities_for_bundle_id(
 }
 
 fn seed_live_orbit_state(orbit_data_dir: &Path, team_id: &str) {
-    let source_app = match AppContext::new(true) {
+    let source_app = match AppContext::new(true, false) {
         Ok(app) => app,
         Err(_) => return,
     };

@@ -42,6 +42,7 @@ More complete app:
   "bundle_id": "dev.orbit.vpn",
   "version": "1.2.3",
   "build": 42,
+  "xcode": "26.4",
   "team_id": "TEAM123456",
   "provider_id": "128120286",
   "platforms": {
@@ -110,6 +111,7 @@ Orbit manifests should point at `~/.orbit/schemas/`. Install them with `./script
 - `bundle_id`: root bundle identifier for the app.
 - `version`: release version in Apple-friendly `x.y.z` form.
 - `build`: integer build number.
+- `xcode`: optional installed Xcode version, such as `26.4`. When set, Orbit uses that Xcode's developer directory and downloads the matching official simulator runtime if the selected Xcode is missing it.
 - `team_id`: optional default Apple Developer team for this product.
 - `provider_id`: optional default App Store Connect provider for this product.
 

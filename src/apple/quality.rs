@@ -2,7 +2,6 @@ mod config;
 mod tooling;
 
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 use anyhow::{Context, Result, bail};
 
@@ -11,6 +10,7 @@ use crate::apple::analysis::{
     collect_project_swift_files, load_cached_analysis_project,
 };
 use crate::apple::runtime::apple_platform_from_cli;
+use crate::apple::xcode::xcrun_command;
 use crate::cli::{FormatArgs, LintArgs};
 use crate::context::{AppContext, ProjectContext};
 use crate::util::{command_output_allow_failure, print_success};
@@ -70,7 +70,7 @@ pub fn lint_project(
         )?;
     }
     if !c_family_invocations.is_empty() {
-        run_c_family_semantic_lint(&artifact)?;
+        run_c_family_semantic_lint(project, &artifact)?;
     }
     print_success(format!(
         "Lint completed for {} Swift file(s) and {} C-family file(s) across {} platform(s), using {} Swift semantic command(s) and {} C-family compiler check(s).",
@@ -155,7 +155,10 @@ fn run_swift_format(
     Ok(())
 }
 
-fn run_c_family_semantic_lint(artifact: &SemanticCompilationArtifact) -> Result<()> {
+fn run_c_family_semantic_lint(
+    project: &ProjectContext,
+    artifact: &SemanticCompilationArtifact,
+) -> Result<()> {
     for invocation in artifact
         .invocations
         .iter()
@@ -165,7 +168,7 @@ fn run_c_family_semantic_lint(artifact: &SemanticCompilationArtifact) -> Result<
             .arguments
             .split_first()
             .context("C-family semantic invocation was missing a compiler executable")?;
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(project.selected_xcode.as_ref());
         command.current_dir(&invocation.working_directory);
         command.args(["--sdk", invocation.sdk_name.as_str(), compiler.as_str()]);
         command.args(syntax_only_clang_arguments(arguments));

@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
+use crate::apple::xcode::{SelectedXcode, resolve_requested_xcode};
 use crate::manifest::{ManifestSchema, ResolvedManifest, detect_schema};
 use crate::util::{
     ensure_dir, prompt_select, read_json_file_if_exists, resolve_path, write_json_file,
@@ -13,6 +14,7 @@ use crate::util::{
 pub struct AppContext {
     pub cwd: PathBuf,
     pub interactive: bool,
+    pub verbose: bool,
     pub global_paths: GlobalPaths,
 }
 
@@ -23,6 +25,7 @@ pub struct ProjectContext {
     pub manifest_path: PathBuf,
     pub manifest_schema: ManifestSchema,
     pub resolved_manifest: ResolvedManifest,
+    pub selected_xcode: Option<SelectedXcode>,
     pub project_paths: ProjectPaths,
 }
 
@@ -50,13 +53,14 @@ pub struct DeviceCache {
 }
 
 impl AppContext {
-    pub fn new(non_interactive: bool) -> Result<Self> {
+    pub fn new(non_interactive: bool, verbose: bool) -> Result<Self> {
         let cwd =
             std::env::current_dir().context("failed to resolve the current working directory")?;
 
         Ok(Self {
             cwd,
             interactive: !non_interactive,
+            verbose,
             global_paths: resolve_global_paths()?,
         })
     }
@@ -81,6 +85,7 @@ impl AppContext {
         ensure_dir(&receipts_dir)?;
         let manifest_schema = detect_schema(&manifest_path)?;
         let resolved_manifest = ResolvedManifest::load(&manifest_path, &orbit_dir)?;
+        let selected_xcode = resolve_requested_xcode(resolved_manifest.xcode.as_deref())?;
 
         Ok(ProjectContext {
             app: self.clone(),
@@ -88,6 +93,7 @@ impl AppContext {
             manifest_path,
             manifest_schema,
             resolved_manifest,
+            selected_xcode,
             project_paths: ProjectPaths {
                 orbit_dir,
                 build_dir,

@@ -18,6 +18,8 @@ pub struct AppManifest {
     pub version: String,
     pub build: u64,
     #[serde(default)]
+    pub xcode: Option<String>,
+    #[serde(default)]
     pub team_id: Option<String>,
     #[serde(default)]
     pub provider_id: Option<String>,
@@ -41,11 +43,20 @@ pub struct AppManifest {
     #[serde(default)]
     pub app_clip: Option<AppClipConfig>,
     #[serde(default)]
+    pub macos: MacosManifest,
+    #[serde(default)]
     pub hooks: Option<HooksManifest>,
     #[serde(default)]
     pub tests: Option<TestsManifest>,
     #[serde(default)]
     pub quality: QualityManifest,
+}
+
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct MacosManifest {
+    #[serde(default)]
+    pub universal_binary: bool,
 }
 
 #[derive(Debug, Clone, Default, Deserialize, Serialize)]

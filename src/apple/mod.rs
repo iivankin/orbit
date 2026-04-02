@@ -27,3 +27,4 @@ pub mod srp;
 pub mod submit;
 pub mod testing;
 pub mod ui;
+pub mod xcode;

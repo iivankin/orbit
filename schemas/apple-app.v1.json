@@ -43,6 +43,11 @@
       "minimum": 0,
       "description": "Monotonic integer build number mapped to `CFBundleVersion`."
     },
+    "xcode": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]+){0,2}$",
+      "description": "Optional Xcode version to use for Orbit's Xcode-backed commands, for example `26.4`. Orbit resolves the installed Xcode bundle, uses its developer directory, and can fetch the matching official simulator runtime when needed."
+    },
     "team_id": {
       "type": "string",
       "minLength": 1,
@@ -96,6 +101,10 @@
     "app_clip": {
       "$ref": "#/$defs/appClipConfig",
       "description": "App Clip child bundle."
+    },
+    "macos": {
+      "$ref": "#/$defs/macosManifest",
+      "description": "macOS-specific build settings."
     },
     "hooks": {
       "$ref": "#/$defs/hooksManifest",
@@ -209,6 +218,18 @@
         "watchos": {
           "type": "string",
           "description": "watchOS deployment target."
+        }
+      }
+    },
+    "macosManifest": {
+      "type": "object",
+      "additionalProperties": false,
+      "default": {},
+      "properties": {
+        "universal_binary": {
+          "type": "boolean",
+          "default": false,
+          "description": "When true, Orbit builds macOS app binaries for both arm64 and x86_64 and merges them into a Universal 2 executable."
         }
       }
     },

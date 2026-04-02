@@ -85,6 +85,7 @@ pub enum UiCommand {
         button: UiHardwareButton,
         duration_ms: Option<u32>,
     },
+    SelectMenuItem(Vec<String>),
     HideKeyboard,
     AssertVisible(UiSelector),
     AssertNotVisible(UiSelector),
@@ -367,9 +368,7 @@ impl UiCommand {
             UiCommand::EraseText(count) => format!("eraseText {count}"),
             UiCommand::PressKey(key) => format!("pressKey {}", key.summary()),
             UiCommand::PressKeyCode {
-                keycode,
-                modifiers,
-                ..
+                keycode, modifiers, ..
             } => {
                 if modifiers.is_empty() {
                     format!("pressKeyCode {keycode}")
@@ -385,6 +384,9 @@ impl UiCommand {
             UiCommand::KeySequence(keycodes) => format!("keySequence {}", keycodes.len()),
             UiCommand::PressButton { button, .. } => {
                 format!("pressButton {}", button.summary())
+            }
+            UiCommand::SelectMenuItem(path) => {
+                format!("selectMenuItem {}", path.join(" > "))
             }
             UiCommand::HideKeyboard => "hideKeyboard".to_owned(),
             UiCommand::AssertVisible(target) => {
@@ -567,6 +569,8 @@ impl UiFrame {
 struct PreparedUiSession {
     build_outcome: crate::apple::build::pipeline::BuildOutcome,
     backend: Box<dyn UiBackend>,
+    verbose: bool,
+    selected_xcode: Option<crate::apple::xcode::SelectedXcode>,
 }
 
 pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
@@ -618,6 +622,16 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
             has_failures = true;
         }
     }
+    if let Err(error) = runner
+        .backend
+        .stop_app(prepared.build_outcome.receipt.bundle_id.as_str())
+    {
+        eprintln!(
+            "warning: failed to stop `{}` after UI tests on {}: {error:#}",
+            prepared.build_outcome.receipt.bundle_id,
+            runner.backend.target_name()
+        );
+    }
 
     let finished_at_unix = unix_timestamp_secs();
     let report = UiTestRunReport {
@@ -663,8 +677,11 @@ fn start_ui_app_logs(prepared: &PreparedUiSession) -> Option<SimulatorAppLogStre
         return None;
     }
     match SimulatorAppLogStream::start(
+        prepared.selected_xcode.as_ref(),
         prepared.backend.target_id(),
         prepared.build_outcome.receipt.target.as_str(),
+        &prepared.build_outcome.receipt.bundle_id,
+        prepared.verbose,
     ) {
         Ok(stream) => Some(stream),
         Err(error) => {
@@ -828,6 +845,7 @@ impl UiFlowRunner {
         let started_at_unix = unix_timestamp_secs();
         let started = Instant::now();
         let auto_video_enabled = invoked_by.is_none()
+            && self.backend.auto_record_top_level_flows()
             && !flow_uses_manual_recording(
                 flow.path.as_path(),
                 flow.commands.as_slice(),
@@ -1200,7 +1218,8 @@ impl UiFlowRunner {
             }
             UiCommand::EraseText(characters) => {
                 for _ in 0..*characters {
-                    self.backend.press_key(&UiKeyPress::plain(UiPressKey::Backspace))?;
+                    self.backend
+                        .press_key(&UiKeyPress::plain(UiPressKey::Backspace))?;
                 }
                 Ok(None)
             }
@@ -1226,6 +1245,10 @@ impl UiFlowRunner {
                 duration_ms,
             } => {
                 self.backend.press_button(*button, *duration_ms)?;
+                Ok(None)
+            }
+            UiCommand::SelectMenuItem(path) => {
+                self.backend.select_menu_item(path)?;
                 Ok(None)
             }
             UiCommand::HideKeyboard => {
@@ -1635,6 +1658,8 @@ fn prepare_ui_session(
             Ok(PreparedUiSession {
                 build_outcome,
                 backend: Box::new(backend),
+                verbose: project.app.verbose,
+                selected_xcode: project.selected_xcode.clone(),
             })
         }
         ApplePlatform::Macos => {
@@ -1650,6 +1675,8 @@ fn prepare_ui_session(
             Ok(PreparedUiSession {
                 build_outcome,
                 backend: Box::new(backend),
+                verbose: project.app.verbose,
+                selected_xcode: project.selected_xcode.clone(),
             })
         }
         _ => bail!(

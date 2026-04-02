@@ -40,6 +40,7 @@ pub(super) fn compile_target(
     profile: &ProfileManifest,
     index_store_path: Option<&Path>,
     output_mode: CompileOutputMode,
+    log_prefix: Option<&str>,
 ) -> Result<BuiltTarget> {
     let target_dir = build_root.join(&target.name);
     let intermediates_dir = target_dir.join("intermediates");
@@ -58,6 +59,7 @@ pub(super) fn compile_target(
     } else {
         run_compile_step(
             output_mode,
+            log_prefix,
             format!("Compiling Swift packages for target `{}`", target.name),
             |outputs: &Vec<PackageBuildOutput>| {
                 format!(
@@ -82,6 +84,7 @@ pub(super) fn compile_target(
         resolve_external_link_inputs(project, toolchain, &intermediates_dir, target)?;
     let c_objects = run_compile_step(
         output_mode,
+        log_prefix,
         format!("Compiling C-family sources for target `{}`", target.name),
         |objects: &Vec<PathBuf>| {
             if objects.is_empty() {
@@ -114,6 +117,7 @@ pub(super) fn compile_target(
     if !swift_sources.is_empty() {
         run_compile_step(
             output_mode,
+            log_prefix,
             format!("Compiling Swift target `{}`", target.name),
             |_| {
                 format!(
@@ -143,6 +147,7 @@ pub(super) fn compile_target(
     } else if !c_objects.is_empty() {
         run_compile_step(
             output_mode,
+            log_prefix,
             format!("Linking native target `{}`", target.name),
             |_| {
                 format!(
@@ -176,6 +181,7 @@ pub(super) fn compile_target(
     if needs_info_plist(target.kind) {
         run_compile_step(
             output_mode,
+            log_prefix,
             format!("Writing Info.plist for target `{}`", target.name),
             |_| format!("Wrote Info.plist for target `{}`.", target.name),
             || write_info_plist(project, toolchain, target, &product.product_path),
@@ -185,6 +191,7 @@ pub(super) fn compile_target(
         if should_process_resources(toolchain.platform, target) {
             run_compile_step(
                 output_mode,
+                log_prefix,
                 format!("Processing resources for target `{}`", target.name),
                 |summary: &ResourceWorkSummary| {
                     format!(
@@ -199,6 +206,7 @@ pub(super) fn compile_target(
         if !external_link_inputs.embedded_payloads.is_empty() {
             run_compile_step(
                 output_mode,
+                log_prefix,
                 format!("Embedding external payloads for target `{}`", target.name),
                 |_| {
                     format!(
@@ -223,11 +231,14 @@ pub(super) fn compile_target(
         target_name: target.name.clone(),
         target_kind: target.kind,
         bundle_path: product.product_path,
+        binary_path: product.binary_path,
+        module_output_path: product.module_output_path,
     })
 }
 
 fn run_compile_step<T, F, G>(
     output_mode: CompileOutputMode,
+    log_prefix: Option<&str>,
     message: impl Into<String>,
     success_message: G,
     action: F,
@@ -236,9 +247,21 @@ where
     F: FnOnce() -> Result<T>,
     G: FnOnce(&T) -> String,
 {
+    let message = prefixed_compile_message(log_prefix, message.into());
     match output_mode {
-        CompileOutputMode::UserFacing => build_progress_step(message, success_message, action),
+        CompileOutputMode::UserFacing => build_progress_step(
+            message,
+            |value| prefixed_compile_message(log_prefix, success_message(value)),
+            action,
+        ),
         CompileOutputMode::Silent => action(),
+    }
+}
+
+fn prefixed_compile_message(prefix: Option<&str>, message: String) -> String {
+    match prefix {
+        Some(prefix) => format!("[{prefix}] {message}"),
+        None => message,
     }
 }
 

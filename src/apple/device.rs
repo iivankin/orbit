@@ -347,6 +347,10 @@ fn current_machine_device(platform: DevicePlatform) -> Result<ImportedDevice> {
     })
 }
 
+pub(crate) fn current_machine_provisioning_udid(platform: DevicePlatform) -> Result<String> {
+    Ok(current_machine_device(platform)?.udid)
+}
+
 fn resolve_team_id(app: &AppContext) -> Result<String> {
     std::env::var("ORBIT_APPLE_TEAM_ID")
         .ok()
@@ -405,14 +409,14 @@ fn create_device_platform(platform: DevicePlatform) -> &'static str {
 fn imported_device_platform(platform: &str) -> Result<DevicePlatform> {
     match platform {
         "IOS" => Ok(DevicePlatform::Ios),
-        "MAC_OS" | "UNIVERSAL" => Ok(DevicePlatform::MacOs),
+        "MAC_OS" | "MACOS" | "UNIVERSAL" => Ok(DevicePlatform::MacOs),
         other => bail!("unsupported imported device platform `{other}`"),
     }
 }
 
 fn normalize_device_platform(platform: &str) -> String {
     match platform {
-        "UNIVERSAL" => "MAC_OS".to_owned(),
+        "UNIVERSAL" | "MACOS" => "MAC_OS".to_owned(),
         other => other.to_owned(),
     }
 }

@@ -11,8 +11,8 @@ use super::info_plist::{
 };
 use super::resources::merge_partial_info_plist;
 use super::{
-    ApplePlatform, DestinationKind, ExtensionManifest, TargetKind, Toolchain,
-    embedded_dependency_root,
+    ApplePlatform, BuildConfiguration, DestinationKind, DistributionKind, ExtensionManifest,
+    ProfileManifest, TargetKind, Toolchain, build_requires_signing, embedded_dependency_root,
 };
 use crate::apple::build::external::{
     SwiftPackageManifest, SwiftPackageProduct, SwiftPackageTarget, SwiftPackageTargetDependency,
@@ -49,6 +49,7 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
         app: AppContext {
             cwd: root.clone(),
             interactive: false,
+            verbose: false,
             global_paths: GlobalPaths {
                 data_dir: data_dir.clone(),
                 cache_dir,
@@ -62,6 +63,7 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
         manifest_path,
         manifest_schema: ManifestSchema::AppleAppV1,
         resolved_manifest: manifest,
+        selected_xcode: None,
         project_paths: ProjectPaths {
             orbit_dir,
             build_dir,
@@ -90,6 +92,7 @@ fn writes_ios_app_defaults_without_scene_manifest_inference() {
         deployment_target: "18.0".to_owned(),
         architecture: "arm64".to_owned(),
         target_triple: "arm64-apple-ios18.0".to_owned(),
+        selected_xcode: None,
     };
 
     write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
@@ -192,6 +195,7 @@ fn applies_manifest_driven_ios_plist_metadata() {
         deployment_target: "18.0".to_owned(),
         architecture: "arm64".to_owned(),
         target_triple: "arm64-apple-ios18.0".to_owned(),
+        selected_xcode: None,
     };
 
     write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
@@ -288,6 +292,7 @@ fn defaults_bundle_display_name_to_target_name() {
         deployment_target: "14.0".to_owned(),
         architecture: "arm64".to_owned(),
         target_triple: "arm64-apple-macosx14.0".to_owned(),
+        selected_xcode: None,
     };
 
     write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
@@ -302,6 +307,28 @@ fn defaults_bundle_display_name_to_target_name() {
         dict.get("CFBundleDisplayName").and_then(Value::as_string),
         Some("ExampleMacApp")
     );
+}
+
+#[test]
+fn loads_macos_universal_binary_opt_in() {
+    let (_temp, project) = project_for_fixture("examples/macos-app/orbit.json");
+    let macos = project
+        .resolved_manifest
+        .platforms
+        .get(&ApplePlatform::Macos)
+        .expect("macos platform manifest");
+
+    assert!(macos.universal_binary);
+}
+
+#[test]
+fn device_builds_require_signing_in_development() {
+    let profile = ProfileManifest::new(BuildConfiguration::Debug, DistributionKind::Development);
+    assert!(build_requires_signing(&profile, DestinationKind::Device));
+    assert!(!build_requires_signing(
+        &profile,
+        DestinationKind::Simulator
+    ));
 }
 
 #[test]
@@ -322,6 +349,7 @@ fn writes_macos_app_metadata_under_contents() {
         deployment_target: "14.0".to_owned(),
         architecture: "arm64".to_owned(),
         target_triple: "arm64-apple-macosx14.0".to_owned(),
+        selected_xcode: None,
     };
 
     write_info_plist(&project, &toolchain, &target, &bundle_root).unwrap();
@@ -542,6 +570,7 @@ fn selects_matching_xcframework_slice_for_target_platform() {
         deployment_target: "18.0".to_owned(),
         architecture: "arm64".to_owned(),
         target_triple: "arm64-apple-ios18.0-simulator".to_owned(),
+        selected_xcode: None,
     };
     let slices = vec![
         XcframeworkLibrary {

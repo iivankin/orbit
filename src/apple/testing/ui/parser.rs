@@ -144,6 +144,7 @@ fn parse_mapping_command(map: &YamlHash) -> Result<UiCommand> {
         "pressKeyCode" => parse_press_key_code(value),
         "keySequence" => parse_key_sequence(value),
         "pressButton" => parse_press_button(value),
+        "selectMenuItem" => parse_select_menu_item(value),
         "hideKeyboard" => parse_hide_keyboard(value),
         "assertVisible" => Ok(UiCommand::AssertVisible(parse_selector(value)?)),
         "assertNotVisible" => Ok(UiCommand::AssertNotVisible(parse_selector(value)?)),
@@ -274,6 +275,35 @@ fn parse_long_press(value: &Yaml) -> Result<UiCommand> {
             })
         }
         _ => bail!("`longPressOn` expects either a string or a mapping"),
+    }
+}
+
+fn parse_select_menu_item(value: &Yaml) -> Result<UiCommand> {
+    fn validate_items(items: Vec<String>) -> Result<UiCommand> {
+        let items = items
+            .into_iter()
+            .map(|item| item.trim().to_owned())
+            .filter(|item| !item.is_empty())
+            .collect::<Vec<_>>();
+        if items.is_empty() {
+            bail!("`selectMenuItem` requires at least one menu label");
+        }
+        Ok(UiCommand::SelectMenuItem(items))
+    }
+
+    match value {
+        Yaml::String(path) => validate_items(path.split('>').map(str::to_owned).collect()),
+        Yaml::Array(items) => validate_items(
+            items
+                .iter()
+                .map(|item| Ok(yaml_string(item)?.to_owned()))
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        Yaml::Hash(map) => match get_optional(map, "path") {
+            Some(path) => parse_select_menu_item(path),
+            None => bail!("`selectMenuItem` expects a string, sequence, or `{{ path: ... }}`"),
+        },
+        _ => bail!("`selectMenuItem` expects a string, sequence, or mapping"),
     }
 }
 
@@ -923,9 +953,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        UiCommand, UiDragAndDrop, UiElementScroll, UiElementSwipe, UiHardwareButton,
-        UiKeyModifier, UiKeyPress, UiLaunchApp, UiPressKey, UiScrollUntilVisible, UiSelector,
-        UiSwipe, UiSwipeDirection, parse_ui_flow,
+        UiCommand, UiDragAndDrop, UiElementScroll, UiElementSwipe, UiHardwareButton, UiKeyModifier,
+        UiKeyPress, UiLaunchApp, UiPressKey, UiScrollUntilVisible, UiSelector, UiSwipe,
+        UiSwipeDirection, parse_ui_flow,
     };
 
     #[test]
@@ -1021,7 +1051,7 @@ mod tests {
         let path = temp.path().join("flow.yaml");
         fs::write(
             &path,
-            "- hoverOn:\n    id: hover-target\n- rightClickOn:\n    id: context-target\n- doubleTapOn: Continue\n- longPressOn:\n    element: Continue\n    duration: 1200ms\n- swipeOn:\n    element:\n      id: pager\n    direction: LEFT\n    duration: 650ms\n    delta: 4\n- dragAndDrop:\n    from:\n      id: drag-source\n    to:\n      id: drop-target\n    duration: 800ms\n    delta: 3\n- scroll: DOWN\n- scrollOn:\n    element:\n      id: feed\n    direction: UP\n- killApp\n",
+            "- hoverOn:\n    id: hover-target\n- rightClickOn:\n    id: context-target\n- doubleTapOn: Continue\n- longPressOn:\n    element: Continue\n    duration: 1200ms\n- swipeOn:\n    element:\n      id: pager\n    direction: LEFT\n    duration: 650ms\n    delta: 4\n- dragAndDrop:\n    from:\n      id: drag-source\n    to:\n      id: drop-target\n    duration: 800ms\n    delta: 3\n- scroll: DOWN\n- scrollOn:\n    element:\n      id: feed\n    direction: UP\n- selectMenuItem: Automation > Trigger Shortcut\n- killApp\n",
         )
         .unwrap();
 
@@ -1084,7 +1114,12 @@ mod tests {
                 direction: UiSwipeDirection::Up,
             }) if target.id.as_deref() == Some("feed")
         ));
-        assert!(matches!(&flow.commands[8], UiCommand::KillApp(None)));
+        assert!(matches!(
+            &flow.commands[8],
+            UiCommand::SelectMenuItem(path)
+            if path == &vec!["Automation".to_owned(), "Trigger Shortcut".to_owned()]
+        ));
+        assert!(matches!(&flow.commands[9], UiCommand::KillApp(None)));
     }
 
     #[test]

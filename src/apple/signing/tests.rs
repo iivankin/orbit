@@ -43,6 +43,7 @@ fn test_project() -> (TempDir, ProjectContext) {
     let manifest = ResolvedManifest {
         name: "OrbitFixture".to_owned(),
         version: "0.1.0".to_owned(),
+        xcode: None,
         team_id: Some("TEAM123456".to_owned()),
         provider_id: None,
         hooks: HooksManifest::default(),
@@ -52,6 +53,7 @@ fn test_project() -> (TempDir, ProjectContext) {
             ApplePlatform::Ios,
             PlatformManifest {
                 deployment_target: "18.0".to_owned(),
+                universal_binary: false,
             },
         )]),
         targets: vec![TargetManifest {
@@ -87,6 +89,7 @@ fn test_project() -> (TempDir, ProjectContext) {
     let app = AppContext {
         cwd: root.clone(),
         interactive: false,
+        verbose: false,
         global_paths: GlobalPaths {
             data_dir: data_dir.clone(),
             cache_dir,
@@ -102,6 +105,7 @@ fn test_project() -> (TempDir, ProjectContext) {
         manifest_path,
         manifest_schema: ManifestSchema::AppleAppV1,
         resolved_manifest: manifest,
+        selected_xcode: None,
         project_paths: ProjectPaths {
             orbit_dir,
             build_dir,

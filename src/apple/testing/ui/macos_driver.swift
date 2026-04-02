@@ -1,6 +1,7 @@
 import AppKit
 import ApplicationServices
 import Foundation
+import ScreenCaptureKit
 
 enum DriverError: Error, CustomStringConvertible {
     case usage(String)
@@ -118,6 +119,26 @@ func optionalFlag(_ name: String, in arguments: [String]) throws -> String? {
         return nil
     }
     return try requireFlag(name, in: arguments)
+}
+
+func repeatedFlags(_ name: String, in arguments: [String]) throws -> [String] {
+    var values = [String]()
+    var index = 0
+    while index < arguments.count {
+        if arguments[index] == name {
+            guard index + 1 < arguments.count else {
+                throw DriverError.missingFlag(name)
+            }
+            values.append(arguments[index + 1])
+            index += 2
+            continue
+        }
+        index += 1
+    }
+    guard !values.isEmpty else {
+        throw DriverError.missingFlag(name)
+    }
+    return values
 }
 
 func ensureAccessibilityPermission() throws {
@@ -606,6 +627,7 @@ func inputText(_ text: String) throws {
 
 struct KeyboardModifiers {
     var keyCodes: [CGKeyCode]
+    var flags: CGEventFlags
 }
 
 func keyboardModifiers(from arguments: [String]) throws -> KeyboardModifiers {
@@ -613,24 +635,31 @@ func keyboardModifiers(from arguments: [String]) throws -> KeyboardModifiers {
         .trimmingCharacters(in: .whitespacesAndNewlines),
         !raw.isEmpty
     else {
-        return KeyboardModifiers(keyCodes: [])
+        return KeyboardModifiers(keyCodes: [], flags: [])
     }
 
-    return try raw.split(separator: ",").reduce(into: KeyboardModifiers(keyCodes: [])) {
+    return try raw.split(separator: ",").reduce(
+        into: KeyboardModifiers(keyCodes: [], flags: [])
+    ) {
         modifiers,
         entry in
         let token = String(entry).trimmingCharacters(in: .whitespacesAndNewlines)
         switch token.lowercased() {
         case "command":
             modifiers.keyCodes.append(55)
+            modifiers.flags.insert(.maskCommand)
         case "shift":
             modifiers.keyCodes.append(56)
+            modifiers.flags.insert(.maskShift)
         case "option":
             modifiers.keyCodes.append(58)
+            modifiers.flags.insert(.maskAlternate)
         case "control":
             modifiers.keyCodes.append(59)
+            modifiers.flags.insert(.maskControl)
         case "function":
             modifiers.keyCodes.append(63)
+            modifiers.flags.insert(.maskSecondaryFn)
         case "":
             break
         default:
@@ -639,27 +668,59 @@ func keyboardModifiers(from arguments: [String]) throws -> KeyboardModifiers {
     }
 }
 
-func postKeyEvent(_ keyCode: CGKeyCode, keyDown: Bool) throws {
+func postKeyEvent(_ keyCode: CGKeyCode, keyDown: Bool, targetPID: pid_t? = nil) throws {
     guard let event = CGEvent(keyboardEventSource: nil, virtualKey: keyCode, keyDown: keyDown)
     else {
         throw DriverError.helper("failed to construct keyboard event")
     }
-    event.post(tap: .cghidEventTap)
+    if let targetPID {
+        event.postToPid(targetPID)
+    } else {
+        event.post(tap: .cghidEventTap)
+    }
 }
 
-func pressKeyCode(keyCode: Int, durationMs: Int?, modifiers: KeyboardModifiers) throws {
+func pressKeyCode(
+    keyCode: Int,
+    durationMs: Int?,
+    modifiers: KeyboardModifiers,
+    targetPID: pid_t? = nil
+) throws {
     for modifier in modifiers.keyCodes {
-        try postKeyEvent(modifier, keyDown: true)
+        try postKeyEvent(modifier, keyDown: true, targetPID: targetPID)
     }
 
-    try postKeyEvent(CGKeyCode(keyCode), keyDown: true)
+    guard let keyDown = CGEvent(
+        keyboardEventSource: nil,
+        virtualKey: CGKeyCode(keyCode),
+        keyDown: true
+    ),
+        let keyUp = CGEvent(
+            keyboardEventSource: nil,
+            virtualKey: CGKeyCode(keyCode),
+            keyDown: false
+        )
+    else {
+        throw DriverError.helper("failed to construct keyboard event")
+    }
+    keyDown.flags = modifiers.flags
+    keyUp.flags = modifiers.flags
+    if let targetPID {
+        keyDown.postToPid(targetPID)
+    } else {
+        keyDown.post(tap: .cghidEventTap)
+    }
     if let durationMs, durationMs > 0 {
         usleep(useconds_t(durationMs * 1000))
     }
-    try postKeyEvent(CGKeyCode(keyCode), keyDown: false)
+    if let targetPID {
+        keyUp.postToPid(targetPID)
+    } else {
+        keyUp.post(tap: .cghidEventTap)
+    }
 
     for modifier in modifiers.keyCodes.reversed() {
-        try postKeyEvent(modifier, keyDown: false)
+        try postKeyEvent(modifier, keyDown: false, targetPID: targetPID)
     }
 }
 
@@ -702,6 +763,206 @@ func setValueAtPoint(_ point: CGPoint, text: String) throws {
     }
 }
 
+func normalizedMenuLabel(_ value: String) -> String {
+    value.trimmingCharacters(in: .whitespacesAndNewlines)
+}
+
+func menuChildren(of element: AXUIElement) -> [AXUIElement] {
+    var seen = Set<CFHashCode>()
+    var results = [AXUIElement]()
+
+    func append(_ candidate: AXUIElement) {
+        let hash = CFHash(candidate)
+        guard seen.insert(hash).inserted else {
+            return
+        }
+        results.append(candidate)
+    }
+
+    for attribute in [
+        kAXChildrenAttribute as String,
+        kAXVisibleChildrenAttribute as String,
+        kAXMenuBarAttribute as String,
+        "AXMenu",
+    ] {
+        guard let value = attributeValue(element, attribute: attribute) else {
+            continue
+        }
+        let typeID = CFGetTypeID(value)
+        if typeID == AXUIElementGetTypeID() {
+            append(value as! AXUIElement)
+            continue
+        }
+        if typeID == CFArrayGetTypeID(), let array = value as? [Any] {
+            for entry in array {
+                if CFGetTypeID(entry as CFTypeRef) == AXUIElementGetTypeID() {
+                    append(entry as! AXUIElement)
+                }
+            }
+        }
+    }
+
+    return results
+}
+
+func menuLabelMatches(_ element: AXUIElement, target: String) -> Bool {
+    let normalizedTarget = normalizedMenuLabel(target)
+    guard !normalizedTarget.isEmpty else {
+        return false
+    }
+
+    for candidate in [
+        stringAttribute(element, attribute: kAXTitleAttribute as String),
+        stringAttribute(element, attribute: kAXDescriptionAttribute as String),
+        attributeValue(element, attribute: kAXValueAttribute as String).flatMap(stringValue),
+    ].compactMap({ $0 }).map(normalizedMenuLabel) {
+        if candidate == normalizedTarget {
+            return true
+        }
+    }
+    return false
+}
+
+func findMenuItem(named label: String, in container: AXUIElement) -> AXUIElement? {
+    let directChildren = menuChildren(of: container)
+    if let directMatch = directChildren.first(where: { menuLabelMatches($0, target: label) }) {
+        return directMatch
+    }
+
+    for child in directChildren {
+        let nestedChildren = menuChildren(of: child)
+        if let nestedMatch = nestedChildren.first(where: { menuLabelMatches($0, target: label) }) {
+            return nestedMatch
+        }
+    }
+    return nil
+}
+
+func menuBarElement(for application: AXUIElement) -> AXUIElement? {
+    if let menuBar = elementAttribute(application, attribute: kAXMenuBarAttribute as String) {
+        return menuBar
+    }
+
+    return childElements(of: application).first {
+        stringAttribute($0, attribute: kAXRoleAttribute as String) == kAXMenuBarRole as String
+    }
+}
+
+func bringApplicationToFront(bundleID: String) throws {
+    let application = try runningApplication(bundleID: bundleID)
+
+    // Keyboard shortcuts must target the actual AUT, not whichever desktop app currently owns
+    // the active menu bar. Under Codex, a plain `activateAllWindows` is sometimes too weak and
+    // the shortcut lands in the host app instead.
+    _ = application.activate(options: [.activateAllWindows])
+
+    let deadline = Date().addingTimeInterval(2.0)
+    while Date() < deadline {
+        if NSWorkspace.shared.frontmostApplication?.bundleIdentifier == bundleID {
+            return
+        }
+        usleep(50_000)
+    }
+}
+
+func selectMenuItem(bundleID: String, path: [String]) throws {
+    let labels = path.map(normalizedMenuLabel).filter { !$0.isEmpty }
+    guard !labels.isEmpty else {
+        throw DriverError.helper("`selectMenuItem` requires at least one menu label")
+    }
+
+    try bringApplicationToFront(bundleID: bundleID)
+    usleep(150_000)
+
+    let (_, applicationElementRef) = try applicationElement(bundleID: bundleID)
+    guard let menuBar = menuBarElement(for: applicationElementRef) else {
+        throw DriverError.helper("failed to resolve the menu bar for `\(bundleID)`")
+    }
+
+    var container = menuBar
+    for (index, label) in labels.enumerated() {
+        guard let target = findMenuItem(named: label, in: container) else {
+            throw DriverError.helper("failed to resolve menu item `\(label)`")
+        }
+        guard AXUIElementPerformAction(target, kAXPressAction as CFString) == .success else {
+            throw DriverError.helper("failed to activate menu item `\(label)`")
+        }
+        if index + 1 < labels.count {
+            usleep(150_000)
+            container = target
+        }
+    }
+}
+
+func writeWindowScreenshot(bundleID: String, outputPath: String) throws {
+    let captureInfo = try windowCaptureInfo(bundleID: bundleID)
+    guard #available(macOS 14.0, *) else {
+        throw DriverError.helper("macOS window screenshots require macOS 14.0 or newer")
+    }
+
+    let contentSemaphore = DispatchSemaphore(value: 0)
+    var shareableContent: SCShareableContent?
+    var shareableContentError: Error?
+    SCShareableContent.getExcludingDesktopWindows(true, onScreenWindowsOnly: true) {
+        content,
+        error in
+        shareableContent = content
+        shareableContentError = error
+        contentSemaphore.signal()
+    }
+    contentSemaphore.wait()
+
+    if let shareableContentError {
+        throw shareableContentError
+    }
+
+    guard let shareableContent else {
+        throw DriverError.helper("failed to query macOS shareable content")
+    }
+
+    let targetWindow = shareableContent.windows.first { window in
+        window.windowID == CGWindowID(captureInfo.windowNumber)
+    } ?? shareableContent.windows.first { window in
+        window.owningApplication?.bundleIdentifier == bundleID
+            && intersectionArea(window.frame, captureInfo.frame) > 0
+    }
+    guard let targetWindow else {
+        throw DriverError.helper("failed to resolve the macOS window for screenshot capture")
+    }
+
+    let filter = SCContentFilter(desktopIndependentWindow: targetWindow)
+    let configuration = SCStreamConfiguration()
+    let scale = max(1.0, Double(filter.pointPixelScale))
+    configuration.width = max(1, Int(targetWindow.frame.width * scale))
+    configuration.height = max(1, Int(targetWindow.frame.height * scale))
+    configuration.showsCursor = false
+
+    let imageSemaphore = DispatchSemaphore(value: 0)
+    var capturedImage: CGImage?
+    var captureError: Error?
+    SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration) {
+        image,
+        error in
+        capturedImage = image
+        captureError = error
+        imageSemaphore.signal()
+    }
+    imageSemaphore.wait()
+
+    if let captureError {
+        throw captureError
+    }
+    guard let capturedImage else {
+        throw DriverError.helper("failed to capture macOS window image")
+    }
+
+    let bitmap = NSBitmapImageRep(cgImage: capturedImage)
+    guard let pngData = bitmap.representation(using: .png, properties: [:]) else {
+        throw DriverError.helper("failed to encode macOS window screenshot")
+    }
+    try pngData.write(to: URL(fileURLWithPath: outputPath))
+}
+
 func run() throws {
     var arguments = Array(CommandLine.arguments.dropFirst())
     guard !arguments.isEmpty else {
@@ -740,8 +1001,7 @@ func run() throws {
 
     case "focus":
         let bundleID = try requireFlag("--bundle-id", in: arguments)
-        let application = try runningApplication(bundleID: bundleID)
-        _ = application.activate(options: [.activateAllWindows])
+        try bringApplicationToFront(bundleID: bundleID)
 
     case "tap":
         let x = try requireDoubleFlag("--x", in: arguments)
@@ -808,10 +1068,28 @@ func run() throws {
         try setValueAtPoint(CGPoint(x: x, y: y), text: text)
 
     case "key":
+        let bundleID = try requireFlag("--bundle-id", in: arguments)
         let keyCode = try requireIntFlag("--keycode", in: arguments)
         let durationMs = try optionalIntFlag("--duration-ms", in: arguments)
         let modifiers = try keyboardModifiers(from: arguments)
-        try pressKeyCode(keyCode: keyCode, durationMs: durationMs, modifiers: modifiers)
+        try bringApplicationToFront(bundleID: bundleID)
+        let application = try runningApplication(bundleID: bundleID)
+        try pressKeyCode(
+            keyCode: keyCode,
+            durationMs: durationMs,
+            modifiers: modifiers,
+            targetPID: application.processIdentifier
+        )
+
+    case "menu-item":
+        let bundleID = try requireFlag("--bundle-id", in: arguments)
+        let items = try repeatedFlags("--item", in: arguments)
+        try selectMenuItem(bundleID: bundleID, path: items)
+
+    case "screenshot-window":
+        let bundleID = try requireFlag("--bundle-id", in: arguments)
+        let outputPath = try requireFlag("--output", in: arguments)
+        try writeWindowScreenshot(bundleID: bundleID, outputPath: outputPath)
 
     default:
         throw DriverError.usage("unsupported command `\(command)`")

@@ -1,0 +1,12 @@
+appId: dev.orbit.examples.macos
+name: macos-shortcut
+---
+- launchApp
+- assertVisible: Awaiting menu action
+- pressKey:
+    key: K
+    modifiers:
+      - COMMAND
+      - SHIFT
+- assertVisible: Menu action triggered
+- takeScreenshot: macos-shortcut

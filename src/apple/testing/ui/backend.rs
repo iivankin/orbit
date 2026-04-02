@@ -8,14 +8,19 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result, bail};
 use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
+use tempfile::{Builder as TempfileBuilder, TempDir, tempdir};
 
 use super::{
     UiCrashDeleteRequest, UiCrashQuery, UiHardwareButton, UiKeyModifier, UiKeyPress,
-    UiLocationPoint, UiPermissionConfig, UiPermissionState, UiPressKey, UiSwipeDirection,
-    UiTravel,
+    UiLocationPoint, UiPermissionConfig, UiPermissionState, UiPressKey, UiSwipeDirection, UiTravel,
 };
 use crate::apple::build::pipeline::macos_executable_path;
+use crate::apple::logs::MacosInferiorLogRelay;
 use crate::apple::simulator::{SimulatorDevice, select_simulator_device};
+use crate::apple::xcode::{
+    SelectedXcode, lldb_path as selected_xcode_lldb_path,
+    log_redirect_dylib_path as selected_xcode_log_redirect_dylib_path, xcrun_command,
+};
 use crate::context::ProjectContext;
 use crate::util::{
     command_output, command_output_allow_failure, ensure_dir, run_command, run_command_capture,
@@ -25,6 +30,9 @@ pub trait UiBackend {
     fn backend_name(&self) -> &'static str;
     fn target_name(&self) -> &str;
     fn target_id(&self) -> &str;
+    fn auto_record_top_level_flows(&self) -> bool {
+        true
+    }
     fn video_extension(&self) -> &'static str {
         "mp4"
     }
@@ -74,6 +82,12 @@ pub trait UiBackend {
     fn input_text(&self, text: &str) -> Result<()>;
     fn press_button(&self, button: UiHardwareButton, duration_ms: Option<u32>) -> Result<()>;
     fn press_key(&self, key: &UiKeyPress) -> Result<()>;
+    fn select_menu_item(&self, _path: &[String]) -> Result<()> {
+        bail!(
+            "`selectMenuItem` is not supported by the current {} backend",
+            self.backend_name()
+        )
+    }
     fn press_key_code(
         &self,
         keycode: u32,
@@ -110,7 +124,7 @@ struct ActiveVideoRecording {
 #[derive(Debug, Deserialize)]
 struct MacosWindowInfo {
     #[serde(rename = "windowNumber")]
-    window_number: i64,
+    _window_number: i64,
     frame: MacosWindowFrame,
 }
 
@@ -135,18 +149,19 @@ pub struct IosSimulatorBackend {
     bundle_path: PathBuf,
     bundle_id: String,
     active_video: Option<ActiveVideoRecording>,
+    selected_xcode: Option<SelectedXcode>,
 }
 
 impl IosSimulatorBackend {
     pub fn attach(project: &ProjectContext) -> Result<Self> {
         let device = select_simulator_device(project, crate::manifest::ApplePlatform::Ios)?;
         if !device.is_booted() {
-            let mut boot = Command::new("xcrun");
+            let mut boot = xcrun_command(project.selected_xcode.as_ref());
             boot.args(["simctl", "boot", &device.udid]);
             run_command(&mut boot)?;
         }
 
-        let mut bootstatus = Command::new("xcrun");
+        let mut bootstatus = xcrun_command(project.selected_xcode.as_ref());
         bootstatus.args(["simctl", "bootstatus", &device.udid, "-b"]);
         run_command(&mut bootstatus)?;
 
@@ -155,6 +170,7 @@ impl IosSimulatorBackend {
             bundle_path: PathBuf::new(),
             bundle_id: String::new(),
             active_video: None,
+            selected_xcode: project.selected_xcode.clone(),
         })
     }
 
@@ -164,7 +180,7 @@ impl IosSimulatorBackend {
     ) -> Result<Self> {
         let mut backend = Self::attach(project)?;
 
-        let mut install = Command::new("xcrun");
+        let mut install = xcrun_command(backend.selected_xcode.as_ref());
         install.args([
             "simctl",
             "install",
@@ -196,7 +212,7 @@ impl IosSimulatorBackend {
     }
 
     fn run_simctl_privacy(&self, action: &str, service: &str, bundle_id: &str) -> Result<()> {
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
         command.args([
             "simctl",
             "privacy",
@@ -253,13 +269,13 @@ impl UiBackend for IosSimulatorBackend {
     ) -> Result<()> {
         if stop_app {
             self.stop_app(bundle_id)?;
-            let mut command = Command::new("xcrun");
+            let mut command = xcrun_command(self.selected_xcode.as_ref());
             command.args(["simctl", "launch", &self.device.udid, bundle_id]);
             for (key, value) in arguments {
                 command.arg(format!("-{key}"));
                 command.arg(value);
             }
-            run_command(&mut command)
+            run_command_capture(&mut command).map(|_| ())
         } else {
             let mut command = Command::new("idb");
             command.args(["launch", "-f", bundle_id]);
@@ -273,7 +289,7 @@ impl UiBackend for IosSimulatorBackend {
     }
 
     fn stop_app(&self, bundle_id: &str) -> Result<()> {
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
         command.args(["simctl", "terminate", &self.device.udid, bundle_id]);
         let (success, stdout, stderr) = command_output_allow_failure(&mut command)?;
         if success {
@@ -297,7 +313,7 @@ impl UiBackend for IosSimulatorBackend {
         self.stop_app(bundle_id)?;
         self.run_idb(&["uninstall".to_owned(), bundle_id.to_owned()])?;
 
-        let mut install = Command::new("xcrun");
+        let mut install = xcrun_command(self.selected_xcode.as_ref());
         install.args([
             "simctl",
             "install",
@@ -426,7 +442,7 @@ impl UiBackend for IosSimulatorBackend {
         if let Some(parent) = path.parent() {
             ensure_dir(parent)?;
         }
-        let mut command = Command::new("xcrun");
+        let mut command = xcrun_command(self.selected_xcode.as_ref());
         command.args([
             "simctl",
             "io",
@@ -435,7 +451,7 @@ impl UiBackend for IosSimulatorBackend {
             path.to_str()
                 .context("screenshot path contains invalid UTF-8")?,
         ]);
-        run_command(&mut command)
+        run_command_capture(&mut command).map(|_| ())
     }
 
     fn open_link(&self, url: &str) -> Result<()> {
@@ -475,7 +491,7 @@ impl UiBackend for IosSimulatorBackend {
                         self.run_simctl_privacy("revoke", "all", bundle_id)?;
                     }
                     UiPermissionState::Unset => {
-                        let mut command = Command::new("xcrun");
+                        let mut command = xcrun_command(self.selected_xcode.as_ref());
                         command.args(["simctl", "privacy", &self.device.udid, "reset", "all"]);
                         run_command(&mut command)?;
                     }
@@ -527,7 +543,7 @@ impl UiBackend for IosSimulatorBackend {
     }
 
     fn travel(&self, command: &UiTravel) -> Result<()> {
-        let mut simctl = Command::new("xcrun");
+        let mut simctl = xcrun_command(self.selected_xcode.as_ref());
         simctl.args(["simctl", "location", &self.device.udid, "start"]);
         if let Some(speed) = command.speed_meters_per_second {
             simctl.arg(format!("--speed={speed}"));
@@ -803,12 +819,20 @@ impl UiBackend for IosSimulatorBackend {
 
 pub struct MacosBackend {
     helper_path: PathBuf,
-    bundle_path: PathBuf,
     bundle_id: String,
     executable_path: PathBuf,
-    launched_process: Mutex<Option<Child>>,
+    selected_xcode: Option<SelectedXcode>,
+    verbose: bool,
+    launched_session: Mutex<Option<MacosLaunchedSession>>,
     last_tap_point: Mutex<Option<(f64, f64)>>,
     active_video: Option<ActiveVideoRecording>,
+}
+
+struct MacosLaunchedSession {
+    child: Child,
+    _launch_dir: TempDir,
+    _log_pipe_anchor: fs::File,
+    _log_relay: MacosInferiorLogRelay,
 }
 
 impl MacosBackend {
@@ -818,10 +842,11 @@ impl MacosBackend {
     ) -> Result<Self> {
         Ok(Self {
             helper_path: ensure_macos_driver_binary(project)?,
-            bundle_path: receipt.bundle_path.clone(),
             bundle_id: receipt.bundle_id.clone(),
             executable_path: macos_executable_path(receipt)?,
-            launched_process: Mutex::new(None),
+            selected_xcode: project.selected_xcode.clone(),
+            verbose: project.app.verbose,
+            launched_session: Mutex::new(None),
             last_tap_point: Mutex::new(None),
             active_video: None,
         })
@@ -840,25 +865,109 @@ impl MacosBackend {
     }
 
     fn stop_launched_process(&self) -> Result<()> {
-        let mut process = self
-            .launched_process
+        let mut session = self
+            .launched_session
             .lock()
             .map_err(|_| anyhow::anyhow!("failed to lock the macOS UI backend process state"))?;
-        let Some(mut child) = process.take() else {
+        let Some(mut session) = session.take() else {
             return Ok(());
         };
-        if child.try_wait()?.is_some() {
+        if session.child.try_wait()?.is_some() {
             return Ok(());
         }
-        let _ = child.kill();
-        let _ = child.wait();
+
+        let mut terminate = Command::new("kill");
+        terminate.args(["-TERM", &session.child.id().to_string()]);
+        let _ = command_output_allow_failure(&mut terminate)?;
+
+        let started = Instant::now();
+        while started.elapsed() < Duration::from_secs(2) {
+            if session.child.try_wait()?.is_some() {
+                return Ok(());
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+
+        let _ = session.child.kill();
+        let _ = session.child.wait();
         Ok(())
+    }
+
+    fn start_attached_log_session(
+        &self,
+        arguments: &[(String, String)],
+    ) -> Result<MacosLaunchedSession> {
+        let launch_dir = tempdir().context("failed to create macOS UI launch tempdir")?;
+        let log_pipe = launch_dir.path().join("inferior-stdio.pipe");
+        let lldb_script = launch_dir.path().join("run.expect");
+        let coordinator_script = launch_dir.path().join("coordinator.expect");
+        let wrapper_script = launch_dir.path().join("launch.zsh");
+
+        let mut mkfifo = Command::new("mkfifo");
+        mkfifo.arg(&log_pipe);
+        run_command(&mut mkfifo)?;
+
+        let log_pipe_anchor = fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .open(&log_pipe)
+            .with_context(|| {
+                format!("failed to open macOS UI log pipe `{}`", log_pipe.display())
+            })?;
+        let log_relay = MacosInferiorLogRelay::start(&log_pipe, &self.bundle_id, self.verbose);
+
+        fs::write(
+            &lldb_script,
+            macos_lldb_run_script(self.selected_xcode.as_ref(), arguments)?.as_bytes(),
+        )
+        .with_context(|| format!("failed to write {}", lldb_script.display()))?;
+
+        fs::write(
+            &wrapper_script,
+            macos_attached_launch_wrapper(
+                self.bundle_id.as_str(),
+                self.executable_path.as_path(),
+                lldb_script.as_path(),
+                log_pipe.as_path(),
+            )?
+            .as_bytes(),
+        )
+        .with_context(|| format!("failed to write {}", wrapper_script.display()))?;
+
+        fs::write(
+            &coordinator_script,
+            macos_expect_wrapper_coordinator().as_bytes(),
+        )
+        .with_context(|| format!("failed to write {}", coordinator_script.display()))?;
+
+        let mut chmod = Command::new("chmod");
+        chmod.args(["+x"]);
+        chmod.arg(&wrapper_script);
+        run_command(&mut chmod)?;
+
+        let mut child = Command::new("expect");
+        child.args(["-f"]);
+        child.arg(&coordinator_script);
+        child.arg(&wrapper_script);
+        child.stdin(Stdio::inherit());
+        child.stdout(Stdio::inherit());
+        child.stderr(Stdio::inherit());
+        let child = child
+            .spawn()
+            .with_context(|| format!("failed to start `{}` under LLDB", self.bundle_id))?;
+
+        Ok(MacosLaunchedSession {
+            child,
+            _launch_dir: launch_dir,
+            _log_pipe_anchor: log_pipe_anchor,
+            _log_relay: log_relay,
+        })
     }
 
     fn window_capture_info(&self) -> Result<MacosWindowInfo> {
         let started = Instant::now();
         let mut last_error = None;
-        while started.elapsed() < Duration::from_secs(3) {
+        while started.elapsed() < Duration::from_secs(10) {
             let mut command = Command::new(&self.helper_path);
             command.args(["window-info", "--bundle-id", self.bundle_id.as_str()]);
             let (success, stdout, stderr) = command_output_allow_failure(&mut command)?;
@@ -884,7 +993,7 @@ impl MacosBackend {
     fn wait_for_focusable_app(&self) -> Result<()> {
         let started = Instant::now();
         let mut last_error = None;
-        while started.elapsed() < Duration::from_secs(3) {
+        while started.elapsed() < Duration::from_secs(10) {
             let mut command = Command::new(&self.helper_path);
             command.args(["focus", "--bundle-id", self.bundle_id.as_str()]);
             let (success, _stdout, stderr) = command_output_allow_failure(&mut command)?;
@@ -901,6 +1010,34 @@ impl MacosBackend {
         match last_error {
             Some(error) => Err(anyhow::anyhow!(error)),
             None => bail!("timed out waiting for macOS app focus"),
+        }
+    }
+
+    fn reopen_window(&self) -> Result<()> {
+        let started = Instant::now();
+        let mut last_error = None;
+        while started.elapsed() < Duration::from_secs(10) {
+            let mut script = Command::new("osascript");
+            script.args([
+                "-e",
+                &format!("tell application id \"{}\" to activate", self.bundle_id),
+                "-e",
+                &format!("tell application id \"{}\" to reopen", self.bundle_id),
+            ]);
+            let (success, _stdout, stderr) = command_output_allow_failure(&mut script)?;
+            if success {
+                return Ok(());
+            }
+            let detail = stderr.trim();
+            if !detail.is_empty() {
+                last_error = Some(detail.to_owned());
+            }
+            thread::sleep(Duration::from_millis(100));
+        }
+
+        match last_error {
+            Some(error) => Err(anyhow::anyhow!(error)),
+            None => bail!("timed out waiting to send macOS reopen AppleEvent"),
         }
     }
 }
@@ -923,6 +1060,10 @@ impl UiBackend for MacosBackend {
 
     fn target_id(&self) -> &str {
         "mac"
+    }
+
+    fn auto_record_top_level_flows(&self) -> bool {
+        false
     }
 
     fn video_extension(&self) -> &'static str {
@@ -968,31 +1109,25 @@ impl UiBackend for MacosBackend {
         if stop_app {
             self.stop_app(bundle_id)?;
         }
-
-        let mut command = Command::new(&self.executable_path);
-        if let Some(bundle_root) = self.bundle_path.parent() {
-            command.current_dir(bundle_root);
+        if !stop_app
+            && self
+                .launched_session
+                .lock()
+                .map_err(|_| anyhow::anyhow!("failed to lock the macOS UI backend process state"))?
+                .is_some()
+        {
+            self.reopen_window()?;
+            self.window_capture_info()?;
+            return self.wait_for_focusable_app();
         }
-        for (key, value) in arguments {
-            command.arg(format!("-{key}"));
-            command.arg(value);
-        }
-        command.stdin(Stdio::null());
-        command.stdout(Stdio::inherit());
-        command.stderr(Stdio::inherit());
-        let child = command.spawn().with_context(|| {
-            format!(
-                "failed to launch `{bundle_id}` with executable {}",
-                self.executable_path.display()
-            )
-        })?;
 
-        let mut process = self
-            .launched_process
+        let session = self.start_attached_log_session(arguments)?;
+        *self
+            .launched_session
             .lock()
-            .map_err(|_| anyhow::anyhow!("failed to lock the macOS UI backend process state"))?;
-        *process = Some(child);
-        drop(process);
+            .map_err(|_| anyhow::anyhow!("failed to lock the macOS UI backend process state"))? =
+            Some(session);
+        self.window_capture_info()?;
         self.wait_for_focusable_app()
     }
 
@@ -1045,9 +1180,7 @@ impl UiBackend for MacosBackend {
                 .join("Application Support")
                 .join(bundle_id),
             home.join("Library").join("Caches").join(bundle_id),
-            home.join("Library")
-                .join("HTTPStorages")
-                .join(bundle_id),
+            home.join("Library").join("HTTPStorages").join(bundle_id),
             home.join("Library").join("WebKit").join(bundle_id),
             home.join("Library")
                 .join("Saved Application State")
@@ -1063,6 +1196,12 @@ impl UiBackend for MacosBackend {
         defaults.args(["delete", bundle_id]);
         let _ = command_output_allow_failure(&mut defaults)?;
 
+        if let Ok(user) = std::env::var("USER") {
+            let mut cfprefsd = Command::new("killall");
+            cfprefsd.args(["-u", user.as_str(), "cfprefsd"]);
+            let _ = command_output_allow_failure(&mut cfprefsd)?;
+        }
+
         Ok(())
     }
 
@@ -1075,6 +1214,8 @@ impl UiBackend for MacosBackend {
     }
 
     fn tap_point(&self, x: f64, y: f64, duration_ms: Option<u32>) -> Result<()> {
+        self.focus()?;
+        thread::sleep(Duration::from_millis(80));
         let mut arguments = vec![
             "tap".to_owned(),
             "--x".to_owned(),
@@ -1138,6 +1279,23 @@ impl UiBackend for MacosBackend {
         if let Some(delta) = delta {
             arguments.push("--delta".to_owned());
             arguments.push(delta.to_string());
+        }
+        self.run_helper(&arguments)
+    }
+
+    fn select_menu_item(&self, path: &[String]) -> Result<()> {
+        if path.is_empty() {
+            bail!("`selectMenuItem` requires at least one menu label");
+        }
+
+        let mut arguments = vec![
+            "menu-item".to_owned(),
+            "--bundle-id".to_owned(),
+            self.bundle_id.clone(),
+        ];
+        for item in path {
+            arguments.push("--item".to_owned());
+            arguments.push(item.clone());
         }
         self.run_helper(&arguments)
     }
@@ -1300,16 +1458,45 @@ impl UiBackend for MacosBackend {
             ensure_dir(parent)?;
         }
         let window_info = self.window_capture_info()?;
-        let mut command = Command::new("screencapture");
-        command.args([
+        let temporary_capture = TempfileBuilder::new()
+            .prefix("orbit-window-")
+            .suffix(".png")
+            .tempfile()
+            .context("failed to allocate a temporary macOS screenshot path")?;
+        let temp_path = temporary_capture.path().to_path_buf();
+        drop(temporary_capture);
+
+        let mut capture = Command::new("screencapture");
+        capture.args([
             "-x",
-            "-o",
-            "-l",
-            &window_info.window_number.to_string(),
+            temp_path
+                .to_str()
+                .context("temporary screenshot path contains invalid UTF-8")?,
+        ]);
+        capture.stdout(Stdio::null());
+        capture.stderr(Stdio::null());
+        run_command(&mut capture)?;
+
+        let mut crop = Command::new("sips");
+        crop.args([
+            "-c",
+            &(window_info.frame.height.round() as i64).to_string(),
+            &(window_info.frame.width.round() as i64).to_string(),
+            "--cropOffset",
+            &(window_info.frame.y.round() as i64).to_string(),
+            &(window_info.frame.x.round() as i64).to_string(),
+            temp_path
+                .to_str()
+                .context("temporary screenshot path contains invalid UTF-8")?,
+            "--out",
             path.to_str()
                 .context("screenshot path contains invalid UTF-8")?,
         ]);
-        run_command(&mut command)
+        crop.stdout(Stdio::null());
+        crop.stderr(Stdio::null());
+        let result = run_command(&mut crop);
+        let _ = fs::remove_file(&temp_path);
+        result
     }
 
     fn open_link(&self, url: &str) -> Result<()> {
@@ -1502,6 +1689,180 @@ fn remove_path_if_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
+fn macos_quit_applescript(bundle_id: &str) -> String {
+    format!("tell application id \"{}\" to quit", bundle_id)
+}
+
+fn macos_xcode_log_redirect_env(selected_xcode: Option<&SelectedXcode>) -> Result<String> {
+    let log_redirect_dylib = selected_xcode_log_redirect_dylib_path(selected_xcode)?;
+    Ok(vec![
+        "NSUnbufferedIO=YES".to_owned(),
+        "OS_LOG_TRANSLATE_PRINT_MODE=0x80".to_owned(),
+        "IDE_DISABLED_OS_ACTIVITY_DT_MODE=1".to_owned(),
+        "OS_LOG_DT_HOOK_MODE=0x07".to_owned(),
+        "CFLOG_FORCE_DISABLE_STDERR=1".to_owned(),
+        format!("DYLD_INSERT_LIBRARIES={}", log_redirect_dylib.display()),
+    ]
+    .join(" "))
+}
+
+fn macos_lldb_launch_command(arguments: &[(String, String)]) -> String {
+    let mut command = "process launch -s -o $log_pipe -e $log_pipe".to_owned();
+    let launch_arguments = arguments
+        .iter()
+        .flat_map(|(key, value)| [format!("-{key}"), value.clone()])
+        .collect::<Vec<_>>();
+    if !launch_arguments.is_empty() {
+        command.push_str(" --");
+        for argument in launch_arguments {
+            command.push(' ');
+            command.push_str(&lldb_quote_arg(&argument));
+        }
+    }
+    command
+}
+
+fn macos_lldb_run_script(
+    selected_xcode: Option<&SelectedXcode>,
+    arguments: &[(String, String)],
+) -> Result<String> {
+    let lldb_path = selected_xcode_lldb_path(selected_xcode)?;
+    let launch_command = macos_lldb_launch_command(arguments);
+    Ok(format!(
+        r#"set timeout -1
+log_user 0
+
+proc wait_for_prompt {{}} {{
+    expect {{
+        -re {{\(lldb\)}} {{ return }}
+        timeout {{ send_user "timed out waiting for LLDB prompt\n"; exit 1 }}
+        eof {{ send_user "LLDB exited before it became interactive\n"; exit 1 }}
+    }}
+}}
+
+proc wait_for_message {{pattern message}} {{
+    expect {{
+        -re $pattern {{ return }}
+        timeout {{ send_user "$message\n"; exit 1 }}
+        eof {{ send_user "LLDB exited unexpectedly\n"; exit 1 }}
+    }}
+}}
+
+set exe [lindex $argv 0]
+set log_pipe [lindex $argv 1]
+set lldb_path "{lldb_path}"
+
+spawn $lldb_path $exe
+wait_for_prompt
+send -- "settings set target.env-vars {env_vars}\r"
+wait_for_prompt
+send -- "{launch_command}\r"
+wait_for_message {{Process [0-9]+ launched}} "timed out waiting for LLDB to launch the macOS app"
+wait_for_prompt
+send -- "continue\r"
+wait_for_message {{Process [0-9]+ resuming}} "timed out waiting for LLDB to continue the macOS app"
+expect {{
+    -re {{Process [0-9]+ exited}} {{}}
+    -re {{Process [0-9]+ stopped}} {{}}
+    eof {{ exit 0 }}
+}}
+"#,
+        lldb_path = tcl_quote_arg(
+            lldb_path
+                .to_str()
+                .context("macOS LLDB path contains invalid UTF-8")?,
+        ),
+        env_vars = tcl_quote_arg(&macos_xcode_log_redirect_env(selected_xcode)?),
+        launch_command = launch_command,
+    ))
+}
+
+fn macos_attached_launch_wrapper(
+    bundle_id: &str,
+    executable_path: &Path,
+    lldb_script_path: &Path,
+    log_pipe_path: &Path,
+) -> Result<String> {
+    Ok(format!(
+        r#"#!/bin/zsh
+set -uo pipefail
+
+cleanup() {{
+  local exit_code="${{1:-0}}"
+  trap - INT TERM HUP EXIT
+
+  if [[ -n "${{launcher_pid:-}}" ]]; then
+    /usr/bin/osascript -e {quit_script} >/dev/null 2>&1 || true
+    for _ in {{1..20}}; do
+      if ! /usr/bin/pgrep -f {executable} >/dev/null 2>&1; then
+        break
+      fi
+      sleep 0.1
+    done
+    /usr/bin/pkill -f {executable} >/dev/null 2>&1 || true
+    kill -TERM "${{launcher_pid}}" >/dev/null 2>&1 || true
+    wait "${{launcher_pid}}" 2>/dev/null || true
+  fi
+
+  exit "${{exit_code}}"
+}}
+
+trap 'cleanup 130' INT
+trap 'cleanup 143' TERM HUP
+trap 'cleanup $?' EXIT
+
+/usr/bin/expect -f {lldb_script} {executable} {log_pipe} &
+launcher_pid=$!
+wait "${{launcher_pid}}"
+launcher_status=$?
+cleanup "${{launcher_status}}"
+"#,
+        quit_script = shell_quote_arg(&macos_quit_applescript(bundle_id)),
+        executable = shell_quote_arg(
+            executable_path
+                .to_str()
+                .context("macOS executable path contains invalid UTF-8")?,
+        ),
+        lldb_script = shell_quote_arg(
+            lldb_script_path
+                .to_str()
+                .context("macOS LLDB script path contains invalid UTF-8")?,
+        ),
+        log_pipe = shell_quote_arg(
+            log_pipe_path
+                .to_str()
+                .context("macOS log pipe path contains invalid UTF-8")?,
+        ),
+    ))
+}
+
+fn macos_expect_wrapper_coordinator() -> String {
+    r#"set timeout -1
+set wrapper [lindex $argv 0]
+
+spawn -noecho /bin/zsh $wrapper
+expect eof
+"#
+    .to_owned()
+}
+
+fn tcl_quote_arg(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('$', "\\$")
+        .replace('[', "\\[")
+        .replace(']', "\\]")
+}
+
+fn shell_quote_arg(value: &str) -> String {
+    format!("'{}'", value.replace('\'', r#"'\''"#))
+}
+
+fn lldb_quote_arg(value: &str) -> String {
+    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
+}
+
 fn ios_hid_keycode_for_character(character: char) -> Option<u32> {
     match character.to_ascii_uppercase() {
         'A'..='Z' => Some((character.to_ascii_uppercase() as u32) - ('A' as u32) + 4),
@@ -1586,7 +1947,7 @@ fn apply_simulator_permission(
         UiPermissionState::Allow => backend.run_simctl_privacy("grant", service, bundle_id),
         UiPermissionState::Deny => backend.run_simctl_privacy("revoke", service, bundle_id),
         UiPermissionState::Unset => {
-            let mut command = Command::new("xcrun");
+            let mut command = xcrun_command(backend.selected_xcode.as_ref());
             command.args([
                 "simctl",
                 "privacy",
@@ -1642,7 +2003,7 @@ fn ensure_macos_driver_binary(project: &ProjectContext) -> Result<PathBuf> {
         return Ok(binary_path);
     }
 
-    let mut command = Command::new("xcrun");
+    let mut command = xcrun_command(project.selected_xcode.as_ref());
     command.args(["--sdk", "macosx", "swiftc", "-O"]);
     command.arg(&source_path);
     command.arg("-o");

@@ -7,6 +7,8 @@ use plist::Value as PlistValue;
 use semver::Version;
 use serde_json::Value as JsonValue;
 
+use crate::apple::xcode::validate_requested_xcode_version;
+
 use super::authoring::{
     AppManifest, DependencySpec, EntitlementsManifest, ExtensionConfig, ExtensionKind,
     InfoManifest, TestFormat,
@@ -55,6 +57,7 @@ fn normalize_manifest(
     let mut manifest = ResolvedManifest {
         name: app.name.clone(),
         version: app.version.clone(),
+        xcode: app.xcode.clone(),
         team_id: app.team_id.clone(),
         provider_id: app.provider_id.clone(),
         hooks: app.hooks.clone().unwrap_or_default(),
@@ -68,6 +71,8 @@ fn normalize_manifest(
                     *platform,
                     PlatformManifest {
                         deployment_target: deployment_target.clone(),
+                        universal_binary: *platform == ApplePlatform::Macos
+                            && app.macos.universal_binary,
                     },
                 )
             })
@@ -162,6 +167,9 @@ fn validate_root_manifest(app: &AppManifest) -> Result<()> {
     if app.platforms.is_empty() {
         bail!("manifest must declare at least one platform");
     }
+    if let Some(version) = app.xcode.as_deref() {
+        validate_requested_xcode_version(version)?;
+    }
     if app.watch.is_some() {
         if !app.platforms.contains_key(&ApplePlatform::Ios) {
             bail!("`watch` requires the root app to include the `ios` platform");
@@ -172,6 +180,9 @@ fn validate_root_manifest(app: &AppManifest) -> Result<()> {
     }
     if app.app_clip.is_some() && !app.platforms.contains_key(&ApplePlatform::Ios) {
         bail!("`app_clip` requires the root app to include the `ios` platform");
+    }
+    if app.macos.universal_binary && !app.platforms.contains_key(&ApplePlatform::Macos) {
+        bail!("`macos.universal_binary` requires `platforms.macos`");
     }
     let non_watch_platforms = app
         .platforms

@@ -29,6 +29,9 @@ pub struct Cli {
     #[arg(long, global = true)]
     pub non_interactive: bool,
 
+    #[arg(long, global = true)]
+    pub verbose: bool,
+
     #[command(subcommand)]
     pub command: Command,
 }

@@ -109,11 +109,21 @@ pub(super) fn write_info_plist(
                     target,
                     toolchain.info_plist_supported_platform() == "iPhoneOS",
                 )?;
+                plist.insert(
+                    "MinimumOSVersion".to_owned(),
+                    Value::String(toolchain.deployment_target.clone()),
+                );
+            } else if matches!(toolchain.platform, ApplePlatform::Macos) {
+                plist.insert(
+                    "LSMinimumSystemVersion".to_owned(),
+                    Value::String(toolchain.deployment_target.clone()),
+                );
+            } else {
+                plist.insert(
+                    "MinimumOSVersion".to_owned(),
+                    Value::String(toolchain.deployment_target.clone()),
+                );
             }
-            plist.insert(
-                "MinimumOSVersion".to_owned(),
-                Value::String(toolchain.deployment_target.clone()),
-            );
         }
         TargetKind::WatchApp => {
             plist.insert(
