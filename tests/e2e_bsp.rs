@@ -255,8 +255,14 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     }));
     assert!(prepare_notifications.iter().any(|message| {
         message["method"] == Value::String("build/taskProgress".to_owned())
-            && message["params"]["progress"] == 1
-            && message["params"]["total"] == 1
+            && message["params"]["message"]
+                .as_str()
+                .is_some_and(|value| value.contains("Prepared"))
+            && message["params"]["unit"] == Value::String("targets".to_owned())
+            && message["params"]["progress"]
+                .as_u64()
+                .zip(message["params"]["total"].as_u64())
+                .is_some_and(|(progress, total)| progress == total)
     }));
     assert!(prepare_notifications.iter().any(|message| {
         message["method"] == Value::String("build/taskFinish".to_owned())
