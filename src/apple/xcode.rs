@@ -1,17 +1,20 @@
 use std::collections::BTreeMap;
 use std::fs;
-use std::io::{Read, Write};
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::Duration;
 
 use anyhow::{Context, Result, bail};
 use plist::Value as PlistValue;
 use reqwest::blocking::Client as HttpClient;
-use reqwest::header::USER_AGENT;
+use reqwest::header::{HeaderMap, USER_AGENT};
 use serde::Deserialize;
 use walkdir::WalkDir;
 
 use crate::apple::developer_services::DeveloperServicesClient;
+use crate::apple::xar_stream;
 use crate::context::AppContext;
 use crate::util::{
     CliDownloadProgress, CliSpinner, ensure_dir, ensure_parent_dir, prompt_select, run_command,
@@ -19,6 +22,8 @@ use crate::util::{
 
 const XCODE_RELEASES_INDEX_URL: &str = "https://xcodereleases.com/data.json";
 const XCODE_RELEASES_USER_AGENT: &str = concat!("Orbit/", env!("CARGO_PKG_VERSION"));
+const XCODE_DOWNLOAD_RETRY_ATTEMPTS: usize = 3;
+const XCODE_DOWNLOAD_RETRY_DELAY: Duration = Duration::from_millis(750);
 
 #[derive(Debug, Clone)]
 struct DownloadableXcode {
@@ -732,8 +737,13 @@ fn install_requested_xcode(
     let result = (|| {
         let install_root = preferred_xcode_install_root(roots)?;
         ensure_dir(&install_root)?;
-        let archive_path = download_xcode_archive(app, candidate, &spinner)?;
-        install_downloaded_xcode(&archive_path, candidate, &install_root, &spinner)
+        let archive_path = xcode_archive_path(app, candidate);
+        if archive_path.exists() {
+            spinner.set_message(format!("Using cached archive {}", archive_path.display()));
+            return install_downloaded_xcode(&archive_path, candidate, &install_root, &spinner);
+        }
+
+        download_and_install_xcode(app, candidate, &archive_path, &install_root, &spinner)
     })();
     match result {
         Ok(install_path) => {
@@ -751,25 +761,24 @@ fn install_requested_xcode(
     }
 }
 
-fn download_xcode_archive(
-    app: &AppContext,
-    candidate: &DownloadableXcode,
-    spinner: &CliSpinner,
-) -> Result<PathBuf> {
-    let archive_path = app
-        .global_paths
+fn xcode_archive_path(app: &AppContext, candidate: &DownloadableXcode) -> PathBuf {
+    app.global_paths
         .cache_dir
         .join("xcodes")
         .join("archives")
         .join(format!("{}-{}", candidate.version, candidate.build_version))
-        .join(&candidate.archive_filename);
-    if archive_path.exists() {
-        spinner.set_message(format!("Using cached archive {}", archive_path.display()));
-        return Ok(archive_path);
-    }
+        .join(&candidate.archive_filename)
+}
 
-    ensure_parent_dir(&archive_path)?;
-    let partial_path = partial_download_path(&archive_path)?;
+fn download_and_install_xcode(
+    app: &AppContext,
+    candidate: &DownloadableXcode,
+    archive_path: &Path,
+    install_root: &Path,
+    spinner: &CliSpinner,
+) -> Result<PathBuf> {
+    ensure_parent_dir(archive_path)?;
+    let partial_path = partial_download_path(archive_path)?;
     if partial_path.exists() {
         fs::remove_file(&partial_path)
             .with_context(|| format!("failed to clear {}", partial_path.display()))?;
@@ -779,24 +788,42 @@ fn download_xcode_archive(
         "Authorizing Apple Developer download for {}",
         candidate.display_name()
     ));
-    let mut developer_services = DeveloperServicesClient::authenticate_for_xcode_download(
-        app,
-        &candidate.version,
-        &candidate.build_version,
-    )?;
-    developer_services.authorize_download_path(&candidate.remote_path)?;
-
-    spinner.set_message(format!("Downloading {}", candidate.archive_filename));
-    spinner.suspend(|| {
-        stream_download_to_path(
-            &developer_services.clone_http_client(),
-            &candidate.archive_url,
-            &candidate.archive_filename,
-            &archive_path,
+    let expansion_root = expansion_root_for_archive(archive_path, candidate)?;
+    let direct_result = (|| -> Result<()> {
+        let mut developer_services = DeveloperServicesClient::authenticate_for_xcode_download(
+            app,
+            &candidate.version,
+            &candidate.build_version,
+        )?;
+        download_and_extract_xcode_archive(
+            &mut developer_services,
+            candidate,
+            archive_path,
             &partial_path,
+            &expansion_root,
+            spinner,
         )
-    })?;
-    Ok(archive_path)
+    })();
+    match direct_result {
+        Ok(()) => {}
+        Err(error) if should_retry_with_installed_xcode_auth(&error) => {
+            spinner.set_message(format!(
+                "Retrying Apple Developer download authorization for {}",
+                candidate.display_name()
+            ));
+            let mut developer_services = DeveloperServicesClient::authenticate(app)?;
+            download_and_extract_xcode_archive(
+                &mut developer_services,
+                candidate,
+                archive_path,
+                &partial_path,
+                &expansion_root,
+                spinner,
+            )?;
+        }
+        Err(error) => return Err(error),
+    }
+    install_extracted_xcode(&expansion_root, candidate, install_root, spinner)
 }
 
 fn partial_download_path(path: &Path) -> Result<PathBuf> {
@@ -807,15 +834,96 @@ fn partial_download_path(path: &Path) -> Result<PathBuf> {
     Ok(path.with_file_name(format!("{file_name}.part")))
 }
 
-fn stream_download_to_path(
+fn expansion_root_for_archive(
+    archive_path: &Path,
+    candidate: &DownloadableXcode,
+) -> Result<PathBuf> {
+    Ok(archive_path
+        .parent()
+        .context("downloaded Xcode archive did not have a parent directory")?
+        .join(format!("expand-{}", candidate.build_version)))
+}
+
+fn download_and_extract_xcode_archive(
+    developer_services: &mut DeveloperServicesClient,
+    candidate: &DownloadableXcode,
+    archive_path: &Path,
+    partial_path: &Path,
+    expansion_root: &Path,
+    spinner: &CliSpinner,
+) -> Result<()> {
+    for attempt in 1..=XCODE_DOWNLOAD_RETRY_ATTEMPTS {
+        developer_services.authorize_download_path(&candidate.remote_path)?;
+        let result = download_and_extract_from_authorized_archive(
+            &developer_services.clone_http_client(),
+            &developer_services.download_headers()?,
+            candidate,
+            archive_path,
+            partial_path,
+            expansion_root,
+            spinner,
+        );
+        match result {
+            Ok(()) => return Ok(()),
+            Err(error)
+                if attempt < XCODE_DOWNLOAD_RETRY_ATTEMPTS
+                    && should_retry_xcode_archive_download(&error) =>
+            {
+                spinner.set_message(format!(
+                    "Retrying Xcode archive download after a transient Apple network error ({attempt}/{XCODE_DOWNLOAD_RETRY_ATTEMPTS})"
+                ));
+                thread::sleep(XCODE_DOWNLOAD_RETRY_DELAY);
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    unreachable!("download retry loop should return or error")
+}
+
+fn cleanup_download_attempt(partial_path: &Path, expansion_root: &Path) {
+    let _ = fs::remove_file(partial_path);
+    let _ = fs::remove_dir_all(expansion_root);
+}
+
+fn download_and_extract_from_authorized_archive(
     client: &HttpClient,
+    headers: &HeaderMap,
+    candidate: &DownloadableXcode,
+    archive_path: &Path,
+    partial_path: &Path,
+    expansion_root: &Path,
+    spinner: &CliSpinner,
+) -> Result<()> {
+    cleanup_download_attempt(partial_path, expansion_root);
+    spinner.set_message(format!(
+        "Downloading and extracting {}",
+        candidate.archive_filename
+    ));
+    spinner.suspend(|| {
+        stream_download_to_path_and_extract(
+            client,
+            headers,
+            &candidate.archive_url,
+            &candidate.archive_filename,
+            archive_path,
+            partial_path,
+            expansion_root,
+        )
+    })
+}
+
+fn stream_download_to_path_and_extract(
+    client: &HttpClient,
+    headers: &HeaderMap,
     url: &str,
     label: &str,
     destination: &Path,
     partial_path: &Path,
+    expansion_root: &Path,
 ) -> Result<()> {
-    let mut response = client
+    let response = client
         .get(url)
+        .headers(headers.clone())
         .send()
         .with_context(|| format!("failed to download Xcode archive from {url}"))?;
     if response.url().path().contains("/unauthorized") {
@@ -831,35 +939,16 @@ fn stream_download_to_path(
             .unwrap_or_else(|_| "<unreadable response body>".to_owned());
         bail!("Xcode archive download failed with {status}: {body}");
     }
+    let content_length = response.content_length();
 
-    let total = response.content_length();
-    let mut progress = CliDownloadProgress::new(label, total);
-    let mut file = fs::File::create(partial_path)
-        .with_context(|| format!("failed to create {}", partial_path.display()))?;
-    let mut buffer = [0u8; 1024 * 1024];
-    let mut downloaded = 0u64;
-    loop {
-        let read = response
-            .read(&mut buffer)
-            .context("failed while reading the Xcode archive download stream")?;
-        if read == 0 {
-            break;
-        }
-        file.write_all(&buffer[..read])
-            .with_context(|| format!("failed to write {}", partial_path.display()))?;
-        downloaded += read as u64;
-        progress.advance(downloaded);
-    }
-    file.flush()
-        .with_context(|| format!("failed to flush {}", partial_path.display()))?;
-    fs::rename(partial_path, destination).with_context(|| {
-        format!(
-            "failed to move downloaded Xcode archive to {}",
-            destination.display()
-        )
-    })?;
-    progress.finish(downloaded, destination);
-    Ok(())
+    cache_and_extract_download_stream(
+        response,
+        label,
+        content_length,
+        destination,
+        partial_path,
+        expansion_root,
+    )
 }
 
 fn install_downloaded_xcode(
@@ -868,23 +957,26 @@ fn install_downloaded_xcode(
     install_root: &Path,
     spinner: &CliSpinner,
 ) -> Result<PathBuf> {
-    let expansion_root = archive_path
-        .parent()
-        .context("downloaded Xcode archive did not have a parent directory")?
-        .join(format!("expand-{}", candidate.build_version));
-    recreate_dir(&expansion_root)?;
-
-    spinner.set_message(format!("Expanding {}", archive_path.display()));
-    let mut expand = Command::new("xip");
-    expand
-        .arg("--expand")
-        .arg(archive_path)
-        .current_dir(&expansion_root);
+    let expansion_root = expansion_root_for_archive(archive_path, candidate)?;
+    spinner.set_message(format!("Extracting {}", archive_path.display()));
     spinner
-        .suspend(|| run_command(&mut expand))
-        .with_context(|| format!("failed to expand {}", archive_path.display()))?;
+        .suspend(|| {
+            let file = fs::File::open(archive_path)
+                .with_context(|| format!("failed to open {}", archive_path.display()))?;
+            extract_xcode_app_from_xip_stream(file, &expansion_root)
+        })
+        .with_context(|| format!("failed to extract {}", archive_path.display()))?;
 
-    let extracted_app = find_expanded_xcode_app(&expansion_root)?;
+    install_extracted_xcode(&expansion_root, candidate, install_root, spinner)
+}
+
+fn install_extracted_xcode(
+    expansion_root: &Path,
+    candidate: &DownloadableXcode,
+    install_root: &Path,
+    spinner: &CliSpinner,
+) -> Result<PathBuf> {
+    let extracted_app = find_expanded_xcode_app(expansion_root)?;
     let install_path = install_root.join(candidate.install_bundle_name());
     if install_path.exists() {
         if let Some(existing) = load_xcode_bundle(&install_path)?
@@ -909,7 +1001,7 @@ fn install_downloaded_xcode(
             install_path.display()
         )
     })?;
-    let _ = fs::remove_dir_all(&expansion_root);
+    let _ = fs::remove_dir_all(expansion_root);
 
     let installed = load_xcode_bundle(&install_path)?.with_context(|| {
         format!(
@@ -929,6 +1021,169 @@ fn install_downloaded_xcode(
     Ok(install_path)
 }
 
+fn extract_xcode_app_from_xip_stream<R: Read>(xip_stream: R, expansion_root: &Path) -> Result<()> {
+    let content_stream = xar_stream::open_member_stream(xip_stream, "Content")
+        .context("failed to read Xcode payload from XIP")?;
+    extract_xcode_app_from_content_stream(content_stream, expansion_root)
+}
+
+fn extract_xcode_app_from_content_stream<R: Read>(
+    mut content_reader: R,
+    expansion_root: &Path,
+) -> Result<()> {
+    recreate_dir(expansion_root)?;
+
+    let mut decoder = Command::new("compression_tool")
+        .arg("-decode")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::inherit())
+        .spawn()
+        .context("failed to start compression_tool for streamed Xcode extraction")?;
+    let decoder_stdout = decoder
+        .stdout
+        .take()
+        .context("compression_tool did not provide stdout for streamed Xcode extraction")?;
+
+    let mut extractor = Command::new("cpio");
+    extractor
+        .args(["-idmu", "--quiet"])
+        .current_dir(expansion_root)
+        .stdin(Stdio::from(decoder_stdout))
+        .stdout(Stdio::inherit())
+        .stderr(Stdio::inherit());
+    let mut extractor = extractor
+        .spawn()
+        .context("failed to start cpio for streamed Xcode extraction")?;
+
+    let mut decoder_stdin = decoder
+        .stdin
+        .take()
+        .context("compression_tool did not provide stdin for streamed Xcode extraction")?;
+    io::copy(&mut content_reader, &mut decoder_stdin)
+        .context("failed to stream the Xcode payload into compression_tool")?;
+    drop(decoder_stdin);
+
+    let decoder_status = decoder
+        .wait()
+        .context("failed to wait for compression_tool decode")?;
+    if !decoder_status.success() {
+        bail!("`compression_tool` exited with status {decoder_status}");
+    }
+
+    let extractor_status = extractor
+        .wait()
+        .context("failed to wait for cpio extraction")?;
+    if !extractor_status.success() {
+        bail!("`cpio` exited with status {extractor_status}");
+    }
+
+    Ok(())
+}
+
+fn cache_and_extract_download_stream<R: Read>(
+    source: R,
+    label: &str,
+    total_bytes: Option<u64>,
+    destination: &Path,
+    partial_path: &Path,
+    expansion_root: &Path,
+) -> Result<()> {
+    let file = fs::File::create(partial_path)
+        .with_context(|| format!("failed to create {}", partial_path.display()))?;
+    let reader = ProgressTeeReader::new(source, file, label, total_bytes, destination);
+    let mut content_stream = xar_stream::open_member_stream(reader, "Content")
+        .context("failed to open the Xcode payload from the archive stream")?;
+    extract_xcode_app_from_content_stream(&mut content_stream, expansion_root)?;
+
+    let mut reader = content_stream.into_inner();
+    io::copy(&mut reader, &mut io::sink())
+        .context("failed to drain the remainder of the Xcode archive stream")?;
+    reader.flush_mirror()?;
+    fs::rename(partial_path, destination).with_context(|| {
+        format!(
+            "failed to move downloaded Xcode archive to {}",
+            destination.display()
+        )
+    })?;
+    reader.finish();
+    Ok(())
+}
+
+fn should_retry_with_installed_xcode_auth(error: &anyhow::Error) -> bool {
+    let message = format!("{error:#}").to_ascii_lowercase();
+    message.contains("download authorization failed with 401")
+        || message.contains("download authorization failed with 403")
+        || message.contains("apple developer download authorization failed with 401")
+        || message.contains("apple developer download authorization failed with 403")
+}
+
+fn should_retry_xcode_archive_download(error: &anyhow::Error) -> bool {
+    if error.chain().any(|cause| {
+        cause
+            .downcast_ref::<reqwest::Error>()
+            .map(|error| error.is_timeout() || error.is_connect() || error.is_request())
+            .unwrap_or(false)
+    }) {
+        return true;
+    }
+
+    let message = format!("{error:#}").to_ascii_lowercase();
+    message.contains("tls handshake eof")
+        || message.contains("unexpected eof")
+        || message.contains("connection reset")
+        || message.contains("connection aborted")
+        || message.contains("broken pipe")
+        || message.contains("timed out")
+}
+
+struct ProgressTeeReader<R, W> {
+    inner: R,
+    mirror: W,
+    progress: CliDownloadProgress,
+    downloaded_bytes: u64,
+    destination: PathBuf,
+}
+
+impl<R, W> ProgressTeeReader<R, W> {
+    fn new(inner: R, mirror: W, label: &str, total_bytes: Option<u64>, destination: &Path) -> Self {
+        Self {
+            inner,
+            mirror,
+            progress: CliDownloadProgress::new(label, total_bytes),
+            downloaded_bytes: 0,
+            destination: destination.to_path_buf(),
+        }
+    }
+}
+
+impl<R, W: Write> ProgressTeeReader<R, W> {
+    fn flush_mirror(&mut self) -> Result<()> {
+        self.mirror
+            .flush()
+            .context("failed to flush mirrored download")
+    }
+
+    fn finish(mut self) {
+        self.progress
+            .finish(self.downloaded_bytes, &self.destination);
+    }
+}
+
+impl<R: Read, W: Write> Read for ProgressTeeReader<R, W> {
+    fn read(&mut self, buffer: &mut [u8]) -> io::Result<usize> {
+        let read = self.inner.read(buffer)?;
+        if read == 0 {
+            return Ok(0);
+        }
+
+        self.mirror.write_all(&buffer[..read])?;
+        self.downloaded_bytes += read as u64;
+        self.progress.advance(self.downloaded_bytes);
+        Ok(read)
+    }
+}
+
 fn find_expanded_xcode_app(root: &Path) -> Result<PathBuf> {
     WalkDir::new(root)
         .max_depth(2)
@@ -938,7 +1193,7 @@ fn find_expanded_xcode_app(root: &Path) -> Result<PathBuf> {
         .find(|path| load_xcode_bundle(path).ok().flatten().is_some())
         .with_context(|| {
             format!(
-                "`xip --expand` did not produce a valid Xcode.app bundle under {}",
+                "streamed Xcode extraction did not produce a valid Xcode.app bundle under {}",
                 root.display()
             )
         })
@@ -1034,14 +1289,16 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
+    use std::process::Command;
 
+    use anyhow::{Context, Result};
     use plist::Value as PlistValue;
 
     use super::{
         SelectedXcode, XcodeReleasesEntry, compare_versions, configured_xcode_install_root,
-        developer_dir_path, discover_xcodes_under, lldb_path, log_redirect_dylib_path,
-        matching_downloadable_xcodes, open_simulator_command, resolve_requested_xcode_in_roots,
-        version_matches,
+        developer_dir_path, discover_xcodes_under, extract_xcode_app_from_xip_stream, lldb_path,
+        load_xcode_bundle, log_redirect_dylib_path, matching_downloadable_xcodes,
+        open_simulator_command, resolve_requested_xcode_in_roots, version_matches,
     };
 
     fn write_fake_xcode(root: &Path, name: &str, version: &str, build: &str) -> PathBuf {
@@ -1352,5 +1609,95 @@ mod tests {
         }
 
         assert_eq!(resolved, Some(install_root));
+    }
+
+    #[test]
+    fn extracts_full_xcode_bundle_from_streamed_fake_xip() -> Result<()> {
+        let temp = tempfile::tempdir().unwrap();
+        let archive_input_root = temp.path().join("archive-input");
+        let cpio_input_root = temp.path().join("cpio-input");
+        let cpio_path = temp.path().join("payload.cpio");
+        let content_path = archive_input_root.join("Content");
+        let metadata_path = archive_input_root.join("Metadata");
+        let xip_path = temp.path().join("Xcode_26.3.xip");
+        let expansion_root = temp.path().join("expand");
+
+        let contents_root = cpio_input_root.join("Xcode.app/Contents");
+        let developer_bin = contents_root.join("Developer/usr/bin");
+        fs::create_dir_all(&developer_bin)?;
+        fs::write(developer_bin.join("xcodebuild"), "")?;
+
+        let mut info = plist::Dictionary::new();
+        info.insert(
+            "CFBundleIdentifier".to_owned(),
+            PlistValue::String("com.apple.dt.Xcode".to_owned()),
+        );
+        info.insert(
+            "CFBundleShortVersionString".to_owned(),
+            PlistValue::String("26.3".to_owned()),
+        );
+        info.insert(
+            "ProductBuildVersion".to_owned(),
+            PlistValue::String("17D5044a".to_owned()),
+        );
+        PlistValue::Dictionary(info).to_file_xml(contents_root.join("Info.plist"))?;
+
+        fs::create_dir_all(&archive_input_root)?;
+        fs::write(&metadata_path, "metadata")?;
+        run_test_command(
+            "sh",
+            &[
+                "-c",
+                &format!(
+                    "cd '{}' && find . | cpio -o -H newc > '{}' 2>/dev/null",
+                    cpio_input_root.display(),
+                    cpio_path.display()
+                ),
+            ],
+        )?;
+        run_test_command(
+            "compression_tool",
+            &[
+                "-encode",
+                "-A",
+                "lzma",
+                "-i",
+                &cpio_path.display().to_string(),
+                "-o",
+                &content_path.display().to_string(),
+            ],
+        )?;
+        run_test_command(
+            "sh",
+            &[
+                "-c",
+                &format!(
+                    "cd '{}' && xar -cf '{}' --no-compress '.*' Content Metadata",
+                    archive_input_root.display(),
+                    xip_path.display()
+                ),
+            ],
+        )?;
+
+        extract_xcode_app_from_xip_stream(fs::File::open(&xip_path)?, &expansion_root)?;
+
+        let extracted = load_xcode_bundle(&expansion_root.join("Xcode.app"))?
+            .context("expected a valid extracted Xcode bundle")?;
+        assert_eq!(extracted.version, "26.3");
+        assert_eq!(extracted.build_version, "17D5044a");
+        assert!(
+            expansion_root
+                .join("Xcode.app/Contents/Developer/usr/bin/xcodebuild")
+                .exists()
+        );
+        Ok(())
+    }
+
+    fn run_test_command(program: &str, args: &[&str]) -> Result<()> {
+        let status = Command::new(program).args(args).status()?;
+        if !status.success() {
+            anyhow::bail!("`{program}` exited with status {status}");
+        }
+        Ok(())
     }
 }

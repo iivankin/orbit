@@ -27,4 +27,5 @@ pub mod srp;
 pub mod submit;
 pub mod testing;
 pub mod ui;
+pub(crate) mod xar_stream;
 pub mod xcode;

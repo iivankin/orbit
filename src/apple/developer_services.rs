@@ -2,7 +2,7 @@ use anyhow::{Context, Result, bail};
 use plist::{Dictionary as PlistDictionary, Value as PlistValue};
 use reqwest::Method;
 use reqwest::blocking::{Client, Response};
-use reqwest::header::{ACCEPT, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
+use reqwest::header::{ACCEPT, CONTENT_LENGTH, CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue};
 use serde::Deserialize;
 use serde_json::json;
 use uuid::Uuid;
@@ -14,6 +14,7 @@ use crate::apple::grand_slam::{
 use crate::context::AppContext;
 const DEVELOPER_SERVICES_V2_BASE_URL: &str = "https://developerservices2.apple.com";
 const DEVELOPER_SERVICES_PROTOCOL_VERSION: &str = "QH65B2";
+const DEVELOPER_SERVICES_DOWNLOAD_PROTOCOL_VERSION: &str = "P5Y9MG";
 const DEVELOPER_SERVICES_CLIENT_ID: &str = "XABBG36SBA";
 const DEVELOPER_SERVICES_JSON_CONTENT_TYPE: &str = "application/vnd.api+json";
 
@@ -32,6 +33,12 @@ struct DeveloperServicesTeamsResponse {
     result_code: i64,
     #[serde(default)]
     teams: Vec<DeveloperServicesTeam>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeveloperServicesResultCodeResponse {
+    #[serde(rename = "resultCode")]
+    result_code: i64,
 }
 
 #[derive(Debug)]
@@ -60,16 +67,26 @@ impl DeveloperServicesClient {
         self.client.clone()
     }
 
+    pub fn download_headers(&self) -> Result<HeaderMap> {
+        let mut headers = self.base_headers()?;
+        headers.insert(ACCEPT, HeaderValue::from_static("*/*"));
+        Ok(headers)
+    }
+
     pub fn authorize_download_path(&mut self, path: &str) -> Result<()> {
         let url = reqwest::Url::parse_with_params(
-            &format!("{DEVELOPER_SERVICES_V2_BASE_URL}/services/download"),
-            [("path", path)],
+            &format!(
+                "{DEVELOPER_SERVICES_V2_BASE_URL}/services/{DEVELOPER_SERVICES_DOWNLOAD_PROTOCOL_VERSION}/download.action"
+            ),
+            [("clientId", DEVELOPER_SERVICES_CLIENT_ID), ("path", path)],
         )
         .context("failed to build Apple Developer download authorization URL")?;
         let response = self
             .client
-            .get(url)
-            .headers(self.base_headers()?)
+            .post(url)
+            .headers(self.download_headers()?)
+            .header(CONTENT_LENGTH, HeaderValue::from_static("0"))
+            .body(Vec::new())
             .send()
             .context("failed to authorize Apple Developer download session")?;
         let status = response.status();
@@ -81,6 +98,14 @@ impl DeveloperServicesClient {
             bail!(
                 "Apple Developer download authorization failed with {status}: {}",
                 String::from_utf8_lossy(&body)
+            );
+        }
+        let download_result: DeveloperServicesResultCodeResponse = plist::from_bytes(&body)
+            .context("failed to decode Apple Developer download authorization response")?;
+        if download_result.result_code != 0 {
+            bail!(
+                "Apple Developer download authorization returned resultCode={}",
+                download_result.result_code
             );
         }
         Ok(())
@@ -368,4 +393,39 @@ fn push_query_pair(encoded: &mut String, key: &str, value: &str) {
         encoded.push('&');
     }
     encoded.push_str(&pair);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn download_authorization_success_response_requires_result_code_zero() {
+        let body = br#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>resultCode</key><integer>0</integer>
+</dict>
+</plist>"#;
+
+        let response: DeveloperServicesResultCodeResponse =
+            plist::from_bytes(body).expect("plist should decode");
+        assert_eq!(response.result_code, 0);
+    }
+
+    #[test]
+    fn download_authorization_response_preserves_non_zero_result_code() {
+        let body = br#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+<key>resultCode</key><integer>1100</integer>
+</dict>
+</plist>"#;
+
+        let response: DeveloperServicesResultCodeResponse =
+            plist::from_bytes(body).expect("plist should decode");
+        assert_eq!(response.result_code, 1100);
+    }
 }
