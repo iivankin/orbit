@@ -88,6 +88,53 @@ pub fn create_watch_xcrun_mock(mock_bin: &Path, sdk_root: &Path) {
     create_xcrun_mock(mock_bin, sdk_root, XcrunMockKind::Watch);
 }
 
+pub fn create_lldb_attach_mock(developer_dir: &Path) {
+    let bin_dir = developer_dir.join("usr").join("bin");
+    std::fs::create_dir_all(&bin_dir).unwrap();
+    write_executable(
+        &bin_dir.join("lldb"),
+        r#"#!/bin/sh
+set -eu
+echo "lldb $@" >> "$MOCK_LOG"
+printf '(lldb) '
+while IFS= read -r line; do
+  echo "$line" >> "$MOCK_LOG"
+  case "$line" in
+    "process attach -i -w -n "*)
+      printf 'Process 123 stopped\n'
+      printf '(lldb) '
+      ;;
+    "process continue")
+      printf 'Process 123 resuming\n'
+      printf '(lldb) '
+      exit 0
+      ;;
+    *)
+      printf '(lldb) '
+      ;;
+  esac
+done
+"#,
+    );
+}
+
+pub fn create_xcodebuild_mock(mock_bin: &Path) {
+    write_executable(
+        &mock_bin.join("xcodebuild"),
+        r#"#!/bin/sh
+set -eu
+echo "xcodebuild $@" >> "$MOCK_LOG"
+if [ "$#" -eq 1 ] && [ "$1" = "-version" ]; then
+  printf '%s\n' "Xcode 16.0"
+  printf '%s\n' "Build version 16A242d"
+  exit 0
+fi
+echo "unexpected xcodebuild command: $@" >&2
+exit 1
+"#,
+    );
+}
+
 pub fn create_build_xcrun_mock(mock_bin: &Path, sdk_root: &Path) {
     create_xcrun_mock(mock_bin, sdk_root, XcrunMockKind::Build);
 }
@@ -403,6 +450,19 @@ if [ "$1" = "simctl" ] && [ "$2" = "install" ]; then
   exit 0
 fi
 if [ "$1" = "simctl" ] && [ "$2" = "launch" ]; then
+  exit 0
+fi
+if [ "$1" = "simctl" ] && [ "$2" = "spawn" ] && [ "$4" = "log" ] && [ "$5" = "stream" ]; then
+  process_name=""
+  prev=""
+  for arg in "$@"; do
+    if [ "$prev" = "--process" ]; then
+      process_name="$arg"
+    fi
+    prev="$arg"
+  done
+  printf '%s\n' "Filtering the log data using \"process == $process_name\""
+  printf '2026-04-02 12:00:00.000000+0000 %s[123:456] mock log line\n' "$process_name"
   exit 0
 fi
 if [ "$1" = "simctl" ] && [ "$2" = "terminate" ]; then

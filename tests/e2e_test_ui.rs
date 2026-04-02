@@ -41,7 +41,9 @@ fn orbit_test_runs_ui_flows_for_maestro_manifest_tests() {
     assert!(log.contains("idb clear-keychain --udid IOS-UDID"));
     assert!(log.contains("idb uninstall dev.orbit.fixture.ui --udid IOS-UDID"));
     assert!(log.contains("idb ui describe-all --udid IOS-UDID"));
-    assert!(log.contains("idb log --udid IOS-UDID -- --process ExampleApp"));
+    assert!(log.contains(
+        "xcrun simctl spawn IOS-UDID log stream --style compact --color none --level debug --process ExampleApp"
+    ));
     assert!(log.contains("idb video"));
     assert!(log.contains("idb ui swipe --duration 0.500 --delta 5 354 426 39 426 --udid IOS-UDID"));
     assert!(log.contains("idb ui tap 140 142 --udid IOS-UDID"));

@@ -3,8 +3,9 @@ mod support;
 use std::fs;
 
 use support::{
-    base_command, create_home, create_passthrough_mock, create_watch_workspace,
-    create_watch_xcrun_mock, read_log, run_and_capture,
+    base_command, create_home, create_lldb_attach_mock, create_passthrough_mock,
+    create_watch_workspace, create_watch_xcrun_mock, create_xcodebuild_mock, read_log,
+    run_and_capture,
 };
 
 #[test]
@@ -15,13 +16,16 @@ fn watchos_run_debug_uses_simctl_and_lldb() {
     let mock_bin = temp.path().join("mock-bin");
     let log_path = temp.path().join("commands.log");
     let sdk_root = temp.path().join("sdk");
+    let developer_dir = temp.path().join("developer-dir");
     fs::create_dir_all(&mock_bin).unwrap();
 
     create_watch_xcrun_mock(&mock_bin, &sdk_root);
-    create_passthrough_mock(&mock_bin, "lldb");
+    create_xcodebuild_mock(&mock_bin);
+    create_lldb_attach_mock(&developer_dir);
     create_passthrough_mock(&mock_bin, "open");
 
     let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command.env("DEVELOPER_DIR", &developer_dir);
     command.args([
         "--non-interactive",
         "--manifest",
@@ -44,7 +48,7 @@ fn watchos_run_debug_uses_simctl_and_lldb() {
     assert!(log.contains(
         "xcrun simctl launch --wait-for-debugger --terminate-running-process WATCH-UDID dev.orbit.fixture.watch.watchkitapp"
     ));
-    assert!(log.contains("lldb --file"));
+    assert!(log.lines().any(|line| line.starts_with("lldb ")));
     assert!(log.contains("process attach -i -w -n WatchApp"));
     assert!(log.contains("process continue"));
 }

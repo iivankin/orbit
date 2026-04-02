@@ -74,6 +74,7 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
     (temp, project)
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn writes_ios_app_defaults_without_scene_manifest_inference() {
     let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
@@ -154,6 +155,7 @@ fn writes_ios_app_defaults_without_scene_manifest_inference() {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn applies_manifest_driven_ios_plist_metadata() {
     let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
@@ -274,6 +276,7 @@ fn applies_manifest_driven_ios_plist_metadata() {
     assert!(dict.contains_key("DTXcodeBuild"));
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn defaults_bundle_display_name_to_target_name() {
     let (temp, project) = project_for_fixture("examples/macos-app/orbit.json");
@@ -331,6 +334,7 @@ fn device_builds_require_signing_in_development() {
     ));
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn writes_macos_app_metadata_under_contents() {
     let (temp, project) = project_for_fixture("examples/macos-app/orbit.json");
