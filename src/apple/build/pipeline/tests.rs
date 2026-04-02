@@ -6,9 +6,9 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::compile::relocate_bundle_debug_artifacts;
-use super::info_plist::{
-    extension_plist, json_to_plist, merge_extension_attributes, write_info_plist,
-};
+#[cfg(target_os = "macos")]
+use super::info_plist::write_info_plist;
+use super::info_plist::{extension_plist, json_to_plist, merge_extension_attributes};
 use super::resources::merge_partial_info_plist;
 use super::{
     ApplePlatform, BuildConfiguration, DestinationKind, DistributionKind, ExtensionManifest,
@@ -19,10 +19,11 @@ use crate::apple::build::external::{
     XcframeworkLibrary, ordered_package_targets, select_xcframework_library,
 };
 use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
+#[cfg(target_os = "macos")]
 use crate::manifest::{
     IosDeviceFamily, IosInterfaceOrientation, IosSupportedOrientationsManifest, IosTargetManifest,
-    ManifestSchema, ResolvedManifest,
 };
+use crate::manifest::{ManifestSchema, ResolvedManifest};
 
 fn fixture(path: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR")).join(path)
