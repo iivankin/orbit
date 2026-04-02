@@ -54,6 +54,7 @@ fn ide_install_build_server_writes_standard_connection_file() {
     );
 }
 
+#[cfg(target_os = "macos")]
 #[test]
 fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     let temp = tempfile::tempdir().unwrap();

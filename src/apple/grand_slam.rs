@@ -156,6 +156,15 @@ impl GrandSlamAuthMaterial {
 }
 
 impl XcodeNotaryAuth {
+    fn with_xcode_metadata(&self, xcode: &XcodeMetadata) -> Self {
+        let mut auth = self.clone();
+        auth.authkit_client_info = xcode.authkit_client_info();
+        auth.notary_client_info = xcode.notary_client_info();
+        auth.authkit_user_agent = xcode.authkit_user_agent();
+        auth.xcode_version_header = xcode.version_header();
+        auth
+    }
+
     fn fresh_md(&self) -> String {
         // Xcode refreshes X-Apple-I-MD during long-running notarization polling.
         // Recompute it from local AOSKit whenever possible instead of reusing the
@@ -597,6 +606,28 @@ pub(crate) fn establish_xcode_notary_auth(app: &AppContext) -> Result<XcodeNotar
         return Ok(cached);
     }
 
+    establish_xcode_notary_auth_with_metadata(app, XcodeMetadata::detect()?, true)
+}
+
+pub(crate) fn establish_xcode_download_auth(
+    app: &AppContext,
+    short_version: &str,
+    build_version: &str,
+) -> Result<XcodeNotaryAuth> {
+    let xcode = XcodeMetadata::synthetic(short_version, build_version);
+    if let Some(user) = resolve_user_auth_metadata(app)?
+        && let Some(cached) = cached_xcode_notary_auth(app, &user.apple_id)?
+    {
+        return Ok(cached.with_xcode_metadata(&xcode));
+    }
+    establish_xcode_notary_auth_with_metadata(app, xcode, false)
+}
+
+fn establish_xcode_notary_auth_with_metadata(
+    app: &AppContext,
+    xcode: XcodeMetadata,
+    persist_cache: bool,
+) -> Result<XcodeNotaryAuth> {
     let profile = ClientProfile::default_detect()?;
     let client = build_client()?;
     let credentials = ensure_user_auth_with_password(
@@ -630,7 +661,6 @@ pub(crate) fn establish_xcode_notary_auth(app: &AppContext) -> Result<XcodeNotar
         app.interactive,
     )
     .context("failed to acquire the Xcode notary app token")?;
-    let xcode = XcodeMetadata::detect()?;
     let md_lu = profile
         .cpd()
         .get("X-Apple-I-MD-LU")
@@ -661,7 +691,9 @@ pub(crate) fn establish_xcode_notary_auth(app: &AppContext) -> Result<XcodeNotar
         authkit_user_agent: xcode.authkit_user_agent(),
         xcode_version_header: xcode.version_header(),
     };
-    store_cached_xcode_notary_auth(app, &credentials.user.apple_id, app_token.expiry, &auth)?;
+    if persist_cache {
+        store_cached_xcode_notary_auth(app, &credentials.user.apple_id, app_token.expiry, &auth)?;
+    }
     Ok(auth)
 }
 

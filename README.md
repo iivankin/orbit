@@ -111,7 +111,7 @@ Orbit manifests should point at `~/.orbit/schemas/`. Install them with `./script
 - `bundle_id`: root bundle identifier for the app.
 - `version`: release version in Apple-friendly `x.y.z` form.
 - `build`: integer build number.
-- `xcode`: optional installed Xcode version, such as `26.4`. When set, Orbit uses that Xcode's developer directory and downloads the matching official simulator runtime if the selected Xcode is missing it.
+- `xcode`: optional installed Xcode version, such as `26.4`. When set, Orbit uses that Xcode's developer directory and downloads the matching official simulator runtime if the selected Xcode is missing it. In interactive runs, if that Xcode is not installed, Orbit can prompt to download and install the matching official Xcode archive itself, or let you pick another installed Xcode for the current run. Orbit installs into `~/Applications` by default, or into the single directory from `ORBIT_XCODE_SEARCH_ROOTS` when that override is configured.
 - `team_id`: optional default Apple Developer team for this product.
 - `provider_id`: optional default App Store Connect provider for this product.
 

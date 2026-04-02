@@ -31,7 +31,7 @@ pub(super) struct ClientProfile {
     pub(super) md_rinfo: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct SystemInfo {
     pub(super) model: String,
     pub(super) product_version: String,
@@ -41,7 +41,7 @@ pub(super) struct SystemInfo {
     pub(super) time_zone: String,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub(super) struct XcodeMetadata {
     pub(super) short_version: String,
     pub(super) build_version: String,
@@ -251,6 +251,22 @@ impl SystemInfo {
 }
 
 impl XcodeMetadata {
+    pub(super) fn synthetic(
+        short_version: impl Into<String>,
+        build_version: impl Into<String>,
+    ) -> Self {
+        let build_version = build_version.into();
+        Self {
+            short_version: short_version.into(),
+            build_version: build_version.clone(),
+            xcode_build_id: build_version.clone(),
+            itunes_software_service_build: build_version.clone(),
+            cfnetwork_version: detect_cfnetwork_version(),
+            darwin_version: detect_darwin_version(),
+            system_info: SystemInfo::detect(),
+        }
+    }
+
     pub(super) fn detect() -> Result<Self> {
         let short_version = command_output(
             Command::new("defaults")
@@ -291,17 +307,8 @@ impl XcodeMetadata {
         )
         .map(|value| value.trim().to_owned())
         .unwrap_or_else(|_| build_version.clone());
-        let cfnetwork_version = command_output(
-            Command::new("defaults")
-                .arg("read")
-                .arg("/System/Library/Frameworks/CFNetwork.framework/Resources/Info")
-                .arg("CFBundleVersion"),
-        )
-        .map(|value| value.trim().to_owned())
-        .unwrap_or_else(|_| "0".to_owned());
-        let darwin_version = command_output(Command::new("uname").arg("-r"))
-            .map(|value| value.trim().to_owned())
-            .unwrap_or_else(|_| "0".to_owned());
+        let cfnetwork_version = detect_cfnetwork_version();
+        let darwin_version = detect_darwin_version();
 
         Ok(Self {
             short_version,
@@ -344,6 +351,23 @@ impl XcodeMetadata {
     pub(super) fn version_header(&self) -> String {
         format!("{} ({})", self.short_version, self.xcode_build_id)
     }
+}
+
+fn detect_cfnetwork_version() -> String {
+    command_output(
+        Command::new("defaults")
+            .arg("read")
+            .arg("/System/Library/Frameworks/CFNetwork.framework/Resources/Info")
+            .arg("CFBundleVersion"),
+    )
+    .map(|value| value.trim().to_owned())
+    .unwrap_or_else(|_| "0".to_owned())
+}
+
+fn detect_darwin_version() -> String {
+    command_output(Command::new("uname").arg("-r"))
+        .map(|value| value.trim().to_owned())
+        .unwrap_or_else(|_| "0".to_owned())
 }
 
 fn extract_quoted_ioreg_value(output: &str, key: &str) -> Option<String> {

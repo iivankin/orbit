@@ -8,7 +8,9 @@ use serde_json::json;
 use uuid::Uuid;
 
 use crate::apple::authkit::{AuthKitIdentity, bootstrap_authkit, build_cookie_client, header_map};
-use crate::apple::grand_slam::{XcodeNotaryAuth, establish_xcode_notary_auth};
+use crate::apple::grand_slam::{
+    XcodeNotaryAuth, establish_xcode_download_auth, establish_xcode_notary_auth,
+};
 use crate::context::AppContext;
 const DEVELOPER_SERVICES_V2_BASE_URL: &str = "https://developerservices2.apple.com";
 const DEVELOPER_SERVICES_PROTOCOL_VERSION: &str = "QH65B2";
@@ -42,6 +44,49 @@ pub struct DeveloperServicesClient {
 impl DeveloperServicesClient {
     pub fn authenticate(app: &AppContext) -> Result<Self> {
         let auth = establish_xcode_notary_auth(app)?;
+        Self::authenticate_with_auth(auth)
+    }
+
+    pub fn authenticate_for_xcode_download(
+        app: &AppContext,
+        short_version: &str,
+        build_version: &str,
+    ) -> Result<Self> {
+        let auth = establish_xcode_download_auth(app, short_version, build_version)?;
+        Self::authenticate_with_auth(auth)
+    }
+
+    pub fn clone_http_client(&self) -> Client {
+        self.client.clone()
+    }
+
+    pub fn authorize_download_path(&mut self, path: &str) -> Result<()> {
+        let url = reqwest::Url::parse_with_params(
+            &format!("{DEVELOPER_SERVICES_V2_BASE_URL}/services/download"),
+            [("path", path)],
+        )
+        .context("failed to build Apple Developer download authorization URL")?;
+        let response = self
+            .client
+            .get(url)
+            .headers(self.base_headers()?)
+            .send()
+            .context("failed to authorize Apple Developer download session")?;
+        let status = response.status();
+        self.capture_session_state(response.headers());
+        let body = response
+            .bytes()
+            .context("failed to read Apple Developer download authorization response")?;
+        if !status.is_success() {
+            bail!(
+                "Apple Developer download authorization failed with {status}: {}",
+                String::from_utf8_lossy(&body)
+            );
+        }
+        Ok(())
+    }
+
+    fn authenticate_with_auth(auth: XcodeNotaryAuth) -> Result<Self> {
         let client = build_cookie_client("developer services")?;
         let mut developer_services = Self {
             client,

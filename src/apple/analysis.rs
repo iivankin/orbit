@@ -13,7 +13,7 @@ use crate::apple::build::external::{
 };
 use crate::apple::build::swiftc::{SwiftTargetCompilePlan, target_swiftc_invocation};
 use crate::apple::build::toolchain::{DestinationKind, Toolchain};
-use crate::apple::xcode::resolve_requested_xcode;
+use crate::apple::xcode::resolve_requested_xcode_for_app;
 use crate::context::{AppContext, ProjectContext, ProjectPaths};
 use crate::manifest::{
     ApplePlatform, BuildConfiguration, DistributionKind, ManifestSchema, ProfileManifest,
@@ -95,7 +95,7 @@ fn load_analysis_project_with_orbit_dir(
     ensure_dir(&receipts_dir)?;
 
     let resolved_manifest = ResolvedManifest::load(&manifest_path, &orbit_dir)?;
-    let selected_xcode = resolve_requested_xcode(resolved_manifest.xcode.as_deref())?;
+    let selected_xcode = resolve_requested_xcode_for_app(app, resolved_manifest.xcode.as_deref())?;
     let project = ProjectContext {
         app: app.clone(),
         root,
