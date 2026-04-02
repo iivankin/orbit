@@ -87,6 +87,15 @@ struct BspServer {
     next_task_id: u64,
 }
 
+struct TaskProgress<'a> {
+    task: &'a Value,
+    origin_id: Option<&'a str>,
+    progress: u64,
+    total: u64,
+    message: &'a str,
+    unit: &'a str,
+}
+
 impl BspServer {
     fn new(app: &AppContext, requested_manifest: Option<&Path>) -> Self {
         Self {
@@ -329,13 +338,13 @@ impl BspServer {
         let Some(mut options) = target.sourcekit_options(&document_path, requested_language) else {
             return Ok(Value::Null);
         };
-        if options.language_id.as_deref() == Some("swift") {
-            if let Some(index_unit_output_path) = options.index_unit_output_path.take() {
-                options
-                    .compiler_arguments
-                    .push("-index-unit-output-path".to_owned());
-                options.compiler_arguments.push(index_unit_output_path);
-            }
+        if options.language_id.as_deref() == Some("swift")
+            && let Some(index_unit_output_path) = options.index_unit_output_path.take()
+        {
+            options
+                .compiler_arguments
+                .push("-index-unit-output-path".to_owned());
+            options.compiler_arguments.push(index_unit_output_path);
         }
         Ok(json!({
             "compilerArguments": options.compiler_arguments,
@@ -433,12 +442,14 @@ impl BspServer {
                 }
                 self.emit_task_progress(
                     writer,
-                    &task,
-                    origin_id.as_deref(),
-                    total_groups as u64,
-                    total_groups as u64,
-                    "Prepared Orbit build targets.",
-                    "targets",
+                    TaskProgress {
+                        task: &task,
+                        origin_id: origin_id.as_deref(),
+                        progress: total_groups as u64,
+                        total: total_groups as u64,
+                        message: "Prepared Orbit build targets.",
+                        unit: "targets",
+                    },
                 )?;
                 self.emit_log_message(
                     writer,
@@ -514,12 +525,14 @@ impl BspServer {
             Ok(value) => {
                 self.emit_task_progress(
                     writer,
-                    &task,
-                    None,
-                    1,
-                    1,
-                    "Reloaded Orbit workspace.",
-                    "steps",
+                    TaskProgress {
+                        task: &task,
+                        origin_id: None,
+                        progress: 1,
+                        total: 1,
+                        message: "Reloaded Orbit workspace.",
+                        unit: "steps",
+                    },
                 )?;
                 self.emit_log_message(
                     writer,
@@ -694,24 +707,15 @@ impl BspServer {
         )
     }
 
-    fn emit_task_progress<W: Write>(
-        &self,
-        writer: &mut W,
-        task: &Value,
-        origin_id: Option<&str>,
-        progress: u64,
-        total: u64,
-        message: impl Into<String>,
-        unit: &str,
-    ) -> Result<()> {
+    fn emit_task_progress<W: Write>(&self, writer: &mut W, update: TaskProgress<'_>) -> Result<()> {
         let mut params = json!({
-            "taskId": task,
-            "message": message.into(),
-            "progress": progress,
-            "total": total,
-            "unit": unit
+            "taskId": update.task,
+            "message": update.message,
+            "progress": update.progress,
+            "total": update.total,
+            "unit": update.unit
         });
-        if let Some(origin_id) = origin_id {
+        if let Some(origin_id) = update.origin_id {
             params["originId"] = Value::String(origin_id.to_owned());
         }
         write_jsonrpc_message(
@@ -828,16 +832,18 @@ impl BspSnapshot {
                     .join("ide")
                     .join(&destination)
                     .join(&target_name);
-                Ok(BspTarget::from_invocations(
+                BspTarget::from_invocations(
                     &project_root_uri,
                     manifest_target.kind,
                     &manifest_target.dependencies,
-                    &platform,
-                    &destination,
+                    BspTargetLocation {
+                        platform: &platform,
+                        destination: &destination,
+                    },
                     &output_root,
                     header_files,
                     invocations,
-                )?)
+                )
             })
             .collect::<Result<Vec<_>>>()?;
 
@@ -963,17 +969,25 @@ struct BspSourceKitOptions {
     index_unit_output_path: Option<String>,
 }
 
+struct BspTargetLocation<'a> {
+    platform: &'a str,
+    destination: &'a str,
+}
+
 impl BspTarget {
     fn from_invocations(
         project_root_uri: &str,
         kind: TargetKind,
         dependency_names: &[String],
-        platform: &str,
-        destination: &str,
+        location: BspTargetLocation<'_>,
         output_root: &Path,
         header_files: Vec<PathBuf>,
         invocations: Vec<SemanticCompilerInvocation>,
     ) -> Result<Self> {
+        let BspTargetLocation {
+            platform,
+            destination,
+        } = location;
         let first_invocation = invocations
             .first()
             .context("BSP target group did not contain any compiler invocations")?;

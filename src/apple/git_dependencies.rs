@@ -55,7 +55,7 @@ pub(crate) fn latest_remote_version_revision(
         }
         let should_replace = best
             .as_ref()
-            .map_or(true, |(current_version, _, _)| version > *current_version);
+            .is_none_or(|(current_version, _, _)| version > *current_version);
         if should_replace {
             best = Some((version, tag_name, revision));
         }

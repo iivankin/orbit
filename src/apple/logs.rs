@@ -288,10 +288,10 @@ fn forward_simulator_log_stream<R>(
         match reader.read_line(&mut line) {
             Ok(0) => break,
             Ok(_) => {
-                if simulator_log_stream_ready(&line) {
-                    if let Some(ready_tx) = ready_tx.take() {
-                        let _ = ready_tx.send(());
-                    }
+                if simulator_log_stream_ready(&line)
+                    && let Some(ready_tx) = ready_tx.take()
+                {
+                    let _ = ready_tx.send(());
                 }
 
                 if verbose {
@@ -468,9 +468,7 @@ fn filter_simulator_log_line<'a>(
 
     if let Some(process_marker) = trimmed.find(&format!("{process_name}[")) {
         let suffix = &trimmed[process_marker + process_name.len()..];
-        let Some(after_pid_marker) = suffix.find("] ") else {
-            return None;
-        };
+        let after_pid_marker = suffix.find("] ")?;
         let after_pid = &suffix[after_pid_marker + 2..];
         if after_pid.starts_with(&format!("[{bundle_id}:")) {
             return Some(after_pid.rsplit("] ").next().unwrap_or(after_pid));

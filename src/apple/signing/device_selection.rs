@@ -308,48 +308,6 @@ fn macos_device_list_missing_udid(
     !devices.iter().any(|device| device.udid == current_udid)
 }
 
-#[cfg(test)]
-mod tests {
-    use super::{current_macos_device_udids, macos_device_list_missing_udid};
-    use crate::apple::device::CachedDevice;
-    use crate::manifest::ApplePlatform;
-
-    fn cached_device(udid: &str) -> CachedDevice {
-        CachedDevice {
-            id: format!("id-{udid}"),
-            name: format!("device-{udid}"),
-            udid: udid.to_owned(),
-            platform: "MAC_OS".to_owned(),
-            status: "ENABLED".to_owned(),
-            device_class: None,
-            model: None,
-            created_at: None,
-        }
-    }
-
-    #[test]
-    fn macos_device_list_missing_udid_detects_absent_current_machine() {
-        let devices = vec![cached_device("OTHER-UDID")];
-        assert!(macos_device_list_missing_udid(&devices, "CURRENT-UDID"));
-    }
-
-    #[test]
-    fn macos_device_list_missing_udid_detects_present_current_machine() {
-        let devices = vec![cached_device("CURRENT-UDID")];
-        assert!(!macos_device_list_missing_udid(&devices, "CURRENT-UDID"));
-    }
-
-    #[test]
-    fn current_macos_device_udids_skips_non_macos_platforms() {
-        let devices = vec![cached_device("A"), cached_device("B")];
-        assert!(
-            current_macos_device_udids(ApplePlatform::Ios, &devices)
-                .unwrap()
-                .is_none()
-        );
-    }
-}
-
 pub(super) fn current_profile_for_target<'a>(
     state: &'a SigningState,
     bundle_identifier: &str,
@@ -435,5 +393,47 @@ fn cached_device_matches_platform(device_platform: &str, platform: ApplePlatform
                 || device_platform == "MACOS"
                 || device_platform == "UNIVERSAL"
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{current_macos_device_udids, macos_device_list_missing_udid};
+    use crate::apple::device::CachedDevice;
+    use crate::manifest::ApplePlatform;
+
+    fn cached_device(udid: &str) -> CachedDevice {
+        CachedDevice {
+            id: format!("id-{udid}"),
+            name: format!("device-{udid}"),
+            udid: udid.to_owned(),
+            platform: "MAC_OS".to_owned(),
+            status: "ENABLED".to_owned(),
+            device_class: None,
+            model: None,
+            created_at: None,
+        }
+    }
+
+    #[test]
+    fn macos_device_list_missing_udid_detects_absent_current_machine() {
+        let devices = vec![cached_device("OTHER-UDID")];
+        assert!(macos_device_list_missing_udid(&devices, "CURRENT-UDID"));
+    }
+
+    #[test]
+    fn macos_device_list_missing_udid_detects_present_current_machine() {
+        let devices = vec![cached_device("CURRENT-UDID")];
+        assert!(!macos_device_list_missing_udid(&devices, "CURRENT-UDID"));
+    }
+
+    #[test]
+    fn current_macos_device_udids_skips_non_macos_platforms() {
+        let devices = vec![cached_device("A"), cached_device("B")];
+        assert!(
+            current_macos_device_udids(ApplePlatform::Ios, &devices)
+                .unwrap()
+                .is_none()
+        );
     }
 }

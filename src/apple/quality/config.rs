@@ -57,10 +57,10 @@ pub(super) fn format_configuration_json(
     let quality = &project.resolved_manifest.quality.format;
     let mut configuration = load_swift_format_configuration(project.root.as_path())?;
 
-    if quality.editorconfig {
-        if let Some(settings) = resolve_editorconfig_settings(project.root.as_path(), files)? {
-            apply_editorconfig_to_swift_format(&mut configuration, &settings);
-        }
+    if quality.editorconfig
+        && let Some(settings) = resolve_editorconfig_settings(project.root.as_path(), files)?
+    {
+        apply_editorconfig_to_swift_format(&mut configuration, &settings);
     }
 
     apply_orbit_format_rules(&mut configuration, &quality.rules);
@@ -231,14 +231,14 @@ fn parse_rule_setting(value: &JsonValue) -> ParsedRuleSetting<'_> {
             _severity: normalize_rule_level(level).map(RuleLevel::as_str),
         },
         JsonValue::Array(values) if !values.is_empty() => {
-            if let Some(level) = values.first().and_then(JsonValue::as_str) {
-                if let Some(level) = normalize_rule_level(level) {
-                    return ParsedRuleSetting {
-                        enabled: Some(level != RuleLevel::Off),
-                        options: values.get(1).cloned(),
-                        _severity: Some(level.as_str()),
-                    };
-                }
+            if let Some(level) = values.first().and_then(JsonValue::as_str)
+                && let Some(level) = normalize_rule_level(level)
+            {
+                return ParsedRuleSetting {
+                    enabled: Some(level != RuleLevel::Off),
+                    options: values.get(1).cloned(),
+                    _severity: Some(level.as_str()),
+                };
             }
             ParsedRuleSetting {
                 enabled: Some(true),
@@ -415,8 +415,7 @@ fn parse_editorconfig(path: &Path) -> Result<Vec<EditorConfigSection>> {
             continue;
         }
 
-        let Some(separator_index) = line.find(|character| character == '=' || character == ':')
-        else {
+        let Some(separator_index) = line.find(['=', ':']) else {
             continue;
         };
         let key = line[..separator_index].trim().to_ascii_lowercase();

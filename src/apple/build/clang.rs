@@ -73,11 +73,12 @@ pub(crate) fn target_clang_invocation(
     plan: ClangCompilePlan<'_>,
 ) -> Result<ClangInvocation> {
     ensure_parent_dir(plan.output_path)?;
-    let mut args = Vec::new();
-    args.push("-target".into());
-    args.push(toolchain.target_triple.clone().into());
-    args.push("-isysroot".into());
-    args.push(toolchain.sdk_path.as_os_str().to_os_string());
+    let mut args = vec![
+        "-target".into(),
+        toolchain.target_triple.clone().into(),
+        "-isysroot".into(),
+        toolchain.sdk_path.as_os_str().to_os_string(),
+    ];
     if let Some(index_store_path) = plan.index_store_path {
         ensure_parent_dir(&index_store_path.join("placeholder"))?;
         args.push("-index-store-path".into());

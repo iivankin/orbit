@@ -1252,7 +1252,7 @@ interact {{
 
 fn macos_xcode_log_redirect_env(selected_xcode: Option<&SelectedXcode>) -> Result<String> {
     let log_redirect_dylib = selected_xcode_log_redirect_dylib_path(selected_xcode)?;
-    Ok(vec![
+    Ok([
         "NSUnbufferedIO=YES".to_owned(),
         "OS_LOG_TRANSLATE_PRINT_MODE=0x80".to_owned(),
         "IDE_DISABLED_OS_ACTIVITY_DT_MODE=1".to_owned(),

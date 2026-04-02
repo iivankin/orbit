@@ -201,14 +201,14 @@ impl IosSimulatorBackend {
         let mut command = Command::new("idb");
         command.args(arguments);
         command.arg("--udid").arg(&self.device.udid);
-        run_command(&mut command).with_context(|| idb_requirement_message())
+        run_command(&mut command).with_context(idb_requirement_message)
     }
 
     fn idb_output(&self, arguments: &[String]) -> Result<String> {
         let mut command = Command::new("idb");
         command.args(arguments);
         command.arg("--udid").arg(&self.device.udid);
-        command_output(&mut command).with_context(|| idb_requirement_message())
+        command_output(&mut command).with_context(idb_requirement_message)
     }
 
     fn run_simctl_privacy(&self, action: &str, service: &str, bundle_id: &str) -> Result<()> {
@@ -229,7 +229,7 @@ impl IosSimulatorBackend {
         command.arg(command_name);
         command.args(arguments);
         command.arg("--udid").arg(&self.device.udid);
-        run_command(&mut command).with_context(|| idb_requirement_message())
+        run_command(&mut command).with_context(idb_requirement_message)
     }
 }
 
@@ -284,7 +284,7 @@ impl UiBackend for IosSimulatorBackend {
                 command.arg(value);
             }
             command.arg("--udid").arg(&self.device.udid);
-            run_command(&mut command).with_context(|| idb_requirement_message())
+            run_command(&mut command).with_context(idb_requirement_message)
         }
     }
 
@@ -585,7 +585,7 @@ impl UiBackend for IosSimulatorBackend {
         command.args(["instruments", "--template", template]);
         command.args(arguments);
         command.arg("--udid").arg(&self.device.udid);
-        run_command(&mut command).with_context(|| idb_requirement_message())
+        run_command(&mut command).with_context(idb_requirement_message)
     }
 
     fn update_contacts(&self, path: &Path) -> Result<()> {
@@ -665,7 +665,7 @@ impl UiBackend for IosSimulatorBackend {
             command.arg("--");
             command.args(arguments);
         }
-        run_command(&mut command).with_context(|| idb_requirement_message())
+        run_command(&mut command).with_context(idb_requirement_message)
     }
 
     fn scroll_in_direction(&self, direction: UiSwipeDirection) -> Result<()> {
@@ -755,7 +755,7 @@ impl UiBackend for IosSimulatorBackend {
         let child = command
             .spawn()
             .with_context(|| format!("failed to start video recording for {}", self.device.name))
-            .with_context(|| idb_requirement_message())?;
+            .with_context(idb_requirement_message)?;
         self.active_video = Some(ActiveVideoRecording {
             path: path.to_path_buf(),
             child,
@@ -1695,7 +1695,7 @@ fn macos_quit_applescript(bundle_id: &str) -> String {
 
 fn macos_xcode_log_redirect_env(selected_xcode: Option<&SelectedXcode>) -> Result<String> {
     let log_redirect_dylib = selected_xcode_log_redirect_dylib_path(selected_xcode)?;
-    Ok(vec![
+    Ok([
         "NSUnbufferedIO=YES".to_owned(),
         "OS_LOG_TRANSLATE_PRINT_MODE=0x80".to_owned(),
         "IDE_DISABLED_OS_ACTIVITY_DT_MODE=1".to_owned(),

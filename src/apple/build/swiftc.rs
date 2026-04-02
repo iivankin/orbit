@@ -151,14 +151,15 @@ fn base_swiftc_args(
     profile: &ProfileManifest,
     module_name: &str,
 ) -> Vec<OsString> {
-    let mut args = Vec::new();
-    args.push("-parse-as-library".into());
-    args.push("-target".into());
-    args.push(toolchain.target_triple.clone().into());
-    args.push("-sdk".into());
-    args.push(toolchain.sdk_path.as_os_str().to_os_string());
-    args.push("-module-name".into());
-    args.push(module_name.into());
+    let mut args = vec![
+        "-parse-as-library".into(),
+        "-target".into(),
+        toolchain.target_triple.clone().into(),
+        "-sdk".into(),
+        toolchain.sdk_path.as_os_str().to_os_string(),
+        "-module-name".into(),
+        module_name.into(),
+    ];
     if profile.is_debug() {
         args.push("-Onone".into());
         args.push("-g".into());

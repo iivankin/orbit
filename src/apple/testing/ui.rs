@@ -34,6 +34,11 @@ const DEFAULT_SWIPE_DURATION_MS: u32 = 500;
 const DEFAULT_SWIPE_DELTA: u32 = 5;
 const DEFAULT_DRAG_DURATION_MS: u32 = 650;
 
+struct RetryBlock<'a> {
+    flow_path: &'a Path,
+    commands: &'a [UiCommand],
+}
+
 #[derive(Debug, Clone)]
 pub struct UiFlow {
     pub path: PathBuf,
@@ -924,18 +929,18 @@ impl UiFlowRunner {
                 report.video = Some(path.clone());
             }
         }
-        if invoked_by.is_none() && self.manual_recording.is_some() {
-            if let Some(path) = self.manual_recording.take() {
-                let _ = self.backend.stop_video_recording();
-                report.status = RunStatus::Failed;
-                append_report_error(
-                    &mut report,
-                    format!(
-                        "flow finished with an active manual recording; add `stopRecording` for {}",
-                        path.display()
-                    ),
-                );
-            }
+        if invoked_by.is_none()
+            && let Some(path) = self.manual_recording.take()
+        {
+            let _ = self.backend.stop_video_recording();
+            report.status = RunStatus::Failed;
+            append_report_error(
+                &mut report,
+                format!(
+                    "flow finished with an active manual recording; add `stopRecording` for {}",
+                    path.display()
+                ),
+            );
         }
 
         report.finished_at_unix = unix_timestamp_secs();
@@ -975,9 +980,11 @@ impl UiFlowRunner {
                     }
                 }
                 UiCommand::Retry { times, commands } => self.execute_retry_block(
-                    flow_path,
+                    RetryBlock {
+                        flow_path,
+                        commands,
+                    },
                     *times,
-                    commands,
                     deferred_auto_video_path,
                     auto_video_started,
                     steps,
@@ -1007,9 +1014,8 @@ impl UiFlowRunner {
 
     fn execute_retry_block(
         &mut self,
-        flow_path: &Path,
+        retry: RetryBlock<'_>,
         times: u32,
-        commands: &[UiCommand],
         deferred_auto_video_path: Option<&Path>,
         auto_video_started: &mut bool,
         steps: &mut Vec<StepRunReport>,
@@ -1023,8 +1029,8 @@ impl UiFlowRunner {
         for attempt in 1..=times {
             let mut attempt_steps = Vec::new();
             match self.execute_commands(
-                flow_path,
-                commands,
+                retry.flow_path,
+                retry.commands,
                 deferred_auto_video_path,
                 auto_video_started,
                 &mut attempt_steps,
@@ -1430,15 +1436,12 @@ impl UiFlowRunner {
         let mut last_seen = None;
         let started = Instant::now();
         while started.elapsed() < timeout {
-            match self.backend.describe_all() {
-                Ok(tree) => {
-                    if let Some(element) = find_visible_element_by_selector(&tree, selector) {
-                        last_seen = Some(element.label);
-                    } else {
-                        return Ok(());
-                    }
+            if let Ok(tree) = self.backend.describe_all() {
+                if let Some(element) = find_visible_element_by_selector(&tree, selector) {
+                    last_seen = Some(element.label);
+                } else {
+                    return Ok(());
                 }
-                Err(_) => {}
             }
             thread::sleep(DEFAULT_POLL_INTERVAL);
         }
@@ -1553,27 +1556,24 @@ impl UiFlowRunner {
         }
         let mut sanitized = PathBuf::new();
         for component in relative.components() {
-            match component {
-                std::path::Component::Normal(value) => {
-                    let raw = value.to_string_lossy();
-                    let component_path = Path::new(raw.as_ref());
-                    let stem = component_path
-                        .file_stem()
-                        .and_then(|value| value.to_str())
-                        .map(sanitize_artifact_name)
-                        .unwrap_or_else(|| sanitize_artifact_name(raw.as_ref()));
-                    let extension = component_path
-                        .extension()
-                        .and_then(|value| value.to_str())
-                        .map(sanitize_extension_component);
-                    let mut file_name = stem;
-                    if let Some(extension) = extension {
-                        file_name.push('.');
-                        file_name.push_str(&extension);
-                    }
-                    sanitized.push(file_name);
+            if let std::path::Component::Normal(value) = component {
+                let raw = value.to_string_lossy();
+                let component_path = Path::new(raw.as_ref());
+                let stem = component_path
+                    .file_stem()
+                    .and_then(|value| value.to_str())
+                    .map(sanitize_artifact_name)
+                    .unwrap_or_else(|| sanitize_artifact_name(raw.as_ref()));
+                let extension = component_path
+                    .extension()
+                    .and_then(|value| value.to_str())
+                    .map(sanitize_extension_component);
+                let mut file_name = stem;
+                if let Some(extension) = extension {
+                    file_name.push('.');
+                    file_name.push_str(&extension);
                 }
-                _ => {}
+                sanitized.push(file_name);
             }
         }
         self.artifacts_dir.join(sanitized)
@@ -1596,22 +1596,19 @@ impl UiFlowRunner {
         let mut last_tree = None;
         let mut stable_polls = 0_u8;
         while started.elapsed() < timeout {
-            match self.backend.describe_all() {
-                Ok(tree) => {
-                    let serialized = serde_json::to_string(&tree).context(
-                        "failed to serialize accessibility tree while waiting for animations",
-                    )?;
-                    if last_tree.as_deref() == Some(serialized.as_str()) {
-                        stable_polls = stable_polls.saturating_add(1);
-                        if stable_polls >= 2 {
-                            return Ok(());
-                        }
-                    } else {
-                        last_tree = Some(serialized);
-                        stable_polls = 0;
+            if let Ok(tree) = self.backend.describe_all() {
+                let serialized = serde_json::to_string(&tree).context(
+                    "failed to serialize accessibility tree while waiting for animations",
+                )?;
+                if last_tree.as_deref() == Some(serialized.as_str()) {
+                    stable_polls = stable_polls.saturating_add(1);
+                    if stable_polls >= 2 {
+                        return Ok(());
                     }
+                } else {
+                    last_tree = Some(serialized);
+                    stable_polls = 0;
                 }
-                Err(_) => {}
             }
             thread::sleep(Duration::from_millis(200));
         }

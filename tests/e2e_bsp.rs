@@ -255,12 +255,12 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     }));
     assert!(prepare_notifications.iter().any(|message| {
         message["method"] == Value::String("build/taskProgress".to_owned())
-            && message["params"]["progress"] == Value::from(1)
-            && message["params"]["total"] == Value::from(1)
+            && message["params"]["progress"] == 1
+            && message["params"]["total"] == 1
     }));
     assert!(prepare_notifications.iter().any(|message| {
         message["method"] == Value::String("build/taskFinish".to_owned())
-            && message["params"]["status"] == Value::from(1)
+            && message["params"]["status"] == 1
     }));
 
     write_jsonrpc_message(
@@ -437,7 +437,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     }));
     assert!(reload_notifications.iter().any(|message| {
         message["method"] == Value::String("build/taskFinish".to_owned())
-            && message["params"]["status"] == Value::from(1)
+            && message["params"]["status"] == 1
     }));
     let log_before_watch = read_log(&log_path);
     let sdk_path_requests_before_watch = count_occurrences(
@@ -696,7 +696,7 @@ fn read_jsonrpc_messages_until_response<R: BufRead>(
     let mut notifications = Vec::new();
     loop {
         let message = read_jsonrpc_message(reader);
-        if message["id"] == Value::from(response_id) {
+        if message["id"] == response_id {
             return (notifications, message);
         }
         notifications.push(message);

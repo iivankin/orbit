@@ -32,15 +32,20 @@ pub(super) enum CompileOutputMode {
     Silent,
 }
 
+#[derive(Debug, Clone, Copy)]
+pub(super) struct CompileOutputOptions<'a> {
+    pub(super) index_store_path: Option<&'a Path>,
+    pub(super) mode: CompileOutputMode,
+    pub(super) log_prefix: Option<&'a str>,
+}
+
 pub(super) fn compile_target(
     project: &ProjectContext,
     toolchain: &Toolchain,
     target: &TargetManifest,
     build_root: &Path,
     profile: &ProfileManifest,
-    index_store_path: Option<&Path>,
-    output_mode: CompileOutputMode,
-    log_prefix: Option<&str>,
+    output: CompileOutputOptions<'_>,
 ) -> Result<BuiltTarget> {
     let target_dir = build_root.join(&target.name);
     let intermediates_dir = target_dir.join("intermediates");
@@ -58,8 +63,8 @@ pub(super) fn compile_target(
         Vec::new()
     } else {
         run_compile_step(
-            output_mode,
-            log_prefix,
+            output.mode,
+            output.log_prefix,
             format!("Compiling Swift packages for target `{}`", target.name),
             |outputs: &Vec<PackageBuildOutput>| {
                 format!(
@@ -74,7 +79,7 @@ pub(super) fn compile_target(
                     toolchain,
                     profile,
                     &intermediates_dir,
-                    index_store_path,
+                    output.index_store_path,
                     target,
                 )
             },
@@ -83,8 +88,8 @@ pub(super) fn compile_target(
     let external_link_inputs =
         resolve_external_link_inputs(project, toolchain, &intermediates_dir, target)?;
     let c_objects = run_compile_step(
-        output_mode,
-        log_prefix,
+        output.mode,
+        output.log_prefix,
         format!("Compiling C-family sources for target `{}`", target.name),
         |objects: &Vec<PathBuf>| {
             if objects.is_empty() {
@@ -106,7 +111,7 @@ pub(super) fn compile_target(
                 toolchain,
                 profile,
                 &intermediates_dir,
-                index_store_path,
+                output.index_store_path,
                 &external_link_inputs,
                 target,
             )
@@ -116,8 +121,8 @@ pub(super) fn compile_target(
 
     if !swift_sources.is_empty() {
         run_compile_step(
-            output_mode,
-            log_prefix,
+            output.mode,
+            output.log_prefix,
             format!("Compiling Swift target `{}`", target.name),
             |_| {
                 format!(
@@ -139,15 +144,15 @@ pub(super) fn compile_target(
                         package_outputs: &package_outputs,
                         external_link_inputs: &external_link_inputs,
                         object_files: &c_objects,
-                        index_store_path,
+                        index_store_path: output.index_store_path,
                     },
                 )
             },
         )?;
     } else if !c_objects.is_empty() {
         run_compile_step(
-            output_mode,
-            log_prefix,
+            output.mode,
+            output.log_prefix,
             format!("Linking native target `{}`", target.name),
             |_| {
                 format!(
@@ -180,8 +185,8 @@ pub(super) fn compile_target(
 
     if needs_info_plist(target.kind) {
         run_compile_step(
-            output_mode,
-            log_prefix,
+            output.mode,
+            output.log_prefix,
             format!("Writing Info.plist for target `{}`", target.name),
             |_| format!("Wrote Info.plist for target `{}`.", target.name),
             || write_info_plist(project, toolchain, target, &product.product_path),
@@ -190,8 +195,8 @@ pub(super) fn compile_target(
     if target.kind.is_bundle() {
         if should_process_resources(toolchain.platform, target) {
             run_compile_step(
-                output_mode,
-                log_prefix,
+                output.mode,
+                output.log_prefix,
                 format!("Processing resources for target `{}`", target.name),
                 |summary: &ResourceWorkSummary| {
                     format!(
@@ -205,8 +210,8 @@ pub(super) fn compile_target(
         }
         if !external_link_inputs.embedded_payloads.is_empty() {
             run_compile_step(
-                output_mode,
-                log_prefix,
+                output.mode,
+                output.log_prefix,
                 format!("Embedding external payloads for target `{}`", target.name),
                 |_| {
                     format!(

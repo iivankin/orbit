@@ -295,10 +295,12 @@ where
         project,
         toolchain,
         profile,
-        &intermediates_dir,
-        index_store_path,
-        &external_link_inputs,
-        target,
+        SemanticCFamilyCompilePlan {
+            intermediates_dir: &intermediates_dir,
+            index_store_path,
+            external_link_inputs: &external_link_inputs,
+            target,
+        },
         include_source,
     )?;
     let swift_sources = collect_target_swift_files(project, target, include_source)?;
@@ -362,6 +364,13 @@ fn semantic_module_output_path(
     }
 }
 
+struct SemanticCFamilyCompilePlan<'a> {
+    intermediates_dir: &'a Path,
+    index_store_path: &'a Path,
+    external_link_inputs: &'a crate::apple::build::external::ExternalLinkInputs,
+    target: &'a TargetManifest,
+}
+
 fn compile_analysis_swift_packages(
     project: &ProjectContext,
     toolchain: &Toolchain,
@@ -388,10 +397,7 @@ fn semantic_c_family_compiler_invocations<F>(
     project: &ProjectContext,
     toolchain: &Toolchain,
     profile: &ProfileManifest,
-    intermediates_dir: &Path,
-    index_store_path: &Path,
-    external_link_inputs: &crate::apple::build::external::ExternalLinkInputs,
-    target: &TargetManifest,
+    plan: SemanticCFamilyCompilePlan<'_>,
     include_source: &F,
 ) -> Result<Vec<SemanticCompilerInvocation>>
 where
@@ -400,12 +406,15 @@ where
     let toolchain_root = toolchain.toolchain_root()?;
     let mut invocations = Vec::new();
     for extension in C_FAMILY_SOURCE_EXTENSIONS {
-        for source in
-            collect_target_files_with_extensions(project, target, &[extension], include_source)?
-        {
+        for source in collect_target_files_with_extensions(
+            project,
+            plan.target,
+            &[extension],
+            include_source,
+        )? {
             let language = ClangSourceLanguage::from_extension(extension)
                 .with_context(|| format!("unsupported C-family extension `{extension}`"))?;
-            let output_path = intermediates_dir.join(object_file_name(&source)?);
+            let output_path = plan.intermediates_dir.join(object_file_name(&source)?);
             let invocation = target_clang_invocation(
                 toolchain,
                 profile,
@@ -413,8 +422,8 @@ where
                     source_file: &source,
                     output_path: &output_path,
                     language,
-                    external_link_inputs,
-                    index_store_path: Some(index_store_path),
+                    external_link_inputs: plan.external_link_inputs,
+                    index_store_path: Some(plan.index_store_path),
                 },
             )?;
             let compiler = if language == ClangSourceLanguage::ObjectiveCpp
@@ -437,8 +446,8 @@ where
                 destination: toolchain.destination.as_str().to_owned(),
                 language: language.language_id().to_owned(),
                 sdk_name: toolchain.sdk_name.clone(),
-                target: target.name.clone(),
-                module_name: target.name.clone(),
+                target: plan.target.name.clone(),
+                module_name: plan.target.name.clone(),
                 target_triple: toolchain.target_triple.clone(),
                 working_directory: project.root.clone(),
                 toolchain_root: toolchain_root.clone(),

@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 use self::artifacts::{export_artifact, remove_existing_path};
-use self::compile::{CompileOutputMode, compile_target, embed_dependencies};
+use self::compile::{CompileOutputMode, CompileOutputOptions, compile_target, embed_dependencies};
 pub(crate) use self::runtime::macos_executable_path;
 use self::runtime::{
     debug_on_device, debug_on_macos, debug_on_simulator, run_on_device, run_on_macos,
@@ -225,9 +225,11 @@ pub fn prepare_for_ide(
             target,
             &build_root,
             &profile,
-            Some(index_store_path),
-            CompileOutputMode::Silent,
-            None,
+            CompileOutputOptions {
+                index_store_path: Some(index_store_path),
+                mode: CompileOutputMode::Silent,
+                log_prefix: None,
+            },
         )?;
     }
     Ok(())
@@ -417,8 +419,11 @@ fn build_project(project: &ProjectContext, request: &BuildRequest) -> Result<Bui
             &ordered_targets,
             &build_root,
             profile,
-            CompileOutputMode::UserFacing,
-            None,
+            CompileOutputOptions {
+                index_store_path: None,
+                mode: CompileOutputMode::UserFacing,
+                log_prefix: None,
+            },
         )?
     };
     if signing_required {
@@ -494,21 +499,11 @@ fn compile_target_graph(
     ordered_targets: &[&TargetManifest],
     build_root: &Path,
     profile: &ProfileManifest,
-    output_mode: CompileOutputMode,
-    log_prefix: Option<&str>,
+    output: CompileOutputOptions<'_>,
 ) -> Result<HashMap<String, BuiltTarget>> {
     let mut built_targets = HashMap::new();
     for target in ordered_targets {
-        let built = compile_target(
-            project,
-            toolchain,
-            target,
-            build_root,
-            profile,
-            None,
-            output_mode,
-            log_prefix,
-        )?;
+        let built = compile_target(project, toolchain, target, build_root, profile, output)?;
         built_targets.insert(target.name.clone(), built);
     }
 
@@ -596,8 +591,11 @@ fn build_universal_macos_target_graph(
             ordered_targets,
             &arch_build_root,
             profile,
-            CompileOutputMode::UserFacing,
-            Some(architecture),
+            CompileOutputOptions {
+                index_store_path: None,
+                mode: CompileOutputMode::UserFacing,
+                log_prefix: Some(architecture),
+            },
         )?;
         crate::util::print_success(format!(
             "Built universal macOS slice `{architecture}` for {} target(s).",

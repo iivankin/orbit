@@ -26,32 +26,32 @@ const ECOSYSTEM_CHOICES: [EcosystemChoice; 1] = [EcosystemChoice {
 
 const APPLE_TEMPLATE_CHOICES: [TemplateChoice; 6] = [
     TemplateChoice {
-        kind: InitTemplate::IosApp,
+        kind: InitTemplate::Ios,
         label: "iOS app",
         description: "Single-target SwiftUI iPhone/iPad app",
     },
     TemplateChoice {
-        kind: InitTemplate::MacosApp,
+        kind: InitTemplate::Macos,
         label: "macOS app",
         description: "Single-target SwiftUI Mac app",
     },
     TemplateChoice {
-        kind: InitTemplate::AppleMultiplatformApp,
+        kind: InitTemplate::AppleMultiplatform,
         label: "Apple multiplatform app",
         description: "Shared SwiftUI app for iOS and macOS",
     },
     TemplateChoice {
-        kind: InitTemplate::IosWatchCompanionApp,
+        kind: InitTemplate::IosWatchCompanion,
         label: "iOS app with watch companion",
         description: "Host iOS app plus watch app and watch extension",
     },
     TemplateChoice {
-        kind: InitTemplate::TvosApp,
+        kind: InitTemplate::Tvos,
         label: "tvOS app",
         description: "Single-target SwiftUI tvOS app",
     },
     TemplateChoice {
-        kind: InitTemplate::VisionosApp,
+        kind: InitTemplate::Visionos,
         label: "visionOS app",
         description: "Single-target SwiftUI visionOS app",
     },
@@ -64,12 +64,12 @@ enum InitEcosystem {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum InitTemplate {
-    IosApp,
-    MacosApp,
-    AppleMultiplatformApp,
-    IosWatchCompanionApp,
-    TvosApp,
-    VisionosApp,
+    Ios,
+    Macos,
+    AppleMultiplatform,
+    IosWatchCompanion,
+    Tvos,
+    Visionos,
 }
 
 impl InitEcosystem {
@@ -205,7 +205,7 @@ fn installed_schema_reference(app: &AppContext, ecosystem: InitEcosystem) -> Str
 fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan {
     let swift_name = swift_type_name(&answers.name);
     match answers.template {
-        InitTemplate::IosApp => app_template_plan(
+        InitTemplate::Ios => app_template_plan(
             answers,
             json!({
                 "$schema": schema_reference,
@@ -235,7 +235,7 @@ fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan 
             ],
             vec!["orbit run --platform ios --simulator".to_owned()],
         ),
-        InitTemplate::MacosApp => app_template_plan(
+        InitTemplate::Macos => app_template_plan(
             answers,
             json!({
                 "$schema": schema_reference,
@@ -265,7 +265,7 @@ fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan 
             ],
             vec!["orbit run --platform macos".to_owned()],
         ),
-        InitTemplate::AppleMultiplatformApp => app_template_plan(
+        InitTemplate::AppleMultiplatform => app_template_plan(
             answers,
             json!({
                 "$schema": schema_reference,
@@ -299,7 +299,7 @@ fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan 
                 "orbit run --platform macos".to_owned(),
             ],
         ),
-        InitTemplate::IosWatchCompanionApp => ScaffoldPlan {
+        InitTemplate::IosWatchCompanion => ScaffoldPlan {
             manifest: json!({
                 "$schema": schema_reference,
                 "name": answers.name,
@@ -363,7 +363,7 @@ fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan 
                 "orbit run --platform watchos --simulator".to_owned(),
             ],
         },
-        InitTemplate::TvosApp => app_template_plan(
+        InitTemplate::Tvos => app_template_plan(
             answers,
             json!({
                 "$schema": schema_reference,
@@ -393,7 +393,7 @@ fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan 
             ],
             vec!["orbit run --platform tvos --simulator".to_owned()],
         ),
-        InitTemplate::VisionosApp => app_template_plan(
+        InitTemplate::Visionos => app_template_plan(
             answers,
             json!({
                 "$schema": schema_reference,
@@ -690,7 +690,7 @@ mod tests {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbit.exampleapp".to_owned(),
-                template: InitTemplate::IosApp,
+                template: InitTemplate::Ios,
             },
             schema_path,
         );
@@ -734,7 +734,7 @@ mod tests {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbit.exampleapp".to_owned(),
-                template: InitTemplate::IosWatchCompanionApp,
+                template: InitTemplate::IosWatchCompanion,
             },
             schema_path,
         );
@@ -765,7 +765,7 @@ mod tests {
             })
         );
         assert!(plan.files.iter().any(|file| file.path
-            == PathBuf::from("Sources/WatchExtension/Extension.swift")
+            == Path::new("Sources/WatchExtension/Extension.swift")
             && file.contents.contains("final class WatchExtensionDelegate")));
     }
 
@@ -778,7 +778,7 @@ mod tests {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbit.exampleapp".to_owned(),
-                template: InitTemplate::AppleMultiplatformApp,
+                template: InitTemplate::AppleMultiplatform,
             },
             "/tmp/.orbit/schemas/apple-app.v1.json",
         );

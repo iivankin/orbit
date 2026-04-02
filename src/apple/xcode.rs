@@ -175,7 +175,7 @@ pub fn log_redirect_dylib_path(selected_xcode: Option<&SelectedXcode>) -> Result
 fn installed_xcodes_in_roots(roots: &[PathBuf]) -> Result<Vec<SelectedXcode>> {
     let mut discovered = BTreeMap::new();
     for root in roots {
-        discover_xcodes_under(&root, &mut discovered)?;
+        discover_xcodes_under(root, &mut discovered)?;
     }
 
     let mut xcodes = discovered.into_values().collect::<Vec<_>>();
