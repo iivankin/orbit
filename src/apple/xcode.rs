@@ -1289,17 +1289,21 @@ mod tests {
     use std::collections::BTreeMap;
     use std::fs;
     use std::path::{Path, PathBuf};
-    use std::process::Command;
 
-    use anyhow::{Context, Result};
     use plist::Value as PlistValue;
 
     use super::{
         SelectedXcode, XcodeReleasesEntry, compare_versions, configured_xcode_install_root,
-        developer_dir_path, discover_xcodes_under, extract_xcode_app_from_xip_stream, lldb_path,
-        load_xcode_bundle, log_redirect_dylib_path, matching_downloadable_xcodes,
-        open_simulator_command, resolve_requested_xcode_in_roots, version_matches,
+        developer_dir_path, discover_xcodes_under, lldb_path, log_redirect_dylib_path,
+        matching_downloadable_xcodes, open_simulator_command, resolve_requested_xcode_in_roots,
+        version_matches,
     };
+    #[cfg(target_os = "macos")]
+    use super::{extract_xcode_app_from_xip_stream, load_xcode_bundle};
+    #[cfg(target_os = "macos")]
+    use anyhow::{Context, Result};
+    #[cfg(target_os = "macos")]
+    use std::process::Command;
 
     fn write_fake_xcode(root: &Path, name: &str, version: &str, build: &str) -> PathBuf {
         let app_root = root.join(name);

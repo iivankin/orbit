@@ -156,14 +156,16 @@ fn extract_last_tag_text<'a>(text: &'a str, tag: &str) -> Option<&'a str> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Read;
+    use super::find_member;
 
-    use super::{find_member, open_member_stream};
-
+    #[cfg(target_os = "macos")]
+    use super::open_member_stream;
     #[cfg(target_os = "macos")]
     use anyhow::Result;
     #[cfg(target_os = "macos")]
     use std::fs;
+    #[cfg(target_os = "macos")]
+    use std::io::Read;
     #[cfg(target_os = "macos")]
     use std::process::{self, Command};
     #[cfg(target_os = "macos")]
