@@ -1,10 +1,8 @@
-mod support;
-
 use std::fs;
 
 use serde_json::json;
 
-use support::{
+use crate::support::{
     base_command, clear_log, create_build_xcrun_mock, create_git_swift_package_workspace,
     create_home, create_mixed_language_workspace, create_quality_swift_mock,
     create_semver_git_swift_package_workspace, create_signing_workspace,

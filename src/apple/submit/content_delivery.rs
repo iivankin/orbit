@@ -180,14 +180,11 @@ impl ContentDeliveryClient {
         let mut relationships = json!({
             "app": {"data": {"id": app_id, "type": "apps"}}
         });
-        if notification.is_some() {
+        let mut included = Vec::new();
+        if let Some(notification) = notification {
             relationships["deliveryNotifications"] = json!({
                 "data": [{"id": "${notification}", "type": "deliveryNotifications"}]
             });
-        }
-
-        let mut included = Vec::new();
-        if let Some(notification) = notification {
             included.push(notification);
         }
 

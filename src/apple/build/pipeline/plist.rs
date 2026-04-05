@@ -255,7 +255,7 @@ fn add_ios_app_plist_defaults(
                 target.ios.as_ref().and_then(|ios| {
                     ios.supported_orientations
                         .as_ref()
-                        .and_then(|orientations| orientations.iphone.as_ref())
+                        .and_then(|orientations| orientations.iphone.as_deref())
                 }),
                 &[
                     IosInterfaceOrientation::Portrait,
@@ -272,7 +272,7 @@ fn add_ios_app_plist_defaults(
                 target.ios.as_ref().and_then(|ios| {
                     ios.supported_orientations
                         .as_ref()
-                        .and_then(|orientations| orientations.ipad.as_ref())
+                        .and_then(|orientations| orientations.ipad.as_deref())
                 }),
                 &[
                     IosInterfaceOrientation::Portrait,
@@ -321,11 +321,10 @@ fn launch_screen_dictionary(config: Option<&IosTargetManifest>) -> Result<Dictio
 }
 
 fn resolved_ios_orientations(
-    configured: Option<&Vec<IosInterfaceOrientation>>,
+    configured: Option<&[IosInterfaceOrientation]>,
     defaults: &[IosInterfaceOrientation],
 ) -> Vec<Value> {
     configured
-        .map(|orientations| orientations.as_slice())
         .unwrap_or(defaults)
         .iter()
         .map(|orientation| Value::String(ios_orientation_name(*orientation).to_owned()))

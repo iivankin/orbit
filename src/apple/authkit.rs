@@ -72,7 +72,7 @@ pub(crate) fn send_authkit_bootstrap_request(
     let authkit_url = authkit_bootstrap_url();
     let request = authkit_bootstrap_request(auth, identity)?;
     let mut last_retryable_error = None;
-    for attempt in 0..4 {
+    for attempt in 0_u64..4 {
         match client
             .post(&authkit_url)
             .headers(request.headers.clone())
@@ -82,7 +82,7 @@ pub(crate) fn send_authkit_bootstrap_request(
             Ok(response) => return Ok(response),
             Err(error) if should_retry_transport_error(&error) && attempt < 3 => {
                 last_retryable_error = Some(error);
-                thread::sleep(Duration::from_millis(250 * (attempt + 1) as u64));
+                thread::sleep(Duration::from_millis(250 * (attempt + 1)));
             }
             Err(error) if should_retry_transport_error(&error) => {
                 return Err(error).with_context(|| {
@@ -156,19 +156,18 @@ fn apply_identity_overrides(
 
     let orbit_user_agent = format!("Orbit/{}", env!("CARGO_PKG_VERSION"));
     let orbit_app_info = format!("dev.orbit.cli/{}", env!("CARGO_PKG_VERSION"));
-    let orbit_client_info = headers
+    let client_info = headers
         .get("x-mme-client-info")
-        .map(|value| orbit_client_info(value))
-        .unwrap_or_else(default_orbit_client_info);
+        .map_or_else(default_orbit_client_info, |value| orbit_client_info(value));
 
     headers.insert("user-agent".to_owned(), orbit_user_agent);
-    headers.insert("x-apple-app-info".to_owned(), orbit_app_info.clone());
-    headers.insert("x-mme-client-info".to_owned(), orbit_client_info.clone());
+    headers.insert("x-apple-app-info".to_owned(), orbit_app_info);
+    headers.insert("x-mme-client-info".to_owned(), client_info.clone());
 
     if let Some(object) = body.as_object_mut() {
         object.insert(
             "x_mme_client_Info".to_owned(),
-            JsonValue::String(orbit_client_info),
+            JsonValue::String(client_info),
         );
     }
 }

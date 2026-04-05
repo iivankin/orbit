@@ -28,8 +28,8 @@ use crate::apple::build::verify::{
 use crate::apple::grand_slam::XcodeNotaryAuth;
 use crate::context::ProjectContext;
 use crate::util::{
-    CliSpinner, command_output, command_output_allow_failure, ensure_dir, format_elapsed,
-    run_command,
+    CliSpinner, combine_command_output, command_output, command_output_allow_failure, ensure_dir,
+    format_elapsed, run_command,
 };
 
 use super::endpoints;
@@ -51,7 +51,7 @@ pub(crate) fn submit_with_xcode_notary(
         || resolve_xcode_notary_auth(project),
     )?;
     let team_id = resolve_team_id(project)?;
-    let mut client = notary_progress_step(
+    let client = notary_progress_step(
         "Notary: Connecting to App Store Connect".to_owned(),
         |_| "Notary: Connected to App Store Connect.".to_owned(),
         || NotaryClient::new(auth, team_id),
@@ -75,7 +75,7 @@ pub(crate) fn submit_with_xcode_notary(
     )?;
     notary_progress_step(
         format!("Notary: Preflighting {}", archive.path.display()),
-        |summary: &String| summary.clone(),
+        String::clone,
         || preflight_submission_archive(receipt, &archive),
     )?;
     let submission_name = archive
@@ -147,7 +147,7 @@ pub(crate) fn submit_with_xcode_notary(
                     "Notary: Verifying notarized package {}",
                     receipt.artifact_path.display()
                 ),
-                |summary: &String| summary.clone(),
+                String::clone,
                 || verify_post_notarization(receipt),
             )?;
         }
@@ -266,7 +266,7 @@ fn validate_zip_archive(archive_path: &Path, expected_payload_path: &Path) -> Re
     test_command.arg(archive_path);
     let (success, stdout, stderr) = command_output_allow_failure(&mut test_command)?;
     if !success {
-        let output = command_output_summary(&stdout, &stderr);
+        let output = combine_command_output(&stdout, &stderr);
         bail!(
             "notarization archive `{}` failed zip integrity validation\n{}",
             archive_path.display(),
@@ -308,17 +308,6 @@ fn validate_zip_archive(archive_path: &Path, expected_payload_path: &Path) -> Re
     }
 
     Ok(())
-}
-
-fn command_output_summary(stdout: &str, stderr: &str) -> String {
-    let stdout = stdout.trim();
-    let stderr = stderr.trim();
-    match (stdout.is_empty(), stderr.is_empty()) {
-        (true, true) => String::new(),
-        (false, true) => stdout.to_owned(),
-        (true, false) => stderr.to_owned(),
-        (false, false) => format!("{stdout}\n{stderr}"),
-    }
 }
 
 fn notary_progress_step<T, F, G>(
@@ -420,14 +409,14 @@ impl NotaryClient {
         })
     }
 
-    fn authenticate_with_authkit(&mut self) -> Result<()> {
+    fn authenticate_with_authkit(&self) -> Result<()> {
         let _: serde_json::Value =
             bootstrap_authkit(&self.client, &self.auth, AuthKitIdentity::Xcode, "Xcode")?;
         Ok(())
     }
 
     fn create_submission(
-        &mut self,
+        &self,
         submission_name: &str,
         digests: &ArchiveDigests,
     ) -> Result<NotarySubmissionDocument> {
@@ -446,7 +435,7 @@ impl NotaryClient {
     }
 
     fn upload_submission_archive(
-        &mut self,
+        &self,
         submission: &NotarySubmissionDocument,
         digests: &ArchiveDigests,
     ) -> Result<()> {
@@ -486,7 +475,7 @@ impl NotaryClient {
         Ok(())
     }
 
-    fn fetch_status(&mut self, submission_id: &str) -> Result<NotaryStatusDocument> {
+    fn fetch_status(&self, submission_id: &str) -> Result<NotaryStatusDocument> {
         let response = self
             .client
             .get(endpoints::notary_submission_url(submission_id))
@@ -496,7 +485,7 @@ impl NotaryClient {
         parse_json_response(response, "notary status")
     }
 
-    fn wait_for_completion(&mut self, submission_id: &str) -> Result<NotaryStatusDocument> {
+    fn wait_for_completion(&self, submission_id: &str) -> Result<NotaryStatusDocument> {
         let spinner = CliSpinner::new(format!(
             "Notary: Waiting for Apple to process submission `{submission_id}`"
         ));
@@ -533,7 +522,7 @@ impl NotaryClient {
         )
     }
 
-    fn fetch_developer_log(&mut self, submission_id: &str) -> Result<String> {
+    fn fetch_developer_log(&self, submission_id: &str) -> Result<String> {
         let response = self
             .client
             .get(endpoints::notary_submission_logs_url(submission_id))

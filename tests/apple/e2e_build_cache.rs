@@ -1,9 +1,7 @@
-mod support;
-
 use std::fs;
 use std::time::Duration;
 
-use support::{
+use crate::support::{
     base_command, clear_log, create_api_key, create_asset_resource_workspace,
     create_build_xcrun_mock, create_codesign_mock, create_ditto_mock, create_home,
     create_macos_universal_workspace, create_mixed_language_workspace, create_resource_workspace,

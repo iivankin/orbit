@@ -474,15 +474,13 @@ pub(crate) fn establish_submit_auth(
 
     let profile = ClientProfile::default_detect()?;
     let client = build_client()?;
-    let credentials = ensure_user_auth_with_password(
-        app,
-        EnsureUserAuthRequest {
-            team_id: requested_team_id.clone(),
-            prompt_for_missing: app.interactive,
-            ..Default::default()
-        },
-    )
-    .context("content-delivery submit requires Apple ID credentials")?;
+    let request = EnsureUserAuthRequest {
+        team_id: requested_team_id.clone(),
+        prompt_for_missing: app.interactive,
+        ..Default::default()
+    };
+    let credentials = ensure_user_auth_with_password(app, &request)
+        .context("content-delivery submit requires Apple ID credentials")?;
 
     let srp_session = start_srp_session(
         &client,
@@ -630,14 +628,12 @@ fn establish_xcode_notary_auth_with_metadata(
 ) -> Result<XcodeNotaryAuth> {
     let profile = ClientProfile::default_detect()?;
     let client = build_client()?;
-    let credentials = ensure_user_auth_with_password(
-        app,
-        EnsureUserAuthRequest {
-            prompt_for_missing: app.interactive,
-            ..Default::default()
-        },
-    )
-    .context("Xcode-like notarization requires Apple ID credentials")?;
+    let request = EnsureUserAuthRequest {
+        prompt_for_missing: app.interactive,
+        ..Default::default()
+    };
+    let credentials = ensure_user_auth_with_password(app, &request)
+        .context("Xcode-like notarization requires Apple ID credentials")?;
 
     let srp_session = start_srp_session(
         &client,

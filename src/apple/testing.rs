@@ -42,7 +42,7 @@ pub fn run_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
 
     let package = materialize_swift_testing_package(project, root_target, unit_tests)?;
     if let Some(kind) = args.trace {
-        let trace = crate::profile::start_optional_launched_command_trace(
+        let trace = crate::apple::profile::start_optional_launched_command_trace(
             &project.root,
             project.selected_xcode.as_ref(),
             project.app.interactive,
@@ -51,7 +51,7 @@ pub fn run_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
             None,
         )?
         .expect("trace kind should produce a launched trace");
-        crate::profile::wait_for_launched_trace_exit(trace.0, trace.1)?;
+        crate::apple::profile::wait_for_launched_trace_exit(trace.0, trace.1)?;
     } else {
         run_swift_testing_package(&package)?;
     }

@@ -1,8 +1,6 @@
-mod support;
-
 use std::fs;
 
-use support::{
+use crate::support::{
     base_command, create_build_xcrun_mock, create_home, create_mixed_language_workspace, read_log,
     run_and_capture, sourcekit_lsp_command,
 };

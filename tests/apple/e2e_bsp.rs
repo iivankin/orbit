@@ -1,5 +1,3 @@
-mod support;
-
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::Stdio;
@@ -8,8 +6,8 @@ use reqwest::Url;
 use serde_json::{Value, json};
 
 #[cfg(target_os = "macos")]
-use support::create_mixed_language_workspace;
-use support::{
+use crate::support::create_mixed_language_workspace;
+use crate::support::{
     base_command, create_build_xcrun_mock, create_home, create_signing_workspace,
     create_xcframework_workspace, orbit_bin, read_log, run_and_capture,
 };

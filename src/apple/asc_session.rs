@@ -35,7 +35,7 @@ impl AscSessionAppsClient {
     pub fn authenticate(app: &AppContext, provider_public_id: impl Into<String>) -> Result<Self> {
         let auth = establish_xcode_notary_auth(app)?;
         let client = build_cookie_client("ASC session")?;
-        let mut asc = Self {
+        let asc = Self {
             client,
             auth,
             provider_public_id: provider_public_id.into(),
@@ -148,7 +148,7 @@ impl AscSessionAppsClient {
         Ok(response.data)
     }
 
-    fn authenticate_with_authkit(&mut self) -> Result<()> {
+    fn authenticate_with_authkit(&self) -> Result<()> {
         let _: serde_json::Value = bootstrap_authkit(
             &self.client,
             &self.auth,

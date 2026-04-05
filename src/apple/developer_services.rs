@@ -123,7 +123,7 @@ impl DeveloperServicesClient {
         Ok(developer_services)
     }
 
-    pub fn list_teams(&mut self) -> Result<Vec<DeveloperServicesTeam>> {
+    pub fn list_teams(&self) -> Result<Vec<DeveloperServicesTeam>> {
         let response = self.post_plist_action("listTeams.action")?;
         let teams: DeveloperServicesTeamsResponse = plist::from_bytes(&response.body)
             .context("failed to decode developer services team list response")?;
@@ -147,7 +147,7 @@ impl DeveloperServicesClient {
     where
         T: for<'de> Deserialize<'de>,
     {
-        let response = self.send_json(method.clone(), path, query, team_id, body)?;
+        let response = self.send_json(&method, path, query, team_id, body)?;
         let status = response.status();
         self.capture_session_state(response.headers());
         let bytes = response
@@ -171,7 +171,7 @@ impl DeveloperServicesClient {
         team_id: Option<&str>,
         body: Option<serde_json::Value>,
     ) -> Result<()> {
-        let response = self.send_json(method, path, query, team_id, body)?;
+        let response = self.send_json(&method, path, query, team_id, body)?;
         let status = response.status();
         self.capture_session_state(response.headers());
         let bytes = response
@@ -186,7 +186,7 @@ impl DeveloperServicesClient {
         Ok(())
     }
 
-    fn authenticate_with_authkit(&mut self) -> Result<()> {
+    fn authenticate_with_authkit(&self) -> Result<()> {
         let _: serde_json::Value = bootstrap_authkit(
             &self.client,
             &self.auth,
@@ -213,7 +213,7 @@ impl DeveloperServicesClient {
         Ok(())
     }
 
-    fn post_plist_action(&mut self, action: &str) -> Result<DeveloperServicesResponse> {
+    fn post_plist_action(&self, action: &str) -> Result<DeveloperServicesResponse> {
         let request_id = Uuid::new_v4().to_string().to_uppercase();
         let body = plist_body({
             let mut request = PlistDictionary::new();
@@ -242,8 +242,8 @@ impl DeveloperServicesClient {
     }
 
     fn send_json(
-        &mut self,
-        method: Method,
+        &self,
+        method: &Method,
         path: &str,
         query: &[(&str, String)],
         team_id: Option<&str>,
@@ -252,7 +252,7 @@ impl DeveloperServicesClient {
         let url = format!("{DEVELOPER_SERVICES_V2_BASE_URL}/services/v1/{path}");
         let mut headers = self.json_headers()?;
 
-        let (actual_method, payload) = if matches!(method, Method::GET | Method::DELETE) {
+        let (actual_method, payload) = if matches!(method, &Method::GET | &Method::DELETE) {
             headers.insert(
                 HeaderName::from_static("x-http-method-override"),
                 HeaderValue::from_str(method.as_str())?,
@@ -274,7 +274,7 @@ impl DeveloperServicesClient {
                 payload["data"]["attributes"]["teamId"] =
                     serde_json::Value::String(team_id.to_owned());
             }
-            (method, payload)
+            (method.clone(), payload)
         };
 
         let response = self

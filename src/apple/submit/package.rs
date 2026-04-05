@@ -38,11 +38,11 @@ pub enum AssetType {
 }
 
 impl AssetType {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
-            AssetType::AssetDescription => "ASSET_DESCRIPTION",
-            AssetType::AssetSpi => "ASSET_SPI",
-            AssetType::Bundle => "ASSET",
+            Self::AssetDescription => "ASSET_DESCRIPTION",
+            Self::AssetSpi => "ASSET_SPI",
+            Self::Bundle => "ASSET",
         }
     }
 }

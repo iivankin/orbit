@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 
 use crate::apple::build::receipt::BuildReceipt;
 use crate::manifest::{ApplePlatform, DistributionKind};
-use crate::util::command_output_allow_failure;
+use crate::util::{combine_command_output, command_output_allow_failure};
 
 pub(crate) fn should_verify_developer_id_artifact(receipt: &BuildReceipt) -> bool {
     receipt.platform == ApplePlatform::Macos
@@ -75,7 +75,7 @@ impl<'a> DeveloperIdArtifactVerifier<'a> {
                 &stderr,
             ));
         }
-        let output = combined_output(&stdout, &stderr);
+        let output = combine_command_output(&stdout, &stderr);
         if !output.contains("Developer ID Application:") {
             bail!(
                 "codesign verification for `{}` did not report a Developer ID Application identity\n{}",
@@ -106,7 +106,7 @@ impl<'a> DeveloperIdArtifactVerifier<'a> {
                 &stderr,
             ));
         }
-        let output = combined_output(&stdout, &stderr);
+        let output = combine_command_output(&stdout, &stderr);
         if !output.contains("Developer ID Installer:") {
             bail!(
                 "pkgutil verification for `{}` did not report a Developer ID Installer identity\n{}",
@@ -167,7 +167,7 @@ fn classify_pre_notary_gatekeeper_result(
     if success {
         return Ok("accepted");
     }
-    let output = combined_output(stdout, stderr);
+    let output = combine_command_output(stdout, stderr);
     if output.contains("Unnotarized Developer ID") {
         return Ok("unnotarized-developer-id");
     }
@@ -187,19 +187,8 @@ where
         .with_context(|| format!("failed to run `{program}` during Developer ID verification"))
 }
 
-fn combined_output(stdout: &str, stderr: &str) -> String {
-    let stdout = stdout.trim();
-    let stderr = stderr.trim();
-    match (stdout.is_empty(), stderr.is_empty()) {
-        (true, true) => String::new(),
-        (false, true) => stdout.to_owned(),
-        (true, false) => stderr.to_owned(),
-        (false, false) => format!("{stdout}\n{stderr}"),
-    }
-}
-
 fn command_failure(step: &str, path: &Path, stdout: &str, stderr: &str) -> anyhow::Error {
-    let output = combined_output(stdout, stderr);
+    let output = combine_command_output(stdout, stderr);
     if output.is_empty() {
         return anyhow::anyhow!(
             "{step} for `{}` failed without stdout/stderr",

@@ -1,15 +1,13 @@
-mod support;
-
 use std::fs;
 use std::path::Path;
 
-use serde_json::Value as JsonValue;
-use support::{
+use crate::support::{
     base_command, create_api_key, create_build_xcrun_mock, create_codesign_mock, create_ditto_mock,
     create_home, create_lldb_attach_mock, create_passthrough_mock, create_security_mock,
     create_signing_workspace, create_sw_vers_mock, create_watch_workspace, create_watch_xcrun_mock,
     create_xcodebuild_mock, run_and_capture, spawn_asc_mock, write_executable,
 };
+use serde_json::Value as JsonValue;
 
 #[test]
 fn signed_build_runs_before_build_and_after_sign_hooks() {

@@ -3,7 +3,6 @@ pub mod cli;
 pub mod commands;
 pub mod context;
 pub mod manifest;
-pub mod profile;
 pub mod util;
 
 use anyhow::Result;

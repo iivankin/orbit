@@ -226,13 +226,13 @@ pub(super) fn project_entitlement_identifiers(
         let plan =
             capability_sync_plan_from_entitlements(&project.root.join(entitlements_path), &[])?;
         app_groups.extend(collect_identifier_values(&plan.updates, |relationships| {
-            relationships.app_groups.as_ref()
+            relationships.app_groups.as_deref()
         }));
         cloud_containers.extend(collect_identifier_values(&plan.updates, |relationships| {
-            relationships.cloud_containers.as_ref()
+            relationships.cloud_containers.as_deref()
         }));
         merchant_ids.extend(collect_identifier_values(&plan.updates, |relationships| {
-            relationships.merchant_ids.as_ref()
+            relationships.merchant_ids.as_deref()
         }));
     }
 
@@ -245,7 +245,7 @@ pub(super) fn project_entitlement_identifiers(
 
 pub(super) fn collect_identifier_values<F>(updates: &[CapabilityUpdate], select: F) -> Vec<String>
 where
-    F: Fn(&CapabilityRelationships) -> Option<&Vec<String>>,
+    F: Fn(&CapabilityRelationships) -> Option<&[String]>,
 {
     let mut values = updates
         .iter()

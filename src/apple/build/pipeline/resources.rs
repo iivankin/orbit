@@ -7,15 +7,15 @@ use walkdir::WalkDir;
 
 use super::artifacts::remove_existing_path;
 use super::*;
+use crate::apple::build::app_icon;
 use crate::util::{command_output, read_json_file_if_exists, write_json_file};
 
-const RESOURCE_CACHE_VERSION: u32 = 1;
+const RESOURCE_CACHE_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct CachedAssetCatalogInfo {
     version: u32,
     fingerprint: String,
-    generated_default_app_icon: bool,
     has_app_icon: bool,
 }
 
@@ -28,7 +28,6 @@ struct CachedResourceJobInfo {
 #[derive(Debug, Clone, Copy, Default)]
 pub(super) struct ResourceWorkSummary {
     asset_catalogs: usize,
-    generated_default_app_icon: bool,
     interface_resources: usize,
     strings_files: usize,
     core_data_models: usize,
@@ -40,9 +39,6 @@ impl ResourceWorkSummary {
         let mut parts = Vec::new();
         if self.asset_catalogs > 0 {
             parts.push(format!("{} asset catalog(s)", self.asset_catalogs));
-        }
-        if self.generated_default_app_icon {
-            parts.push("generated default app icon".to_owned());
         }
         if self.interface_resources > 0 {
             parts.push(format!("{} interface file(s)", self.interface_resources));
@@ -100,7 +96,7 @@ pub(super) fn process_resources(
         )?;
     }
 
-    let compiled_asset_catalogs = compile_asset_catalogs(
+    compile_asset_catalogs(
         toolchain,
         target.kind,
         &asset_catalogs,
@@ -110,7 +106,6 @@ pub(super) fn process_resources(
 
     let summary = ResourceWorkSummary {
         asset_catalogs: asset_catalogs.len(),
-        generated_default_app_icon: compiled_asset_catalogs.generated_default_app_icon,
         interface_resources: interface_jobs.len(),
         strings_files: strings_jobs.len(),
         core_data_models: core_data_jobs.len(),
@@ -182,9 +177,8 @@ pub(super) fn process_resources(
     Ok(summary)
 }
 
-pub(super) fn should_process_resources(platform: ApplePlatform, target: &TargetManifest) -> bool {
+pub(super) fn should_process_resources(target: &TargetManifest) -> bool {
     !target.resources.is_empty()
-        || default_icon::should_generate_default_app_icon(platform, target.kind)
 }
 
 fn discover_resources(
@@ -332,40 +326,28 @@ fn discover_resources(
     Ok(())
 }
 
-struct CompiledAssetCatalogs {
-    generated_default_app_icon: bool,
-}
-
 fn compile_asset_catalogs(
     toolchain: &Toolchain,
     target_kind: TargetKind,
     asset_catalogs: &[PathBuf],
     bundle_root: &Path,
     resource_cache_root: &Path,
-) -> Result<CompiledAssetCatalogs> {
-    let prepared_catalogs =
-        default_icon::prepare_asset_catalogs(toolchain.platform, target_kind, asset_catalogs)?;
-    if prepared_catalogs.catalogs().is_empty() {
-        return Ok(CompiledAssetCatalogs {
-            generated_default_app_icon: false,
-        });
+) -> Result<()> {
+    if asset_catalogs.is_empty() {
+        return Ok(());
     }
+    let has_app_icon = app_icon::asset_catalogs_have_app_icon(asset_catalogs);
 
-    let fingerprint = asset_catalog_fingerprint(
-        toolchain,
-        target_kind,
-        asset_catalogs,
-        prepared_catalogs.has_app_icon(),
-    )?;
+    let fingerprint = asset_catalog_fingerprint(toolchain, target_kind, asset_catalogs)?;
     let cache_dir = resource_cache_root.join("asset-catalogs");
-    if let Some(cached) = restore_cached_asset_catalogs(
+    if restore_cached_asset_catalogs(
         &cache_dir,
         &fingerprint,
         toolchain,
         target_kind,
         bundle_root,
     )? {
-        return Ok(cached);
+        return Ok(());
     }
 
     let partial_plist = NamedTempFile::new()?;
@@ -385,13 +367,13 @@ fn compile_asset_catalogs(
     for device in toolchain.actool_target_device() {
         command.arg("--target-device").arg(device);
     }
-    if asset_catalog_contains_named_set(prepared_catalogs.catalogs(), "AccentColor.colorset") {
+    if asset_catalog_contains_named_set(asset_catalogs, "AccentColor.colorset") {
         command.arg("--accent-color").arg("AccentColor");
     }
-    if prepared_catalogs.has_app_icon() {
+    if has_app_icon {
         command.arg("--app-icon").arg("AppIcon");
     }
-    for catalog in prepared_catalogs.catalogs() {
+    for catalog in asset_catalogs {
         command.arg(catalog);
     }
     command_output(&mut command)?;
@@ -399,24 +381,20 @@ fn compile_asset_catalogs(
         bundle_metadata_root(toolchain, target_kind, bundle_root),
         partial_plist.path(),
     )?;
-    default_icon::ensure_icon_metadata(
+    app_icon::ensure_icon_metadata(
         toolchain.platform,
         target_kind,
         &bundle_metadata_root(toolchain, target_kind, bundle_root),
-        prepared_catalogs.has_app_icon(),
+        has_app_icon,
     )?;
-    let compiled = CompiledAssetCatalogs {
-        generated_default_app_icon: prepared_catalogs.generated_default_app_icon(),
-    };
     write_cached_asset_catalogs(
         &cache_dir,
         &fingerprint,
         &resources_root,
         partial_plist.path(),
-        prepared_catalogs.generated_default_app_icon(),
-        prepared_catalogs.has_app_icon(),
+        has_app_icon,
     )?;
-    Ok(compiled)
+    Ok(())
 }
 
 fn restore_cached_asset_catalogs(
@@ -425,18 +403,18 @@ fn restore_cached_asset_catalogs(
     toolchain: &Toolchain,
     target_kind: TargetKind,
     bundle_root: &Path,
-) -> Result<Option<CompiledAssetCatalogs>> {
+) -> Result<bool> {
     let Some(cache_info) =
         read_json_file_if_exists::<CachedAssetCatalogInfo>(&cache_dir.join("cache.json"))?
     else {
-        return Ok(None);
+        return Ok(false);
     };
     if cache_info.version != RESOURCE_CACHE_VERSION || cache_info.fingerprint != fingerprint {
-        return Ok(None);
+        return Ok(false);
     }
     let cached_output = cache_dir.join("output");
     if !cached_output.exists() {
-        return Ok(None);
+        return Ok(false);
     }
 
     let resources_root = bundle_resources_root(toolchain, target_kind, bundle_root);
@@ -445,15 +423,13 @@ fn restore_cached_asset_catalogs(
         bundle_metadata_root(toolchain, target_kind, bundle_root),
         &cache_dir.join("partial-info.plist"),
     )?;
-    default_icon::ensure_icon_metadata(
+    app_icon::ensure_icon_metadata(
         toolchain.platform,
         target_kind,
         &bundle_metadata_root(toolchain, target_kind, bundle_root),
         cache_info.has_app_icon,
     )?;
-    Ok(Some(CompiledAssetCatalogs {
-        generated_default_app_icon: cache_info.generated_default_app_icon,
-    }))
+    Ok(true)
 }
 
 fn write_cached_asset_catalogs(
@@ -461,7 +437,6 @@ fn write_cached_asset_catalogs(
     fingerprint: &str,
     resources_root: &Path,
     partial_plist_path: &Path,
-    generated_default_app_icon: bool,
     has_app_icon: bool,
 ) -> Result<()> {
     ensure_dir(cache_dir)?;
@@ -475,7 +450,6 @@ fn write_cached_asset_catalogs(
         &CachedAssetCatalogInfo {
             version: RESOURCE_CACHE_VERSION,
             fingerprint: fingerprint.to_owned(),
-            generated_default_app_icon,
             has_app_icon,
         },
     )
@@ -566,7 +540,6 @@ fn asset_catalog_fingerprint(
     toolchain: &Toolchain,
     target_kind: TargetKind,
     asset_catalogs: &[PathBuf],
-    has_app_icon: bool,
 ) -> Result<String> {
     let mut hasher = Sha256::new();
     hasher.update(RESOURCE_CACHE_VERSION.to_le_bytes());
@@ -577,11 +550,6 @@ fn asset_catalog_fingerprint(
     hasher.update(toolchain.target_triple.as_bytes());
     hash_resource_toolchain(&mut hasher, toolchain);
     hasher.update(format!("{:?}", target_kind).as_bytes());
-    if has_app_icon {
-        hasher.update(b"has-app-icon");
-    } else {
-        hasher.update(b"no-app-icon");
-    }
     for catalog in asset_catalogs {
         hash_resource_input(&mut hasher, catalog)?;
     }
@@ -794,7 +762,6 @@ mod tests {
             })),
             TargetKind::App,
             std::slice::from_ref(&asset_catalog),
-            true,
         )
         .unwrap();
         let second = asset_catalog_fingerprint(
@@ -806,7 +773,6 @@ mod tests {
             })),
             TargetKind::App,
             std::slice::from_ref(&asset_catalog),
-            true,
         )
         .unwrap();
 

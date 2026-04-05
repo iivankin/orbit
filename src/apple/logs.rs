@@ -1,5 +1,5 @@
 use std::io::{self, BufRead, BufReader, IsTerminal, Read, Write};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc;
 use std::thread;
@@ -313,7 +313,7 @@ fn simulator_log_stream_ready(line: &str) -> bool {
     trimmed.starts_with("Filtering the log data using ") || trimmed == "Running log until ^C"
 }
 
-fn forward_macos_inferior_pipe(pipe_path: &PathBuf, bundle_id: &str, verbose: bool) {
+fn forward_macos_inferior_pipe(pipe_path: &Path, bundle_id: &str, verbose: bool) {
     let file = match std::fs::File::open(pipe_path) {
         Ok(file) => file,
         Err(error) => {

@@ -12,18 +12,21 @@ use tempfile::{NamedTempFile, tempdir};
 
 use crate::apple::build::receipt::BuildReceipt;
 use crate::apple::logs::{DeviceConsoleRelay, MacosInferiorLogRelay, SimulatorAppLogStream};
+use crate::apple::script::{
+    lldb_quote_arg, macos_quit_applescript, macos_xcode_log_redirect_env, shell_quote_arg,
+    tcl_quote_arg,
+};
 use crate::apple::simulator::SimulatorDevice;
 use crate::apple::xcode::{
-    SelectedXcode, lldb_path as selected_xcode_lldb_path,
-    log_redirect_dylib_path as selected_xcode_log_redirect_dylib_path, open_simulator_command,
+    SelectedXcode, lldb_path as selected_xcode_lldb_path, open_simulator_command,
     xcodebuild_command, xcrun_command,
 };
 use crate::cli::ProfileKind;
 use crate::context::ProjectContext;
 use crate::manifest::ApplePlatform;
 use crate::util::{
-    CliSpinner, command_output_allow_failure, debug_command, ensure_dir, prompt_select,
-    run_command, timestamp_slug,
+    CliSpinner, combine_command_output, command_output_allow_failure, debug_command, ensure_dir,
+    prompt_select, run_command, timestamp_slug,
 };
 
 pub(super) fn validate_run_platform(platform: ApplePlatform) -> Result<()> {
@@ -60,7 +63,7 @@ pub(super) fn run_on_macos(
         if project.app.interactive {
             spawn_macos_focus_helper(receipt.target.as_str())?;
         }
-        let trace = crate::profile::start_optional_launched_process_trace(
+        let trace = crate::apple::profile::start_optional_launched_process_trace(
             &project.root,
             project.selected_xcode.as_ref(),
             project.app.interactive,
@@ -69,7 +72,7 @@ pub(super) fn run_on_macos(
             None,
         )?
         .expect("trace kind should produce a launched trace");
-        return crate::profile::wait_for_launched_trace_exit(trace.0, trace.1);
+        return crate::apple::profile::wait_for_launched_trace_exit(trace.0, trace.1);
     }
 
     println!(
@@ -81,10 +84,7 @@ pub(super) fn run_on_macos(
 
 fn stop_existing_macos_application(receipt: &BuildReceipt) -> Result<()> {
     let mut script = Command::new("osascript");
-    script.args([
-        "-e",
-        &format!("tell application id \"{}\" to quit", receipt.bundle_id),
-    ]);
+    script.args(["-e", &macos_quit_applescript(receipt.bundle_id.as_str())]);
     let _ = command_output_allow_failure(&mut script)?;
 
     let executable = macos_executable_path(receipt)?;
@@ -109,10 +109,6 @@ fn macos_process_running(executable: &Path) -> Result<bool> {
     command.arg(executable);
     let (success, _stdout, _stderr) = command_output_allow_failure(&mut command)?;
     Ok(success)
-}
-
-fn macos_quit_applescript(bundle_id: &str) -> String {
-    format!("tell application id \"{}\" to quit", bundle_id)
 }
 
 fn write_temp_script(contents: &str, context: &str, executable: bool) -> Result<NamedTempFile> {
@@ -282,7 +278,7 @@ pub(super) fn run_on_simulator(
     receipt: &BuildReceipt,
     trace: Option<ProfileKind>,
 ) -> Result<()> {
-    crate::profile::ensure_simulator_profiling_supported(trace)?;
+    crate::apple::profile::ensure_simulator_profiling_supported(trace)?;
 
     let device = prepare_simulator_installation(project, receipt)?;
     let _app_logs = start_simulator_app_logs(project, &device, receipt);
@@ -672,7 +668,7 @@ fn run_on_device_with_trace(
     // installed remote `.app` path; bundle IDs and remote executables produced
     // broken traces in live validation.
     let remote_bundle_path = remote_app_bundle_path(installation_url)?;
-    let trace = crate::profile::start_optional_launched_process_trace(
+    let trace = crate::apple::profile::start_optional_launched_process_trace(
         &project.root,
         project.selected_xcode.as_ref(),
         project.app.interactive,
@@ -681,7 +677,7 @@ fn run_on_device_with_trace(
         Some(device.provisioning_udid()),
     )?
     .expect("trace kind should produce a launched trace");
-    crate::profile::wait_for_launched_trace_exit(trace.0, trace.1)
+    crate::apple::profile::wait_for_launched_trace_exit(trace.0, trace.1)
 }
 
 pub(crate) fn prepare_macos_trace_launch_executable(
@@ -1240,7 +1236,7 @@ fn create_macos_inferior_log_relay(
 }
 
 fn expect_macos_wrapper_script() -> Result<String> {
-    Ok(r#"set timeout -1
+    Ok(r"set timeout -1
 set wrapper [lindex $argv 0]
 
 spawn -noecho /bin/zsh $wrapper
@@ -1259,7 +1255,7 @@ interact {
         exit 130
     }
 }
-"#
+"
     .to_owned())
 }
 
@@ -1461,19 +1457,6 @@ interact {{
         ),
         env_vars = tcl_quote_arg(&macos_xcode_log_redirect_env(selected_xcode)?),
     ))
-}
-
-fn macos_xcode_log_redirect_env(selected_xcode: Option<&SelectedXcode>) -> Result<String> {
-    let log_redirect_dylib = selected_xcode_log_redirect_dylib_path(selected_xcode)?;
-    Ok([
-        "NSUnbufferedIO=YES".to_owned(),
-        "OS_LOG_TRANSLATE_PRINT_MODE=0x80".to_owned(),
-        "IDE_DISABLED_OS_ACTIVITY_DT_MODE=1".to_owned(),
-        "OS_LOG_DT_HOOK_MODE=0x07".to_owned(),
-        "CFLOG_FORCE_DISABLE_STDERR=1".to_owned(),
-        format!("DYLD_INSERT_LIBRARIES={}", log_redirect_dylib.display()),
-    ]
-    .join(" "))
 }
 
 fn lldb_expect_attach_script(symbol_root: Option<&Path>) -> Result<String> {
@@ -1705,19 +1688,6 @@ cleanup "${{launcher_status}}"
         udid = shell_quote_arg(&device.udid),
         bundle_id = shell_quote_arg(&receipt.bundle_id),
     ))
-}
-
-fn tcl_quote_arg(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('$', "\\$")
-        .replace('[', "\\[")
-        .replace(']', "\\]")
-}
-
-fn shell_quote_arg(value: &str) -> String {
-    format!("'{}'", value.replace('\'', r#"'\''"#))
 }
 
 fn bundle_debug_executable_path(receipt: &BuildReceipt) -> Result<PathBuf> {
@@ -2182,15 +2152,6 @@ fn count_device_symbol_cache_files(symbol_root: &Path) -> usize {
         .count()
 }
 
-fn combine_command_output(stdout: &str, stderr: &str) -> String {
-    match (stdout.trim().is_empty(), stderr.trim().is_empty()) {
-        (true, true) => String::new(),
-        (false, true) => stdout.to_owned(),
-        (true, false) => stderr.to_owned(),
-        (false, false) => format!("{stdout}\n{stderr}"),
-    }
-}
-
 fn error_mentions_locked_device(message: &str) -> bool {
     let normalized = message.to_ascii_lowercase();
     normalized.contains("device is locked")
@@ -2213,10 +2174,6 @@ fn locked_device_debug_message(device: &PhysicalDevice) -> String {
         device.name(),
         device.provisioning_udid()
     )
-}
-
-fn lldb_quote_arg(value: &str) -> String {
-    format!("\"{}\"", value.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
 fn devicectl_platform_name(platform: ApplePlatform) -> &'static str {
@@ -2262,7 +2219,7 @@ mod tests {
     };
     use crate::apple::build::receipt::BuildReceiptInput;
     use crate::apple::simulator::SimulatorDevice;
-    use crate::apple::xcode::SelectedXcode;
+    use crate::apple::xcode::{SelectedXcode, lldb_path as selected_xcode_lldb_path};
     use crate::manifest::{BuildConfiguration, DistributionKind};
 
     fn physical_device(identifier: &str, udid: &str, name: &str, platform: &str) -> PhysicalDevice {
@@ -2489,8 +2446,8 @@ mod tests {
         let script = lldb_expect_simulator_attach_script(Some(&selected_xcode)).unwrap();
         let expected_lldb_path = format!(
             "set lldb_path \"{}\"",
-            selected_xcode
-                .lldb_path()
+            selected_xcode_lldb_path(Some(&selected_xcode))
+                .unwrap()
                 .to_string_lossy()
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")
@@ -2561,8 +2518,8 @@ mod tests {
         let script = lldb_expect_macos_launch_script(Some(&selected_xcode)).unwrap();
         let expected_lldb_path = format!(
             "set lldb_path \"{}\"",
-            selected_xcode
-                .lldb_path()
+            selected_xcode_lldb_path(Some(&selected_xcode))
+                .unwrap()
                 .to_string_lossy()
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")
@@ -2592,8 +2549,8 @@ mod tests {
         let script = lldb_expect_macos_run_script(Some(&selected_xcode)).unwrap();
         let expected_lldb_path = format!(
             "set lldb_path \"{}\"",
-            selected_xcode
-                .lldb_path()
+            selected_xcode_lldb_path(Some(&selected_xcode))
+                .unwrap()
                 .to_string_lossy()
                 .replace('\\', "\\\\")
                 .replace('"', "\\\"")

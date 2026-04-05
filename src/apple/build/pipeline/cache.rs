@@ -30,7 +30,7 @@ const CODE_BUILD_CACHE_VERSION: u32 = 1;
 const EMBEDDED_DEPENDENCY_CACHE_VERSION: u32 = 1;
 const MERGED_TARGET_CACHE_VERSION: u32 = 1;
 const SIGNING_CACHE_VERSION: u32 = 1;
-const TARGET_BUILD_CACHE_VERSION: u32 = 1;
+const TARGET_BUILD_CACHE_VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 struct CodeBuildCacheInfo {
@@ -588,7 +588,7 @@ fn target_build_outputs_exist(
             return false;
         }
     }
-    if target.kind.is_bundle() && should_process_resources(toolchain.platform, target) {
+    if target.kind.is_bundle() && should_process_resources(target) {
         let resources_root = bundle_resources_root(toolchain, target.kind, &product.product_path);
         if !resources_root.exists() {
             return false;

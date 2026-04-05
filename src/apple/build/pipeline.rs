@@ -21,7 +21,6 @@ use self::runtime::{
     run_on_simulator, select_physical_device, validate_run_platform,
 };
 pub(crate) use self::runtime::{macos_executable_path, prepare_macos_trace_launch_executable};
-use super::default_icon;
 use crate::apple::build::receipt::{BuildReceipt, BuildReceiptInput, write_receipt};
 use crate::apple::build::toolchain::{DestinationKind, Toolchain};
 use crate::apple::build::verify::{should_verify_developer_id_artifact, verify_post_build};
@@ -170,7 +169,7 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
                 "Verifying Developer ID artifact {}",
                 outcome.receipt.artifact_path.display()
             ),
-            |summary: &String| summary.clone(),
+            String::clone,
             || verify_post_build(&outcome.receipt),
         )?;
     }
@@ -564,15 +563,14 @@ fn compile_target_graph(
         if !target.kind.is_bundle() {
             continue;
         }
-        let built_targets_snapshot = built_targets.clone();
         let built_target = built_targets
-            .get_mut(&target.name)
+            .get(&target.name)
             .with_context(|| format!("missing built target `{}`", target.name))?;
         embed_dependencies(
             project,
             platform,
             target,
-            &built_targets_snapshot,
+            &built_targets,
             built_target,
             &bundle_content_fingerprints,
         )?;
@@ -809,15 +807,14 @@ fn merge_universal_macos_targets(
         if !target.kind.is_bundle() {
             continue;
         }
-        let built_targets_snapshot = merged_targets.clone();
         let built_target = merged_targets
-            .get_mut(&target.name)
+            .get(&target.name)
             .with_context(|| format!("missing merged target `{}`", target.name))?;
         embed_dependencies(
             project,
             ApplePlatform::Macos,
             target,
-            &built_targets_snapshot,
+            &merged_targets,
             built_target,
             &merged_bundle_content_fingerprints,
         )?;

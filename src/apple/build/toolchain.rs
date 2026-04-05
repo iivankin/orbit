@@ -13,10 +13,10 @@ pub enum DestinationKind {
 }
 
 impl DestinationKind {
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
-            DestinationKind::Simulator => "simulator",
-            DestinationKind::Device => "device",
+            Self::Simulator => "simulator",
+            Self::Device => "device",
         }
     }
 }
@@ -259,9 +259,10 @@ fn resolve_architecture(
     }
 
     Ok(match (platform, destination) {
-        (ApplePlatform::Ios, DestinationKind::Device)
-        | (ApplePlatform::Tvos, DestinationKind::Device)
-        | (ApplePlatform::Visionos, DestinationKind::Device) => "arm64".to_owned(),
+        (
+            ApplePlatform::Ios | ApplePlatform::Tvos | ApplePlatform::Visionos,
+            DestinationKind::Device,
+        ) => "arm64".to_owned(),
         (ApplePlatform::Watchos, DestinationKind::Device) => "arm64_32".to_owned(),
         _ => host_architecture.to_owned(),
     })

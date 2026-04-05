@@ -277,7 +277,7 @@ pub(super) fn compile_target(
         )?;
     }
     if target.kind.is_bundle() {
-        if should_process_resources(toolchain.platform, target) {
+        if should_process_resources(target) {
             run_compile_step(
                 output.mode,
                 output.log_prefix,
@@ -401,7 +401,7 @@ pub(super) fn embed_dependencies(
     platform: ApplePlatform,
     root_target: &TargetManifest,
     built_targets: &std::collections::HashMap<String, BuiltTarget>,
-    built_root_target: &mut BuiltTarget,
+    built_root_target: &BuiltTarget,
     bundle_content_fingerprints: &std::collections::HashMap<String, String>,
 ) -> Result<()> {
     let planned_embeddings = planned_embedded_dependencies(

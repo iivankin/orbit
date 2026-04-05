@@ -1,9 +1,7 @@
-mod support;
-
 use std::fs;
 
-use support::submit_mock::spawn_submit_mock;
-use support::{
+use crate::support::submit_mock::spawn_submit_mock;
+use crate::support::{
     base_command, clear_log, create_api_key, create_build_xcrun_mock, create_codesign_mock,
     create_ditto_mock, create_home, create_security_mock, create_signing_workspace,
     create_submit_swinfo_mock, latest_receipt_path, read_log, run_and_capture, spawn_asc_mock,

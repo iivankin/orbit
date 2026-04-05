@@ -1,5 +1,5 @@
+pub mod app_icon;
 pub mod clang;
-pub mod default_icon;
 pub mod external;
 pub mod pipeline;
 pub mod receipt;

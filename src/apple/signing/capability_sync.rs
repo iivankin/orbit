@@ -272,19 +272,19 @@ pub(super) fn sync_capabilities(
     let app_group_ids = resolve_app_group_ids(
         provisioning,
         collect_identifier_values(&plan.updates, |relationships| {
-            relationships.app_groups.as_ref()
+            relationships.app_groups.as_deref()
         }),
     )?;
     let merchant_ids = resolve_merchant_ids(
         provisioning,
         collect_identifier_values(&plan.updates, |relationships| {
-            relationships.merchant_ids.as_ref()
+            relationships.merchant_ids.as_deref()
         }),
     )?;
     let cloud_container_ids = resolve_cloud_container_ids(
         provisioning,
         collect_identifier_values(&plan.updates, |relationships| {
-            relationships.cloud_containers.as_ref()
+            relationships.cloud_containers.as_deref()
         }),
     )?;
     let updates = plan
@@ -303,15 +303,15 @@ pub(super) fn sync_capabilities(
                     option: update.option.clone(),
                     relationships: CapabilityRelationships {
                         app_groups: map_relationship_ids(
-                            update.relationships.app_groups.as_ref(),
+                            update.relationships.app_groups.as_deref(),
                             &app_group_ids,
                         )?,
                         merchant_ids: map_relationship_ids(
-                            update.relationships.merchant_ids.as_ref(),
+                            update.relationships.merchant_ids.as_deref(),
                             &merchant_ids,
                         )?,
                         cloud_containers: map_relationship_ids(
-                            update.relationships.cloud_containers.as_ref(),
+                            update.relationships.cloud_containers.as_deref(),
                             &cloud_container_ids,
                         )?,
                     },
@@ -415,7 +415,7 @@ fn resolve_cloud_container_ids(
 }
 
 fn map_relationship_ids(
-    identifiers: Option<&Vec<String>>,
+    identifiers: Option<&[String]>,
     resolved: &HashMap<String, String>,
 ) -> Result<Option<Vec<String>>> {
     let Some(identifiers) = identifiers else {

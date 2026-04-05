@@ -118,7 +118,7 @@ fn submit_with_content_delivery(
     )?;
     let build_id = submit_progress_step(
         "Submit: Creating App Store Connect build record".to_owned(),
-        |build_id: &String| format!("Submit: Created build `{build_id}`."),
+        |build_id| format!("Submit: Created build `{build_id}`."),
         || client.create_build(&app_lookup.app_id, &upload),
     )?;
 

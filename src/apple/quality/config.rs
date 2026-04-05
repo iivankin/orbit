@@ -319,18 +319,10 @@ impl EditorConfigSettings {
     }
 
     fn merge(&mut self, other: &EditorConfigSettings) {
-        if other.indent_style.is_some() {
-            self.indent_style = other.indent_style;
-        }
-        if other.indent_size.is_some() {
-            self.indent_size = other.indent_size;
-        }
-        if other.tab_width.is_some() {
-            self.tab_width = other.tab_width;
-        }
-        if other.max_line_length.is_some() {
-            self.max_line_length = other.max_line_length;
-        }
+        self.indent_style = other.indent_style.or(self.indent_style);
+        self.indent_size = other.indent_size.or(self.indent_size);
+        self.tab_width = other.tab_width.or(self.tab_width);
+        self.max_line_length = other.max_line_length.or(self.max_line_length);
     }
 }
 

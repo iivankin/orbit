@@ -1,7 +1,5 @@
 #![cfg(target_os = "macos")]
 
-mod support;
-
 use std::fs;
 use std::process::Command;
 
@@ -9,7 +7,7 @@ use orbit::apple::developer_services::DeveloperServicesClient;
 use orbit::context::AppContext;
 use serde_json::Value;
 
-use support::{
+use crate::support::{
     LiveCleanupGuard, create_live_workspace, create_live_workspace_with_manifest,
     latest_receipt_path, live_command, remote_capabilities_for_bundle_id,
     require_live_apple_config, run_and_capture,
@@ -48,7 +46,7 @@ fn current_machine_provisioning_udid() -> Option<String> {
 fn live_developer_services_lists_configured_team() {
     let config = require_live_apple_config("ORBIT_RUN_LIVE_APPLE_E2E");
     let app = AppContext::new(true, false).unwrap();
-    let mut developer_services = DeveloperServicesClient::authenticate(&app).unwrap();
+    let developer_services = DeveloperServicesClient::authenticate(&app).unwrap();
     let teams = developer_services.list_teams().unwrap();
     assert!(
         teams.iter().any(|team| team.team_id == config.team_id),

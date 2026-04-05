@@ -1,8 +1,6 @@
-mod support;
-
 use std::fs;
 
-use support::{
+use crate::support::{
     base_command, create_home, create_lldb_attach_mock, create_passthrough_mock,
     create_watch_workspace, create_watch_xcrun_mock, create_xcodebuild_mock, read_log,
     run_and_capture,

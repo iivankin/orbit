@@ -117,7 +117,7 @@ impl BspServer {
         let mut writer = BufWriter::new(stdout.lock());
 
         while let Some(message) = read_jsonrpc_message(&mut reader)? {
-            if !self.handle_message(message, &mut writer)? {
+            if !self.handle_message(&message, &mut writer)? {
                 break;
             }
         }
@@ -125,17 +125,18 @@ impl BspServer {
         writer.flush().context("failed to flush BSP output")
     }
 
-    fn handle_message<W: Write>(&mut self, message: Value, writer: &mut W) -> Result<bool> {
+    fn handle_message<W: Write>(&mut self, message: &Value, writer: &mut W) -> Result<bool> {
         let id = message.get("id").cloned();
         let method = message
             .get("method")
             .and_then(Value::as_str)
             .context("received a JSON-RPC message without a string `method`")?;
-        let params = message.get("params").cloned().unwrap_or(Value::Null);
+        let null = Value::Null;
+        let params = message.get("params").unwrap_or(&null);
 
         let response = match method {
             "build/initialize" => response_for_result(id, self.initialize()),
-            "build/initialized" => None,
+            "build/initialized" | "$/cancelRequest" => None,
             "workspace/reload" => self.handle_reload_request(id, writer)?,
             "build/shutdown" => {
                 self.shutdown_requested = true;
@@ -148,22 +149,22 @@ impl BspServer {
                 return Ok(false);
             }
             "workspace/buildTargets" => response_for_result(id, self.workspace_build_targets()),
-            "buildTarget/sources" => response_for_result(id, self.build_target_sources(&params)),
+            "buildTarget/sources" => response_for_result(id, self.build_target_sources(params)),
             "buildTarget/inverseSources" => {
-                response_for_result(id, self.build_target_inverse_sources(&params))
+                response_for_result(id, self.build_target_inverse_sources(params))
             }
             "buildTarget/outputPaths" => {
-                response_for_result(id, self.build_target_output_paths(&params))
+                response_for_result(id, self.build_target_output_paths(params))
             }
             "textDocument/sourceKitOptions" => {
-                response_for_result(id, self.text_document_sourcekit_options(&params))
+                response_for_result(id, self.text_document_sourcekit_options(params))
             }
-            "buildTarget/prepare" => self.handle_prepare_request(id, &params, writer)?,
+            "buildTarget/prepare" => self.handle_prepare_request(id, params, writer)?,
             "workspace/waitForBuildSystemUpdates" => id.map(|id| ok_response(id, Value::Null)),
             "workspace/didChangeWatchedFiles" => {
                 // Source edits can temporarily leave the workspace in a broken state.
                 // Keep serving the last known-good snapshot instead of crashing the BSP server.
-                let changes = watched_file_changes_from_params(&params);
+                let changes = watched_file_changes_from_params(params);
                 match self.handle_watched_file_changes(changes.as_slice(), writer) {
                     Ok(()) => {
                         // Notifications are emitted by the watched-file handler itself.
@@ -183,7 +184,6 @@ impl BspServer {
                 }
                 None
             }
-            "$/cancelRequest" => None,
             other => id.map(|id| error_response(id, -32601, format!("method `{other}` not found"))),
         };
 
@@ -377,7 +377,7 @@ impl BspServer {
             .context("BSP snapshot was not initialized")?;
         for ((platform, destination), target_names) in grouped_targets {
             build::prepare_for_ide(
-                &snapshot._analysis_project.project,
+                &snapshot.analysis_project.project,
                 apple_platform_from_str(&platform)?,
                 &target_names,
                 destination_from_str(&destination)?,
@@ -612,15 +612,14 @@ impl BspServer {
         self.last_snapshot_cache_status = Some(cached_artifact.cache_status);
         let artifact = cached_artifact.artifact;
         let new_snapshot = BspSnapshot::from_analysis(analysis_project, artifact)?;
-        let did_change_notification = if self.snapshot.is_some() {
+        let previous_snapshot = self.snapshot.as_ref();
+        let did_change_notification = previous_snapshot.and_then(|previous_snapshot| {
             build_target_did_change_notification_with_changed_files(
-                self.snapshot.as_ref(),
+                Some(previous_snapshot),
                 Some(&new_snapshot),
                 changed_files,
             )
-        } else {
-            None
-        };
+        });
         self.snapshot = Some(new_snapshot);
         if let Some(snapshot) = self.snapshot.as_mut() {
             snapshot.pending_did_change_notification = did_change_notification;
@@ -795,7 +794,7 @@ impl BspServer {
 }
 
 struct BspSnapshot {
-    _analysis_project: AnalysisProject,
+    analysis_project: AnalysisProject,
     project_root_uri: String,
     index_store_path: PathBuf,
     index_database_path: PathBuf,
@@ -946,7 +945,7 @@ impl BspSnapshot {
             target_ids.dedup();
         }
         Ok(Self {
-            _analysis_project: analysis_project,
+            analysis_project,
             project_root_uri,
             index_store_path: artifact.index_store_path,
             index_database_path: artifact.index_database_path,
@@ -1236,10 +1235,8 @@ fn is_c_family_language_id(language_id: &str) -> bool {
 fn same_c_family_driver(left: &str, right: &str) -> bool {
     matches!(
         (left, right),
-        ("c", "c" | "objective-c")
-            | ("objective-c", "c" | "objective-c")
-            | ("cpp", "cpp" | "objective-cpp")
-            | ("objective-cpp", "cpp" | "objective-cpp")
+        ("c" | "objective-c", "c" | "objective-c")
+            | ("cpp" | "objective-cpp", "cpp" | "objective-cpp")
     )
 }
 
@@ -1527,14 +1524,15 @@ fn watched_file_change_is_quality_only(path: &Path) -> bool {
 }
 
 fn watched_file_change_is_source_like(path: &Path) -> bool {
-    match path.extension().and_then(|extension| extension.to_str()) {
-        Some("swift") => true,
-        Some(extension) => C_FAMILY_SOURCE_EXTENSIONS
-            .iter()
-            .chain(C_FAMILY_HEADER_EXTENSIONS.iter())
-            .any(|candidate| extension.eq_ignore_ascii_case(candidate)),
-        None => false,
-    }
+    path.extension()
+        .and_then(|extension| extension.to_str())
+        .is_some_and(|extension| {
+            extension.eq_ignore_ascii_case("swift")
+                || C_FAMILY_SOURCE_EXTENSIONS
+                    .iter()
+                    .chain(C_FAMILY_HEADER_EXTENSIONS.iter())
+                    .any(|candidate| extension.eq_ignore_ascii_case(candidate))
+        })
 }
 
 fn origin_id_from_params(params: &Value) -> Option<String> {

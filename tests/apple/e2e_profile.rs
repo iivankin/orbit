@@ -1,8 +1,8 @@
-mod support;
-
 use std::fs;
 
-use support::{base_command, create_build_xcrun_mock, create_home, read_log, run_and_capture};
+use crate::support::{
+    base_command, create_build_xcrun_mock, create_home, read_log, run_and_capture,
+};
 use tempfile::tempdir;
 
 #[test]

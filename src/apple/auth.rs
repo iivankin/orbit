@@ -38,6 +38,28 @@ pub struct UserAuth {
     pub last_validated_at_unix: Option<u64>,
 }
 
+impl UserAuth {
+    fn new(apple_id: String) -> Self {
+        Self {
+            apple_id,
+            team_id: None,
+            provider_id: None,
+            provider_name: None,
+            last_validated_at_unix: None,
+        }
+    }
+
+    fn with_selected_ids(mut self, team_id: Option<String>, provider_id: Option<String>) -> Self {
+        if let Some(team_id) = team_id {
+            self.team_id = Some(team_id);
+        }
+        if let Some(provider_id) = provider_id {
+            self.provider_id = Some(provider_id);
+        }
+        self
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct UserAuthWithPassword {
     pub user: UserAuth,
@@ -73,8 +95,8 @@ pub fn ensure_project_authenticated(project: &ProjectContext) -> Result<()> {
     }
 
     let request = project_user_auth_request(project, app.interactive);
-    let mut user = ensure_user_identity(app, request.clone())?;
-    let mut developer_services = auth_progress_step(
+    let mut user = ensure_user_identity(app, &request)?;
+    let developer_services = auth_progress_step(
         "Apple auth: Refreshing GrandSlam and Developer Services session",
         |_| "Apple auth: Refreshed GrandSlam and Developer Services session.".to_owned(),
         || DeveloperServicesClient::authenticate(app),
@@ -90,8 +112,9 @@ pub fn ensure_project_authenticated(project: &ProjectContext) -> Result<()> {
         || developer_services.list_teams(),
     )?;
     let selected_team = select_developer_services_team(app, &user, &request, teams)?;
-    user.team_id = Some(selected_team.team_id.clone());
-    user.provider_name = Some(selected_team.name.clone());
+    let DeveloperServicesTeam { team_id, name, .. } = selected_team;
+    user.team_id = Some(team_id);
+    user.provider_name = Some(name);
     user.last_validated_at_unix = Some(current_unix_time());
     persist_user_state(app, &user)?;
     persist_project_auth_selection(project, &user)
@@ -124,23 +147,11 @@ pub fn resolve_user_auth_metadata(app: &AppContext) -> Result<Option<UserAuth>> 
     let provider_id = env_string("ORBIT_APPLE_PROVIDER_ID");
 
     if let Some(apple_id) = apple_id {
-        let mut user = state
+        let user = state
             .user
             .filter(|user| user.apple_id == apple_id)
-            .unwrap_or(UserAuth {
-                apple_id: apple_id.clone(),
-                team_id: None,
-                provider_id: None,
-                provider_name: None,
-                last_validated_at_unix: None,
-            });
-        user.apple_id = apple_id;
-        if team_id.is_some() {
-            user.team_id = team_id;
-        }
-        if provider_id.is_some() {
-            user.provider_id = provider_id;
-        }
+            .unwrap_or_else(|| UserAuth::new(apple_id.clone()))
+            .with_selected_ids(team_id, provider_id);
         return Ok(Some(user));
     }
 
@@ -149,35 +160,34 @@ pub fn resolve_user_auth_metadata(app: &AppContext) -> Result<Option<UserAuth>> 
 
 pub(crate) fn ensure_user_identity(
     app: &AppContext,
-    request: EnsureUserAuthRequest,
+    request: &EnsureUserAuthRequest,
 ) -> Result<UserAuth> {
     let state = load_state(app)?;
-    let resolved = resolve_user_inputs(app, &state, &request)?;
-    let user = resolved.user;
+    let inputs = resolve_user_inputs(app, &state, request)?;
+    let user = inputs.user;
     persist_user_state(app, &user)?;
     Ok(user)
 }
 
 pub(crate) fn ensure_user_auth_with_password(
     app: &AppContext,
-    request: EnsureUserAuthRequest,
+    request: &EnsureUserAuthRequest,
 ) -> Result<UserAuthWithPassword> {
     let state = load_state(app)?;
-    let resolved = resolve_user_inputs(app, &state, &request)?;
-    let user = resolved.user;
-    let password = match resolved.password {
-        Some(password) => password,
-        None => {
-            if !request.prompt_for_missing || !app.interactive {
-                bail!(
-                    "missing Apple ID password for `{}` in env or Keychain",
-                    user.apple_id
-                );
-            }
-            let password = prompt_password("Apple password")?;
-            store_secret(APPLE_PASSWORD_SERVICE, &user.apple_id, &password)?;
-            password
+    let inputs = resolve_user_inputs(app, &state, request)?;
+    let user = inputs.user;
+    let password = if let Some(password) = inputs.password {
+        password
+    } else {
+        if !request.prompt_for_missing || !app.interactive {
+            bail!(
+                "missing Apple ID password for `{}` in env or Keychain",
+                user.apple_id
+            );
         }
+        let password = prompt_password("Apple password")?;
+        store_secret(APPLE_PASSWORD_SERVICE, &user.apple_id, &password)?;
+        password
     };
 
     persist_user_state(app, &user)?;
@@ -222,21 +232,15 @@ fn resolve_user_inputs(
         })
         .context("Apple ID is required")?;
 
-    let mut user = state
+    let user = state
         .user
         .clone()
         .filter(|user| user.apple_id == apple_id)
-        .unwrap_or(UserAuth {
-            apple_id: apple_id.clone(),
-            team_id: None,
-            provider_id: None,
-            provider_name: None,
-            last_validated_at_unix: None,
-        });
-    user.apple_id = apple_id.clone();
-    user.team_id = env_string("ORBIT_APPLE_TEAM_ID").or_else(|| request.team_id.clone());
-    user.provider_id =
-        env_string("ORBIT_APPLE_PROVIDER_ID").or_else(|| request.provider_id.clone());
+        .unwrap_or_else(|| UserAuth::new(apple_id.clone()))
+        .with_selected_ids(
+            env_string("ORBIT_APPLE_TEAM_ID").or_else(|| request.team_id.clone()),
+            env_string("ORBIT_APPLE_PROVIDER_ID").or_else(|| request.provider_id.clone()),
+        );
 
     let password = match env_string("ORBIT_APPLE_PASSWORD") {
         Some(password) => Some(password),

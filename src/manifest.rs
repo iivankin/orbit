@@ -25,29 +25,27 @@ pub enum ManifestSchema {
 }
 
 impl ManifestSchema {
-    pub fn backend(self) -> ManifestBackend {
+    pub const fn backend(self) -> ManifestBackend {
         match self {
-            ManifestSchema::AppleAppV1 => ManifestBackend::Apple,
+            Self::AppleAppV1 => ManifestBackend::Apple,
         }
     }
 
-    pub fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
-            ManifestSchema::AppleAppV1 => crate::apple::manifest::SCHEMA_URL,
+            Self::AppleAppV1 => crate::apple::manifest::SCHEMA_URL,
         }
     }
 
-    pub fn file_name(self) -> &'static str {
+    pub const fn file_name(self) -> &'static str {
         match self {
-            ManifestSchema::AppleAppV1 => crate::apple::manifest::SCHEMA_FILENAME,
+            Self::AppleAppV1 => crate::apple::manifest::SCHEMA_FILENAME,
         }
     }
 
     fn matches(self, schema: &str) -> bool {
         match self {
-            ManifestSchema::AppleAppV1 => {
-                schema_file_name(schema) == crate::apple::manifest::SCHEMA_FILENAME
-            }
+            Self::AppleAppV1 => schema_file_name(schema) == crate::apple::manifest::SCHEMA_FILENAME,
         }
     }
 }

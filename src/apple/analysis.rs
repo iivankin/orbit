@@ -1,4 +1,5 @@
 use std::collections::BTreeSet;
+use std::fmt::Write as _;
 use std::fs;
 use std::path::{Path, PathBuf};
 
@@ -73,9 +74,10 @@ pub(crate) enum SemanticArtifactCacheStatus {
 
 impl SemanticArtifactCacheStatus {
     pub(crate) fn message(self, explicit_platform: Option<ApplePlatform>) -> String {
-        let scope = explicit_platform
-            .map(|platform| platform.to_string())
-            .unwrap_or_else(|| "all platforms".to_owned());
+        let scope = explicit_platform.map_or_else(
+            || "all platforms".to_owned(),
+            |platform| platform.to_string(),
+        );
         match self {
             Self::Hit => format!("Semantic analysis cache hit for {scope}."),
             Self::Miss => format!("Semantic analysis cache miss for {scope}; rebuilding."),
@@ -172,10 +174,7 @@ fn cached_analysis_orbit_dir(app: &AppContext, manifest_path: &Path) -> PathBuf 
 
 fn short_hash(value: &str) -> String {
     let digest = Sha256::digest(value.as_bytes());
-    digest[..8]
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    hex_digest(&digest[..8])
 }
 
 pub(crate) fn build_semantic_compilation_artifact<F>(
@@ -344,9 +343,7 @@ fn semantic_artifact_cache_path(
 }
 
 fn semantic_platform_cache_key(explicit_platform: Option<ApplePlatform>) -> String {
-    explicit_platform
-        .map(|platform| platform.to_string())
-        .unwrap_or_else(|| "all".to_owned())
+    explicit_platform.map_or_else(|| "all".to_owned(), |platform| platform.to_string())
 }
 
 fn semantic_artifact_fingerprint(
@@ -416,7 +413,7 @@ where
         project,
         toolchain,
         profile,
-        SemanticCFamilyCompilePlan {
+        &SemanticCFamilyCompilePlan {
             intermediates_dir: &intermediates_dir,
             index_store_path,
             external_link_inputs: &external_link_inputs,
@@ -518,7 +515,7 @@ fn semantic_c_family_compiler_invocations<F>(
     project: &ProjectContext,
     toolchain: &Toolchain,
     profile: &ProfileManifest,
-    plan: SemanticCFamilyCompilePlan<'_>,
+    plan: &SemanticCFamilyCompilePlan<'_>,
     include_source: &F,
 ) -> Result<Vec<SemanticCompilerInvocation>>
 where
@@ -548,9 +545,10 @@ where
                     index_store_path: Some(plan.index_store_path),
                 },
             )?;
-            let compiler = if language == ClangSourceLanguage::ObjectiveCpp
-                || language == ClangSourceLanguage::Cpp
-            {
+            let compiler = if matches!(
+                language,
+                ClangSourceLanguage::Cpp | ClangSourceLanguage::ObjectiveCpp
+            ) {
                 "clang++"
             } else {
                 "clang"
@@ -774,9 +772,10 @@ fn hash_path_entry(hasher: &mut Sha256, path: &Path) -> Result<()> {
 }
 
 fn hex_digest(digest: impl AsRef<[u8]>) -> String {
-    digest
-        .as_ref()
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let digest = digest.as_ref();
+    let mut output = String::with_capacity(digest.len() * 2);
+    for byte in digest {
+        write!(&mut output, "{byte:02x}").expect("writing to a String must succeed");
+    }
+    output
 }

@@ -1,8 +1,6 @@
-mod support;
-
 use std::fs;
 
-use support::{
+use crate::support::{
     base_command, create_git_swift_package_workspace, create_home,
     create_semver_git_swift_package_workspace, read_log, run_and_capture,
 };

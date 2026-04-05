@@ -1,8 +1,6 @@
-mod support;
-
 use std::fs;
 
-use support::{
+use crate::support::{
     base_command, create_home, create_p12, create_security_mock, create_signing_workspace,
     orbit_data_dir, run_and_capture,
 };
