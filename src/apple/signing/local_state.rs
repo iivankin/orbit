@@ -262,28 +262,66 @@ pub(super) fn export_p12_from_der_certificate(
     ]);
     run_command(&mut decode)?;
 
+    let private_key = private_key_path
+        .to_str()
+        .context("private key path contains invalid UTF-8")?;
+    let certificate_pem = certificate_pem
+        .path()
+        .to_str()
+        .context("temporary certificate path contains invalid UTF-8")?;
+    let output_path = output_path
+        .to_str()
+        .context("P12 path contains invalid UTF-8")?;
+
     let mut export = Command::new("openssl");
     export.args([
         "pkcs12",
         "-legacy",
         "-export",
         "-inkey",
-        private_key_path
-            .to_str()
-            .context("private key path contains invalid UTF-8")?,
+        private_key,
         "-in",
-        certificate_pem
-            .path()
-            .to_str()
-            .context("temporary certificate path contains invalid UTF-8")?,
+        certificate_pem,
         "-out",
-        output_path
-            .to_str()
-            .context("P12 path contains invalid UTF-8")?,
+        output_path,
         "-passout",
         &format!("pass:{password}"),
     ]);
-    run_command(&mut export)
+    let debug = crate::util::debug_command(&export);
+    let output = export
+        .output()
+        .with_context(|| format!("failed to execute `{debug}`"))?;
+    if output.status.success() {
+        return Ok(());
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+    if pkcs12_legacy_flag_is_unsupported(&stdout, &stderr) {
+        // LibreSSL on macOS still emits the older PKCS#12 settings by default, but it does not
+        // understand OpenSSL's `-legacy` flag. Retry without the flag instead of failing CI.
+        let mut export = Command::new("openssl");
+        export.args([
+            "pkcs12",
+            "-export",
+            "-inkey",
+            private_key,
+            "-in",
+            certificate_pem,
+            "-out",
+            output_path,
+            "-passout",
+            &format!("pass:{password}"),
+        ]);
+        return run_command(&mut export);
+    }
+
+    bail!(
+        "`{debug}` failed with {}\nstdout:\n{}\nstderr:\n{}",
+        output.status,
+        stdout,
+        stderr
+    )
 }
 
 pub(super) fn recover_orphaned_certificate(
@@ -706,4 +744,39 @@ fn repair_local_p12_password(certificate: &ManagedCertificate) -> Result<String>
     .context("failed to repair local P12 after missing password lookup")?;
     store_p12_password(&certificate.p12_password_account, &repaired_password)?;
     Ok(repaired_password)
+}
+
+fn pkcs12_legacy_flag_is_unsupported(stdout: &str, stderr: &str) -> bool {
+    let combined = crate::util::combine_command_output(stdout, stderr).to_ascii_lowercase();
+    combined.contains("legacy")
+        && (combined.contains("unknown option") || combined.contains("unrecognized flag"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::pkcs12_legacy_flag_is_unsupported;
+
+    #[test]
+    fn detects_libressl_rejecting_legacy_flag() {
+        assert!(pkcs12_legacy_flag_is_unsupported(
+            "",
+            "pkcs12: Unrecognized flag legacy\npkcs12: Use -help for summary.\n"
+        ));
+    }
+
+    #[test]
+    fn detects_openssl_unknown_legacy_option() {
+        assert!(pkcs12_legacy_flag_is_unsupported(
+            "",
+            "unknown option '-legacy'\nusage: pkcs12 ...\n"
+        ));
+    }
+
+    #[test]
+    fn ignores_other_pkcs12_failures() {
+        assert!(!pkcs12_legacy_flag_is_unsupported(
+            "",
+            "pkcs12: Can't open input file missing.p12\n"
+        ));
+    }
 }
