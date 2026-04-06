@@ -5,14 +5,14 @@ let package = Package(
     name: "orbit-swiftlint",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "orbit-swiftlint", targets: ["orbit-swiftlint"]),
+        .library(name: "OrbitSwiftLintFFI", type: .dynamic, targets: ["OrbitSwiftLintFFI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/realm/SwiftLint.git", exact: "0.63.2"),
     ],
     targets: [
-        .executableTarget(
-            name: "orbit-swiftlint",
+        .target(
+            name: "OrbitSwiftLintFFI",
             dependencies: [
                 .product(name: "SwiftLintFramework", package: "SwiftLint"),
             ]

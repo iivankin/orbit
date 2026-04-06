@@ -5,14 +5,14 @@ let package = Package(
     name: "orbit-swift-format",
     platforms: [.macOS(.v13)],
     products: [
-        .executable(name: "orbit-swift-format", targets: ["orbit-swift-format"]),
+        .library(name: "OrbitSwiftFormatFFI", type: .dynamic, targets: ["OrbitSwiftFormatFFI"]),
     ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-format.git", exact: "602.0.0"),
     ],
     targets: [
-        .executableTarget(
-            name: "orbit-swift-format",
+        .target(
+            name: "OrbitSwiftFormatFFI",
             dependencies: [
                 .product(name: "SwiftFormat", package: "swift-format"),
             ]

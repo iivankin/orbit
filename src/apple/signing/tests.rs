@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 
 use plist::Value;
+use serde_json::json;
 use tempfile::TempDir;
 
 use super::capability_sync::{
@@ -15,7 +16,8 @@ use super::{
     ASC_OPTION_APPLE_ID_PRIMARY_CONSENT, ASC_OPTION_DATA_PROTECTION_COMPLETE,
     ASC_OPTION_PUSH_BROADCAST, CertificateOrigin, ManagedCertificate, ManagedProfile,
     ProfileManifest, SigningState, clean_local_signing_state, load_state,
-    materialize_signing_entitlements, save_state, target_is_app_clip, team_signing_paths,
+    materialize_signing_entitlements, profile_covers_requested_ids, resolve_local_team_id_if_known,
+    save_state, target_is_app_clip, team_signing_paths,
 };
 use crate::apple::capabilities::{CapabilityRelationships, CapabilityUpdate, RemoteCapability};
 use crate::apple::device::CachedDevice;
@@ -210,6 +212,84 @@ fn local_cleanup_removes_only_current_project_profiles_and_unused_certs() {
     assert_eq!(cleaned.profiles[0].id, "PROFILE-OTHER");
     assert_eq!(cleaned.certificates.len(), 1);
     assert_eq!(cleaned.certificates[0].id, "CERT-OTHER");
+}
+
+#[test]
+fn local_team_resolution_ignores_global_auth_team_selection() {
+    let (_temp, mut project) = test_project();
+    project.resolved_manifest.team_id = None;
+    std::fs::write(
+        &project.manifest_path,
+        serde_json::to_vec_pretty(&json!({
+            "name": "OrbitFixture",
+            "bundle_id": "dev.orbit.fixture",
+            "version": "0.1.0",
+            "build": 1,
+            "platforms": { "ios": "18.0" },
+            "sources": ["Sources/App"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+    std::fs::write(
+        &project.app.global_paths.auth_state_path,
+        serde_json::to_vec_pretty(&json!({
+            "last_mode": "user",
+            "user": {
+                "apple_id": "dev@example.com",
+                "team_id": "TEAM999999",
+                "provider_id": null,
+                "provider_name": "Old Team",
+                "last_validated_at_unix": 123
+            },
+            "api_key": null
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_ne!(
+        resolve_local_team_id_if_known(&project).unwrap().as_deref(),
+        Some("TEAM999999")
+    );
+}
+
+#[test]
+fn local_team_resolution_observes_manifest_saved_after_project_load() {
+    let (_temp, mut project) = test_project();
+    project.resolved_manifest.team_id = None;
+    std::fs::write(
+        &project.manifest_path,
+        serde_json::to_vec_pretty(&json!({
+            "name": "OrbitFixture",
+            "bundle_id": "dev.orbit.fixture",
+            "version": "0.1.0",
+            "build": 1,
+            "team_id": "TEAM123456",
+            "platforms": { "ios": "18.0" },
+            "sources": ["Sources/App"]
+        }))
+        .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+        resolve_local_team_id_if_known(&project).unwrap().as_deref(),
+        Some("TEAM123456")
+    );
+}
+
+#[test]
+fn profile_reuse_accepts_remote_device_superset() {
+    assert!(profile_covers_requested_ids(
+        &["MAC-1".to_owned(), "MAC-2".to_owned()],
+        &["MAC-2".to_owned()]
+    ));
+    assert!(!profile_covers_requested_ids(
+        &["MAC-1".to_owned()],
+        &["MAC-1".to_owned(), "MAC-2".to_owned()]
+    ));
+    assert!(profile_covers_requested_ids(&[], &[]));
 }
 
 #[test]

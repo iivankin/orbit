@@ -307,7 +307,11 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
         .iter()
         .map(|value| value.as_str().unwrap().to_owned())
         .collect::<Vec<_>>();
-    assert!(compiler_arguments.iter().any(|value| value == "swiftc"));
+    assert!(!compiler_arguments.iter().any(|value| value == "swiftc"));
+    assert_eq!(
+        compiler_arguments.first().map(String::as_str),
+        Some("-parse-as-library")
+    );
     assert!(compiler_arguments.iter().any(|value| value == "-sdk"));
     assert!(
         compiler_arguments

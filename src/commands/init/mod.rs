@@ -5,6 +5,7 @@ use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
 
+use crate::apple;
 use crate::context::AppContext;
 use crate::manifest::installed_schema_path;
 use crate::util::{print_success, prompt_input, prompt_select, resolve_path};
@@ -46,6 +47,8 @@ pub fn execute(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()
 
     create_scaffold(project_root, &manifest_path, &plan)?;
     print_success(format!("Created {}", manifest_path.display()));
+    let bsp_path = apple::bsp::install_connection_file_for_manifest(&manifest_path)?;
+    print_success(format!("Installed {}", bsp_path.display()));
 
     println!("Next commands:");
     for command in &plan.next_commands {

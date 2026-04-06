@@ -1,4 +1,7 @@
 use super::*;
+use plist::{Dictionary, Value};
+use std::io::Cursor;
+use tempfile::NamedTempFile;
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 struct GeneratedCertificatePaths {
@@ -12,6 +15,12 @@ struct GeneratedCertificatePaths {
 struct ManagedBundleId {
     id: String,
     identifier: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DecodedProvisioningProfile {
+    device_udids: Vec<String>,
+    certificate_serial_numbers: Vec<String>,
 }
 
 impl From<&ProvisioningBundleId> for ManagedBundleId {
@@ -656,6 +665,8 @@ fn ensure_profile_with_developer_services(
     device_ids: &[String],
 ) -> Result<ManagedProfile> {
     let remote_profiles = provisioning.list_profiles(Some(profile_type))?;
+    let requested_device_udids =
+        resolve_device_udids_by_id_with_developer_services(provisioning, device_ids)?;
     let mut remote_profile_ids = HashSet::new();
     let mut stale_orbit_profiles = Vec::new();
     for remote in remote_profiles {
@@ -665,7 +676,27 @@ fn ensure_profile_with_developer_services(
         }
 
         let matches_certificate = remote.certificate_ids.contains(&certificate.id);
-        let matches_devices = canonical_ids(&remote.device_ids) == canonical_ids(device_ids);
+        let matches_devices = profile_covers_requested_ids(&remote.device_ids, device_ids);
+        let decoded_profile = if matches_certificate && matches_devices {
+            None
+        } else {
+            decode_provisioning_profile_content(&remote)?
+        };
+        // Apple-managed development profiles can omit `devices` or `certificates`
+        // relationships in Developer Services even though the signed profile
+        // payload contains the effective selection. Use the profile payload as a
+        // fallback source of truth before deciding the profile is stale.
+        let matches_certificate = matches_certificate
+            || decoded_profile.as_ref().is_some_and(|profile| {
+                profile_has_certificate_serial(profile, &certificate.serial_number)
+            });
+        let matches_devices = matches_devices
+            || decoded_profile.as_ref().is_some_and(|profile| {
+                profile_covers_requested_strings_case_insensitive(
+                    &profile.device_udids,
+                    &requested_device_udids,
+                )
+            });
         if matches_certificate && matches_devices {
             let managed = persist_developer_services_profile(
                 project,
@@ -703,7 +734,13 @@ fn ensure_profile_with_developer_services(
         &remote_profile_ids,
     );
 
-    let remote = provisioning.create_profile(profile_type, &bundle_id.id)?;
+    let remote = provisioning.create_profile(
+        &orbit_managed_profile_name(&bundle_id.identifier, profile_type),
+        profile_type,
+        &bundle_id.id,
+        std::slice::from_ref(&certificate.id),
+        device_ids,
+    )?;
     persist_developer_services_profile(
         project,
         state,
@@ -746,11 +783,161 @@ fn persist_developer_services_profile(
         bundle_id: bundle_identifier.to_owned(),
         path: profile_path,
         uuid: remote.uuid,
-        certificate_ids: vec![certificate.id.clone()],
-        device_ids: device_ids.to_vec(),
+        certificate_ids: if remote.certificate_ids.is_empty() {
+            vec![certificate.id.clone()]
+        } else {
+            remote.certificate_ids.clone()
+        },
+        device_ids: if remote.device_ids.is_empty() && !device_ids.is_empty() {
+            device_ids.to_vec()
+        } else {
+            remote.device_ids.clone()
+        },
     };
     state.profiles.push(profile.clone());
     Ok(profile)
+}
+
+fn resolve_device_udids_by_id_with_developer_services(
+    provisioning: &mut ProvisioningClient,
+    device_ids: &[String],
+) -> Result<Vec<String>> {
+    if device_ids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let devices = provisioning.list_devices()?;
+    let mut udids = Vec::with_capacity(device_ids.len());
+    for device_id in device_ids {
+        let device = devices
+            .iter()
+            .find(|device| device.id == *device_id)
+            .with_context(|| {
+                format!(
+                    "Developer Services did not return device `{device_id}` while preparing signing"
+                )
+            })?;
+        udids.push(device.udid.clone());
+    }
+    Ok(udids)
+}
+
+fn decode_provisioning_profile_content(
+    remote: &ProvisioningProfile,
+) -> Result<Option<DecodedProvisioningProfile>> {
+    let Some(profile_content) = remote.profile_content.as_deref() else {
+        return Ok(None);
+    };
+    let profile_bytes = base64::engine::general_purpose::STANDARD
+        .decode(profile_content)
+        .context("failed to decode Developer Services provisioning profile content")?;
+    Ok(Some(decode_provisioning_profile(&profile_bytes)?))
+}
+
+fn decode_provisioning_profile(profile_bytes: &[u8]) -> Result<DecodedProvisioningProfile> {
+    let dictionary = decode_provisioning_profile_dictionary(profile_bytes)?;
+    Ok(DecodedProvisioningProfile {
+        device_udids: dictionary
+            .get("ProvisionedDevices")
+            .and_then(Value::as_array)
+            .map(|devices| {
+                devices
+                    .iter()
+                    .filter_map(Value::as_string)
+                    .map(ToOwned::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        certificate_serial_numbers: provisioning_profile_certificate_serial_numbers(&dictionary)?,
+    })
+}
+
+fn decode_provisioning_profile_dictionary(profile_bytes: &[u8]) -> Result<Dictionary> {
+    if let Ok(value) = Value::from_reader(Cursor::new(profile_bytes))
+        && let Some(dictionary) = value.into_dictionary()
+    {
+        return Ok(dictionary);
+    }
+    if let Ok(value) = Value::from_reader_xml(Cursor::new(profile_bytes))
+        && let Some(dictionary) = value.into_dictionary()
+    {
+        return Ok(dictionary);
+    }
+
+    let temp_profile =
+        NamedTempFile::new().context("failed to create temporary provisioning profile")?;
+    fs::write(temp_profile.path(), profile_bytes).with_context(|| {
+        format!(
+            "failed to write temporary provisioning profile {}",
+            temp_profile.path().display()
+        )
+    })?;
+    let output = crate::util::command_output(
+        Command::new("security")
+            .args(["cms", "-D", "-i"])
+            .arg(temp_profile.path()),
+    )?;
+    Value::from_reader_xml(output.as_bytes())
+        .context("failed to decode provisioning profile CMS payload")?
+        .into_dictionary()
+        .context("decoded provisioning profile did not contain a top-level dictionary")
+}
+
+fn provisioning_profile_certificate_serial_numbers(dictionary: &Dictionary) -> Result<Vec<String>> {
+    let Some(certificates) = dictionary
+        .get("DeveloperCertificates")
+        .and_then(Value::as_array)
+    else {
+        return Ok(Vec::new());
+    };
+
+    let mut serial_numbers = Vec::with_capacity(certificates.len());
+    for certificate in certificates {
+        let Some(certificate_der) = certificate.as_data() else {
+            continue;
+        };
+        let temp_certificate =
+            NamedTempFile::new().context("failed to create temporary developer certificate")?;
+        fs::write(temp_certificate.path(), certificate_der).with_context(|| {
+            format!(
+                "failed to write temporary developer certificate {}",
+                temp_certificate.path().display()
+            )
+        })?;
+        serial_numbers.push(normalized_serial_number(&read_certificate_serial(
+            temp_certificate.path(),
+        )?));
+    }
+    Ok(serial_numbers)
+}
+
+fn profile_has_certificate_serial(
+    profile: &DecodedProvisioningProfile,
+    certificate_serial_number: &str,
+) -> bool {
+    let serial_number = normalized_serial_number(certificate_serial_number);
+    profile
+        .certificate_serial_numbers
+        .iter()
+        .any(|candidate| candidate == &serial_number)
+}
+
+fn profile_covers_requested_strings_case_insensitive(
+    actual: &[String],
+    requested: &[String],
+) -> bool {
+    if requested.is_empty() {
+        return actual.is_empty();
+    }
+
+    let actual = actual
+        .iter()
+        .map(|value| value.to_ascii_lowercase())
+        .collect::<HashSet<_>>();
+    requested
+        .iter()
+        .map(|value| value.to_ascii_lowercase())
+        .all(|value| actual.contains(&value))
 }
 
 fn resolve_device_ids_with_developer_services(
@@ -921,14 +1108,14 @@ fn ensure_profile_with_api_key(
             .unwrap_or_default();
 
         let matches_certificate = certificate_links.contains(&certificate.id);
-        let matches_devices = canonical_ids(&device_links) == canonical_ids(device_ids);
+        let matches_devices = profile_covers_requested_ids(&device_links, device_ids);
         if matches_certificate && matches_devices {
             let managed = persist_asc_profile(
                 project,
                 state,
                 profile_type,
                 bundle_identifier,
-                certificate,
+                &certificate_links,
                 &device_links,
                 profile,
             )?;
@@ -955,12 +1142,7 @@ fn ensure_profile_with_api_key(
     cleanup_stale_profile_state(state, bundle_identifier, profile_type, &remote_profile_ids);
 
     let remote = client.create_profile(
-        &format!(
-            "*[orbit] {} {} {}",
-            bundle_identifier,
-            profile_type,
-            crate::util::timestamp_slug()
-        ),
+        &orbit_managed_profile_name(bundle_identifier, profile_type),
         profile_type,
         &bundle_id.id,
         std::slice::from_ref(&certificate.id),
@@ -971,7 +1153,7 @@ fn ensure_profile_with_api_key(
         state,
         profile_type,
         bundle_identifier,
-        certificate,
+        std::slice::from_ref(&certificate.id),
         device_ids,
         remote,
     )
@@ -982,7 +1164,7 @@ fn persist_asc_profile(
     state: &mut SigningState,
     profile_type: &str,
     bundle_identifier: &str,
-    certificate: &ManagedCertificate,
+    certificate_ids: &[String],
     device_ids: &[String],
     remote: Resource<crate::apple::asc_api::ProfileAttributes>,
 ) -> Result<ManagedProfile> {
@@ -1009,7 +1191,7 @@ fn persist_asc_profile(
         bundle_id: bundle_identifier.to_owned(),
         path: profile_path,
         uuid: remote.attributes.uuid.clone(),
-        certificate_ids: vec![certificate.id.clone()],
+        certificate_ids: certificate_ids.to_vec(),
         device_ids: device_ids.to_vec(),
     };
     state.profiles.push(profile.clone());
@@ -1190,15 +1372,27 @@ fn normalized_serial_number(serial_number: &str) -> String {
     serial_number.to_ascii_lowercase()
 }
 
+fn orbit_managed_profile_name(bundle_identifier: &str, profile_type: &str) -> String {
+    format!(
+        "*[orbit] {} {} {}",
+        bundle_identifier,
+        profile_type,
+        crate::util::timestamp_slug()
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::HashSet;
+    use std::process::Command;
 
+    use plist::{Dictionary, Value};
     use tempfile::tempdir;
 
     use super::{
         ManagedCertificate, ManagedProfile, SigningState, cleanup_expired_certificate_state,
-        cleanup_stale_profile_state, expiration_date_has_passed_at,
+        cleanup_stale_profile_state, decode_provisioning_profile, expiration_date_has_passed_at,
+        normalized_serial_number, orbit_managed_profile_name, read_certificate_serial,
     };
     use crate::apple::signing::CertificateOrigin;
 
@@ -1208,6 +1402,12 @@ mod tests {
         assert!(expiration_date_has_passed_at(Some("2026-01-01T00:00:00Z"), now).unwrap());
         assert!(!expiration_date_has_passed_at(Some("2028-01-01T00:00:00Z"), now).unwrap());
         assert!(!expiration_date_has_passed_at(None, now).unwrap());
+    }
+
+    #[test]
+    fn orbit_managed_profile_names_keep_orbit_prefix_and_type() {
+        let name = orbit_managed_profile_name("dev.orbit.example", "MAC_APP_DEVELOPMENT");
+        assert!(name.starts_with("*[orbit] dev.orbit.example MAC_APP_DEVELOPMENT "));
     }
 
     #[test]
@@ -1278,5 +1478,77 @@ mod tests {
         assert!(!private_key_path.exists());
         assert!(!certificate_der_path.exists());
         assert!(!p12_path.exists());
+    }
+
+    #[test]
+    fn decode_provisioning_profile_reads_plain_plist_devices() {
+        let dictionary = Dictionary::from_iter([(
+            "ProvisionedDevices".to_owned(),
+            Value::Array(vec![
+                Value::String("DEVICE-ONE".to_owned()),
+                Value::String("DEVICE-TWO".to_owned()),
+            ]),
+        )]);
+        let mut bytes = Vec::new();
+        Value::Dictionary(dictionary)
+            .to_writer_xml(&mut bytes)
+            .unwrap();
+
+        let decoded = decode_provisioning_profile(&bytes).unwrap();
+
+        assert_eq!(decoded.device_udids, vec!["DEVICE-ONE", "DEVICE-TWO"]);
+        assert!(decoded.certificate_serial_numbers.is_empty());
+    }
+
+    #[test]
+    fn decode_provisioning_profile_reads_certificate_serials() {
+        let temp = tempdir().unwrap();
+        let key_path = temp.path().join("cert.key");
+        let certificate_pem_path = temp.path().join("cert.pem");
+        let certificate_der_path = temp.path().join("cert.cer");
+
+        crate::util::run_command(Command::new("openssl").args([
+            "req",
+            "-x509",
+            "-newkey",
+            "rsa:2048",
+            "-keyout",
+            key_path.to_str().unwrap(),
+            "-out",
+            certificate_pem_path.to_str().unwrap(),
+            "-days",
+            "1",
+            "-nodes",
+            "-subj",
+            "/CN=Orbit Signing Fixture",
+        ]))
+        .unwrap();
+        crate::util::run_command(Command::new("openssl").args([
+            "x509",
+            "-in",
+            certificate_pem_path.to_str().unwrap(),
+            "-outform",
+            "DER",
+            "-out",
+            certificate_der_path.to_str().unwrap(),
+        ]))
+        .unwrap();
+
+        let expected_serial =
+            normalized_serial_number(&read_certificate_serial(&certificate_der_path).unwrap());
+        let dictionary = Dictionary::from_iter([(
+            "DeveloperCertificates".to_owned(),
+            Value::Array(vec![Value::Data(
+                std::fs::read(&certificate_der_path).unwrap(),
+            )]),
+        )]);
+        let mut bytes = Vec::new();
+        Value::Dictionary(dictionary)
+            .to_writer_xml(&mut bytes)
+            .unwrap();
+
+        let decoded = decode_provisioning_profile(&bytes).unwrap();
+
+        assert_eq!(decoded.certificate_serial_numbers, vec![expected_serial]);
     }
 }

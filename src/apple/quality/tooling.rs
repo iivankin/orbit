@@ -1,16 +1,26 @@
-use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
-use anyhow::{Context, Result, bail};
-use serde::{Deserialize, Serialize};
+#[cfg(target_os = "macos")]
+use std::ffi::{CString, c_char};
+#[cfg(target_os = "macos")]
+use std::fs;
+#[cfg(target_os = "macos")]
+use std::os::unix::ffi::OsStrExt;
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::PermissionsExt;
+
+#[cfg(target_os = "macos")]
+use anyhow::Context;
+use anyhow::{Result, bail};
+#[cfg(target_os = "macos")]
+use libloading::Library;
+use serde::Serialize;
+#[cfg(target_os = "macos")]
 use sha2::{Digest, Sha256};
 
 use crate::context::AppContext;
-use crate::util::{
-    CliSpinner, command_output, command_output_allow_failure, debug_command, ensure_dir,
-    ensure_parent_dir, read_json_file_if_exists, run_command, write_json_file,
-};
+#[cfg(target_os = "macos")]
+use crate::util::{ensure_dir, write_json_file};
 
 #[derive(Debug, Serialize)]
 pub(crate) struct OrbitSwiftFormatRequest {
@@ -41,215 +51,295 @@ pub(crate) struct OrbitSwiftLintCompilerInvocation {
     pub source_files: Vec<PathBuf>,
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct SwiftToolBuildInfo {
-    binary_path: PathBuf,
+#[cfg(target_os = "macos")]
+mod embedded_swift_tools {
+    include!(concat!(env!("OUT_DIR"), "/embedded_swift_tools.rs"));
 }
 
-struct EmbeddedSwiftToolFile {
-    relative_path: &'static str,
-    contents: &'static str,
-}
+#[cfg(target_os = "macos")]
+type SwiftToolEntryPoint = unsafe extern "C" fn(*const c_char) -> i32;
 
+#[cfg(target_os = "macos")]
 struct EmbeddedSwiftToolSpec {
     name: &'static str,
-    product: &'static str,
-    files: &'static [EmbeddedSwiftToolFile],
+    file_name: &'static str,
+    bytes: &'static [u8],
+    symbol_name: &'static [u8],
+    available: bool,
+    unavailable_reason: &'static str,
 }
 
-const ORBIT_SWIFT_FORMAT_FILES: &[EmbeddedSwiftToolFile] = &[
-    EmbeddedSwiftToolFile {
-        relative_path: "Package.swift",
-        contents: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tools/orbit-swift-format/Package.swift"
-        )),
-    },
-    EmbeddedSwiftToolFile {
-        relative_path: "Sources/orbit-swift-format/main.swift",
-        contents: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tools/orbit-swift-format/Sources/orbit-swift-format/main.swift"
-        )),
-    },
-];
-
-const ORBIT_SWIFTLINT_FILES: &[EmbeddedSwiftToolFile] = &[
-    EmbeddedSwiftToolFile {
-        relative_path: "Package.swift",
-        contents: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tools/orbit-swiftlint/Package.swift"
-        )),
-    },
-    EmbeddedSwiftToolFile {
-        relative_path: "Sources/orbit-swiftlint/main.swift",
-        contents: include_str!(concat!(
-            env!("CARGO_MANIFEST_DIR"),
-            "/tools/orbit-swiftlint/Sources/orbit-swiftlint/main.swift"
-        )),
-    },
-];
-
-const ORBIT_SWIFT_FORMAT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
-    name: "orbit-swift-format",
-    product: "orbit-swift-format",
-    files: ORBIT_SWIFT_FORMAT_FILES,
-};
-
+#[cfg(target_os = "macos")]
 const ORBIT_SWIFTLINT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
     name: "orbit-swiftlint",
-    product: "orbit-swiftlint",
-    files: ORBIT_SWIFTLINT_FILES,
+    file_name: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_FILE_NAME,
+    bytes: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_BYTES,
+    symbol_name: b"orbit_swiftlint_run_request\0",
+    available: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_AVAILABLE,
+    unavailable_reason: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_UNAVAILABLE_REASON,
 };
 
+#[cfg(target_os = "macos")]
+const ORBIT_SWIFT_FORMAT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
+    name: "orbit-swift-format",
+    file_name: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_FILE_NAME,
+    bytes: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_BYTES,
+    symbol_name: b"orbit_swiftformat_run_request\0",
+    available: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_AVAILABLE,
+    unavailable_reason: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_UNAVAILABLE_REASON,
+};
+
+#[cfg(target_os = "macos")]
 pub(crate) fn run_orbit_swift_format(
     app: &AppContext,
     request_root: &Path,
     request: &OrbitSwiftFormatRequest,
 ) -> Result<()> {
+    ensure_embedded_swift_tool_available(&ORBIT_SWIFT_FORMAT_TOOL)?;
     let request_path = request_root.join("orbit-swift-format-request.json");
     write_json_file(&request_path, request)?;
-    let binary_path = ensure_swift_tool_binary(app, &ORBIT_SWIFT_FORMAT_TOOL)?;
-    let mut command = Command::new(binary_path);
-    command.arg(&request_path);
-    run_command(&mut command).with_context(|| "failed to run the Orbit Swift formatter")
+    run_embedded_swift_tool(app, &ORBIT_SWIFT_FORMAT_TOOL, &request_path)
+        .with_context(|| "failed to run the Orbit Swift formatter")
 }
 
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn run_orbit_swift_format(
+    app: &AppContext,
+    request_root: &Path,
+    request: &OrbitSwiftFormatRequest,
+) -> Result<()> {
+    let _ = (app, request_root, request);
+    bail!("Orbit Swift formatting is supported only on macOS hosts")
+}
+
+#[cfg(target_os = "macos")]
 pub(crate) fn run_orbit_swiftlint(
     app: &AppContext,
     request_root: &Path,
     request: &OrbitSwiftLintRequest,
 ) -> Result<()> {
+    ensure_embedded_swift_tool_available(&ORBIT_SWIFTLINT_TOOL)?;
     let request_path = request_root.join("orbit-swiftlint-request.json");
     write_json_file(&request_path, request)?;
-    let binary_path = ensure_swift_tool_binary(app, &ORBIT_SWIFTLINT_TOOL)?;
-    let mut command = Command::new(binary_path);
-    command.arg(&request_path);
-    run_command(&mut command).with_context(|| "failed to run the Orbit Swift linter")
+    run_embedded_swift_tool(app, &ORBIT_SWIFTLINT_TOOL, &request_path)
+        .with_context(|| "failed to run the Orbit Swift linter")
 }
 
-fn ensure_swift_tool_binary(app: &AppContext, spec: &EmbeddedSwiftToolSpec) -> Result<PathBuf> {
-    let cache_root = app.global_paths.cache_dir.join("swift-tools").join(format!(
-        "{}-{}",
-        spec.name,
-        tool_content_hash(spec)
-    ));
-    let package_dir = cache_root.join("package");
-    let build_info_path = cache_root.join("build-info.json");
-
-    materialize_swift_tool_package(&package_dir, spec)?;
-    if let Some(build_info) = read_json_file_if_exists::<SwiftToolBuildInfo>(&build_info_path)?
-        && build_info.binary_path.exists()
-    {
-        return Ok(build_info.binary_path);
-    }
-
-    ensure_dir(&cache_root)?;
-    let spinner = CliSpinner::new(format!("Building {}", spec.product));
-    let binary_path = build_swift_tool(&package_dir, &cache_root, spec)
-        .with_context(|| format!("failed to prepare Orbit-managed tool `{}`", spec.product));
-    match binary_path {
-        Ok(binary_path) => {
-            write_json_file(
-                &build_info_path,
-                &SwiftToolBuildInfo {
-                    binary_path: binary_path.clone(),
-                },
-            )?;
-            spinner.finish_clear();
-            Ok(binary_path)
-        }
-        Err(error) => {
-            spinner.finish_failure(format!("Failed to build {}", spec.product));
-            Err(error)
-        }
-    }
+#[cfg(not(target_os = "macos"))]
+pub(crate) fn run_orbit_swiftlint(
+    app: &AppContext,
+    request_root: &Path,
+    request: &OrbitSwiftLintRequest,
+) -> Result<()> {
+    let _ = (app, request_root, request);
+    bail!("Orbit Swift linting is supported only on macOS hosts")
 }
 
-fn build_swift_tool(
-    package_dir: &Path,
-    cache_root: &Path,
+#[cfg(target_os = "macos")]
+fn run_embedded_swift_tool(
+    app: &AppContext,
     spec: &EmbeddedSwiftToolSpec,
-) -> Result<PathBuf> {
-    let scratch_path = cache_root.join("scratch");
-    let dependency_cache_path = cache_root.join("dependency-cache");
-    ensure_dir(&scratch_path)?;
-    ensure_dir(&dependency_cache_path)?;
-
-    let mut build_command = Command::new("swift");
-    build_command
-        .arg("build")
-        .arg("--disable-keychain")
-        .arg("--package-path")
-        .arg(package_dir)
-        .arg("--scratch-path")
-        .arg(&scratch_path)
-        .arg("--cache-path")
-        .arg(&dependency_cache_path)
-        .arg("--configuration")
-        .arg("release")
-        .arg("--product")
-        .arg(spec.product);
-    let debug = debug_command(&build_command);
-    let (success, stdout, stderr) = command_output_allow_failure(&mut build_command)?;
-    if !success {
-        bail!("`{debug}` failed\nstdout:\n{}\nstderr:\n{}", stdout, stderr);
-    }
-
-    let bin_dir = command_output(
-        Command::new("swift")
-            .arg("build")
-            .arg("--disable-keychain")
-            .arg("--package-path")
-            .arg(package_dir)
-            .arg("--scratch-path")
-            .arg(&scratch_path)
-            .arg("--cache-path")
-            .arg(&dependency_cache_path)
-            .arg("--configuration")
-            .arg("release")
-            .arg("--product")
-            .arg(spec.product)
-            .arg("--show-bin-path"),
-    )?;
-    let binary_path = PathBuf::from(bin_dir.trim()).join(spec.product);
-    if !binary_path.exists() {
+    request_path: &Path,
+) -> Result<()> {
+    ensure_embedded_swift_tool_available(spec)?;
+    let library_path = ensure_swift_tool_library(app, spec)?;
+    let request_path = CString::new(request_path.as_os_str().as_bytes())
+        .context("Swift tool request path contained an unexpected NUL byte")?;
+    // Keep the library alive while invoking the exported C ABI entrypoint.
+    let status = unsafe {
+        let library = Library::new(&library_path)
+            .with_context(|| format!("failed to load {}", library_path.display()))?;
+        let entrypoint = library
+            .get::<SwiftToolEntryPoint>(spec.symbol_name)
+            .with_context(|| format!("missing FFI symbol for `{}`", spec.name))?;
+        entrypoint(request_path.as_ptr())
+    };
+    if status != 0 {
         bail!(
-            "swift build reported `{}` but the binary was not found at {}",
-            spec.product,
-            binary_path.display()
+            "embedded Orbit-managed tool `{}` failed with exit code {}",
+            spec.name,
+            status
         );
-    }
-    Ok(binary_path)
-}
-
-fn materialize_swift_tool_package(package_dir: &Path, spec: &EmbeddedSwiftToolSpec) -> Result<()> {
-    for file in spec.files {
-        let target_path = package_dir.join(file.relative_path);
-        if let Ok(existing) = fs::read_to_string(&target_path)
-            && existing == file.contents
-        {
-            continue;
-        }
-        ensure_parent_dir(&target_path)?;
-        fs::write(&target_path, file.contents)
-            .with_context(|| format!("failed to write {}", target_path.display()))?;
     }
     Ok(())
 }
 
-fn tool_content_hash(spec: &EmbeddedSwiftToolSpec) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(spec.name.as_bytes());
-    hasher.update(spec.product.as_bytes());
-    for file in spec.files {
-        hasher.update(file.relative_path.as_bytes());
-        hasher.update(file.contents.as_bytes());
+#[cfg(target_os = "macos")]
+fn ensure_embedded_swift_tool_available(spec: &EmbeddedSwiftToolSpec) -> Result<()> {
+    if !spec.available {
+        bail!("{}", spec.unavailable_reason);
     }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+fn ensure_swift_tool_library(app: &AppContext, spec: &EmbeddedSwiftToolSpec) -> Result<PathBuf> {
+    let cache_root = app.global_paths.cache_dir.join("swift-tools").join(format!(
+        "{}-{}",
+        spec.name,
+        embedded_tool_hash(spec.bytes)
+    ));
+    ensure_dir(&cache_root)?;
+    let library_path = cache_root.join(spec.file_name);
+    if library_path.exists() {
+        return Ok(library_path);
+    }
+
+    let temporary_path = cache_root.join(format!("{}.tmp", spec.file_name));
+    fs::write(&temporary_path, spec.bytes)
+        .with_context(|| format!("failed to write {}", temporary_path.display()))?;
+    fs::set_permissions(&temporary_path, fs::Permissions::from_mode(0o755))
+        .with_context(|| format!("failed to update {}", temporary_path.display()))?;
+    if let Err(error) = fs::rename(&temporary_path, &library_path) {
+        if library_path.exists() {
+            let _ = fs::remove_file(&temporary_path);
+            return Ok(library_path);
+        }
+        return Err(error).with_context(|| {
+            format!(
+                "failed to move {} into place at {}",
+                temporary_path.display(),
+                library_path.display()
+            )
+        });
+    }
+    Ok(library_path)
+}
+
+#[cfg(target_os = "macos")]
+fn embedded_tool_hash(bytes: &[u8]) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(bytes);
     let digest = hasher.finalize();
     digest[..8]
         .iter()
         .map(|byte| format!("{byte:02x}"))
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(target_os = "macos")]
+    use std::sync::{Mutex, OnceLock};
+
+    use super::*;
+    #[cfg(target_os = "macos")]
+    use crate::context::{AppContext, GlobalPaths};
+
+    #[cfg(target_os = "macos")]
+    static ENV_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+    #[cfg(target_os = "macos")]
+    const DEBUG_SWIFT_TOOL_UNAVAILABLE_MESSAGE: &str =
+        "Orbit debug builds skip embedded Swift quality tooling";
+
+    #[cfg(target_os = "macos")]
+    fn env_lock() -> &'static Mutex<()> {
+        ENV_LOCK.get_or_init(|| Mutex::new(()))
+    }
+
+    #[cfg(target_os = "macos")]
+    fn fixture_app(root: &Path) -> AppContext {
+        let data_dir = root.join("data");
+        let cache_dir = root.join("cache");
+        let schema_dir = root.join("schemas");
+        std::fs::create_dir_all(&data_dir).unwrap();
+        std::fs::create_dir_all(&cache_dir).unwrap();
+        std::fs::create_dir_all(&schema_dir).unwrap();
+        AppContext {
+            cwd: root.to_path_buf(),
+            interactive: false,
+            verbose: false,
+            global_paths: GlobalPaths {
+                data_dir: data_dir.clone(),
+                cache_dir,
+                schema_dir,
+                auth_state_path: data_dir.join("auth.json"),
+                device_cache_path: data_dir.join("devices.json"),
+                keychain_path: data_dir.join("orbit.keychain-db"),
+            },
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn embedded_swiftlint_ffi_handles_mock_request() {
+        let _guard = env_lock().lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let log_path = temp.path().join("mock.log");
+        let app = fixture_app(temp.path());
+
+        unsafe {
+            std::env::set_var("MOCK_LOG", &log_path);
+        }
+
+        let result = run_orbit_swiftlint(
+            &app,
+            temp.path(),
+            &OrbitSwiftLintRequest {
+                working_directory: temp.path().to_path_buf(),
+                configuration_json: None,
+                files: vec![temp.path().join("Example.swift")],
+                compiler_invocations: vec![OrbitSwiftLintCompilerInvocation {
+                    arguments: vec!["swiftc".to_owned(), "-sdk".to_owned()],
+                    source_files: vec![temp.path().join("Example.swift")],
+                }],
+            },
+        );
+
+        unsafe {
+            std::env::remove_var("MOCK_LOG");
+        }
+
+        if cfg!(debug_assertions) {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains(DEBUG_SWIFT_TOOL_UNAVAILABLE_MESSAGE));
+            return;
+        }
+
+        result.unwrap();
+        let log = std::fs::read_to_string(&log_path).unwrap();
+        assert!(log.contains("orbit-swiftlint request:"));
+        assert!(log.contains("\"compiler_invocations\""));
+        assert!(log.contains("\"swiftc\""));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn embedded_swiftformat_ffi_handles_mock_request() {
+        let _guard = env_lock().lock().unwrap();
+        let temp = tempfile::tempdir().unwrap();
+        let log_path = temp.path().join("mock.log");
+        let app = fixture_app(temp.path());
+
+        unsafe {
+            std::env::set_var("MOCK_LOG", &log_path);
+        }
+
+        let result = run_orbit_swift_format(
+            &app,
+            temp.path(),
+            &OrbitSwiftFormatRequest {
+                working_directory: temp.path().to_path_buf(),
+                configuration_json: None,
+                mode: OrbitSwiftFormatMode::Check,
+                files: vec![temp.path().join("Example.swift")],
+            },
+        );
+
+        unsafe {
+            std::env::remove_var("MOCK_LOG");
+        }
+
+        if cfg!(debug_assertions) {
+            let error = result.unwrap_err().to_string();
+            assert!(error.contains(DEBUG_SWIFT_TOOL_UNAVAILABLE_MESSAGE));
+            return;
+        }
+
+        result.unwrap();
+        let log = std::fs::read_to_string(&log_path).unwrap();
+        assert!(log.contains("orbit-swift-format request:"));
+        assert!(log.contains("\"mode\": \"check\""));
+    }
 }

@@ -8,6 +8,8 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 use crate::apple::manifest::{FormatQualityManifest, LintQualityManifest};
 use crate::context::ProjectContext;
 
+const ORBIT_DEFAULT_SWIFT_FORMAT_INDENT_WIDTH: u64 = 4;
+
 pub(super) struct IgnoreMatcher {
     root: PathBuf,
     globs: GlobSet,
@@ -56,6 +58,7 @@ pub(super) fn format_configuration_json(
 ) -> Result<Option<String>> {
     let quality = &project.resolved_manifest.quality.format;
     let mut configuration = load_swift_format_configuration(project.root.as_path())?;
+    apply_orbit_format_defaults(&mut configuration);
 
     if quality.editorconfig
         && let Some(settings) = resolve_editorconfig_settings(project.root.as_path(), files)?
@@ -73,6 +76,15 @@ pub(super) fn format_configuration_json(
         serde_json::to_string(&JsonValue::Object(configuration))
             .context("failed to serialize Orbit formatter configuration")?,
     ))
+}
+
+fn apply_orbit_format_defaults(configuration: &mut JsonMap<String, JsonValue>) {
+    // Orbit uses a 4-space indentation baseline unless the project overrides it.
+    configuration
+        .entry("indentation".to_owned())
+        .or_insert_with(
+            || serde_json::json!({ "spaces": ORBIT_DEFAULT_SWIFT_FORMAT_INDENT_WIDTH }),
+        );
 }
 
 fn build_ignore_matcher<T>(root: &Path, config: &T) -> Result<Option<IgnoreMatcher>>

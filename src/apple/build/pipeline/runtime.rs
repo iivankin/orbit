@@ -60,9 +60,6 @@ pub(super) fn run_on_macos(
             "Launching {} under xctrace on the local Mac. Orbit will wait for the recording to finish; press Ctrl-C to stop.",
             receipt.bundle_id
         );
-        if project.app.interactive {
-            spawn_macos_focus_helper(receipt.target.as_str())?;
-        }
         let trace = crate::apple::profile::start_optional_launched_process_trace(
             &project.root,
             project.selected_xcode.as_ref(),
@@ -205,7 +202,6 @@ cleanup "${{launcher_status}}"
     let script = write_temp_script(&script_contents, "macOS launch wrapper", true)?;
 
     if project.app.interactive {
-        spawn_macos_focus_helper(receipt.target.as_str())?;
         return run_macos_wrapper_session(script.path());
     }
 
@@ -230,47 +226,7 @@ pub(super) fn debug_on_macos(project: &ProjectContext, receipt: &BuildReceipt) -
         receipt.bundle_id
     );
 
-    if project.app.interactive {
-        spawn_macos_focus_helper(receipt.target.as_str())?;
-    }
-
     run_macos_debug_session(project, receipt, &executable, &lldb_script, &log_pipe)
-}
-
-fn spawn_macos_focus_helper(process_name: &str) -> Result<()> {
-    let mut command = Command::new("/bin/zsh");
-    command.arg("-lc").arg(format!(
-        r#"for _ in {{1..100}}; do
-  pid=$(/usr/bin/pgrep -n -x {process_name} 2>/dev/null || true)
-  if [[ -n "$pid" ]]; then
-    for _ in {{1..20}}; do
-      /usr/bin/osascript - "$pid" <<'APPLESCRIPT' >/dev/null 2>&1 && exit 0
-on run argv
-  set targetPid to (item 1 of argv) as integer
-  tell application "System Events"
-    set targetProcess to first process whose unix id is targetPid
-    if (count of windows of targetProcess) = 0 then
-      error number 1
-    end if
-    set frontmost of targetProcess to true
-  end tell
-end run
-APPLESCRIPT
-      sleep 0.1
-    done
-  fi
-  sleep 0.1
-done
-exit 0"#,
-        process_name = shell_quote_arg(process_name),
-    ));
-    command.stdin(Stdio::null());
-    command.stdout(Stdio::null());
-    command.stderr(Stdio::null());
-    command
-        .spawn()
-        .with_context(|| "failed to start macOS focus helper".to_owned())?;
-    Ok(())
 }
 
 pub(super) fn run_on_simulator(

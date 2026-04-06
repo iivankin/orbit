@@ -195,7 +195,9 @@ pub(crate) fn ensure_user_auth_with_password(
 }
 
 fn load_state(app: &AppContext) -> Result<AuthState> {
-    Ok(read_json_file_if_exists(&app.global_paths.auth_state_path)?.unwrap_or_default())
+    Ok(normalize_auth_state(
+        read_json_file_if_exists(&app.global_paths.auth_state_path)?.unwrap_or_default(),
+    ))
 }
 
 fn save_state(app: &AppContext, state: &AuthState) -> Result<()> {
@@ -204,9 +206,23 @@ fn save_state(app: &AppContext, state: &AuthState) -> Result<()> {
 
 fn persist_user_state(app: &AppContext, user: &UserAuth) -> Result<()> {
     let mut state = load_state(app)?;
-    state.user = Some(user.clone());
+    state.user = Some(strip_project_selection(user.clone()));
     state.last_mode = Some(StoredAuthMode::User);
     save_state(app, &state)
+}
+
+fn normalize_auth_state(mut state: AuthState) -> AuthState {
+    if let Some(user) = state.user.take() {
+        state.user = Some(strip_project_selection(user));
+    }
+    state
+}
+
+fn strip_project_selection(mut user: UserAuth) -> UserAuth {
+    // Apple team selection belongs to the project manifest, not the global auth cache.
+    user.team_id = None;
+    user.provider_name = None;
+    user
 }
 
 fn resolve_user_inputs(
@@ -368,7 +384,7 @@ fn persist_project_auth_selection(project: &ProjectContext, user: &UserAuth) -> 
         return Ok(());
     }
     print_success(format!(
-        "Saved Apple provider selection to {}.",
+        "Saved Apple team/provider selection to {}.",
         project.manifest_path.display()
     ));
     Ok(())
@@ -488,7 +504,32 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
-    use super::persist_auth_selection_fields;
+    use super::{
+        UserAuth, persist_auth_selection_fields, persist_user_state, resolve_user_auth_metadata,
+    };
+    use crate::context::{AppContext, GlobalPaths};
+
+    fn test_app() -> (tempfile::TempDir, AppContext) {
+        let temp = tempdir().unwrap();
+        let data_dir = temp.path().join("data");
+        let cache_dir = temp.path().join("cache");
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(&cache_dir).unwrap();
+        let app = AppContext {
+            cwd: temp.path().to_path_buf(),
+            interactive: false,
+            verbose: false,
+            global_paths: GlobalPaths {
+                data_dir: data_dir.clone(),
+                cache_dir,
+                schema_dir: data_dir.join("schemas"),
+                auth_state_path: data_dir.join("auth.json"),
+                device_cache_path: data_dir.join("devices.json"),
+                keychain_path: data_dir.join("orbit.keychain-db"),
+            },
+        };
+        (temp, app)
+    }
 
     #[test]
     fn persisting_auth_selection_keeps_authoring_manifest_shape() {
@@ -533,5 +574,55 @@ mod tests {
             manifest.get("provider_id").and_then(|value| value.as_str()),
             Some("128120286")
         );
+    }
+
+    #[test]
+    fn persisted_user_state_omits_project_scoped_team_selection() {
+        let (_temp, app) = test_app();
+        persist_user_state(
+            &app,
+            &UserAuth {
+                apple_id: "dev@example.com".to_owned(),
+                team_id: Some("TEAM123456".to_owned()),
+                provider_id: Some("128120286".to_owned()),
+                provider_name: Some("Example Team".to_owned()),
+                last_validated_at_unix: Some(123),
+            },
+        )
+        .unwrap();
+
+        let state: serde_json::Value =
+            serde_json::from_slice(&fs::read(&app.global_paths.auth_state_path).unwrap()).unwrap();
+        assert_eq!(state["user"]["apple_id"].as_str(), Some("dev@example.com"));
+        assert_eq!(state["user"]["team_id"].as_str(), None);
+        assert_eq!(state["user"]["provider_id"].as_str(), Some("128120286"));
+        assert_eq!(state["user"]["provider_name"].as_str(), None);
+    }
+
+    #[test]
+    fn resolve_user_auth_metadata_ignores_stale_global_team_selection() {
+        let (_temp, app) = test_app();
+        fs::write(
+            &app.global_paths.auth_state_path,
+            serde_json::to_vec_pretty(&json!({
+                "last_mode": "user",
+                "user": {
+                    "apple_id": "dev@example.com",
+                    "team_id": "TEAM123456",
+                    "provider_id": "128120286",
+                    "provider_name": "Example Team",
+                    "last_validated_at_unix": 123
+                },
+                "api_key": null
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let user = resolve_user_auth_metadata(&app).unwrap().unwrap();
+        assert_eq!(user.apple_id, "dev@example.com");
+        assert_eq!(user.team_id, None);
+        assert_eq!(user.provider_id.as_deref(), Some("128120286"));
+        assert_eq!(user.provider_name, None);
     }
 }

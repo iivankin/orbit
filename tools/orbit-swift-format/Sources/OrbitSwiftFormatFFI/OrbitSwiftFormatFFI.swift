@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import SwiftFormat
 
@@ -28,23 +27,36 @@ private enum FormatToolError: LocalizedError {
     }
 }
 
-@main
-struct OrbitSwiftFormatTool {
-    static func main() {
-        do {
-            try run()
-        } catch {
-            writeToStandardError("error: \(error.localizedDescription)\n")
-            exit(1)
-        }
+public func orbitSwiftFormatMain(arguments: [String] = CommandLine.arguments) -> Int32 {
+    do {
+        return try OrbitSwiftFormatTool.run(arguments: arguments)
+    } catch {
+        writeToStandardError("error: \(error.localizedDescription)\n")
+        return 1
     }
+}
 
-    private static func run() throws {
-        guard CommandLine.arguments.count == 2 else {
+@_cdecl("orbit_swiftformat_run_request")
+public func orbit_swiftformat_run_request(requestPath: UnsafePointer<CChar>?) -> Int32 {
+    guard let requestPath else {
+        writeToStandardError("error: missing request path for orbit-swift-format\n")
+        return 1
+    }
+    return orbitSwiftFormatMain(arguments: ["orbit-swift-format", String(cString: requestPath)])
+}
+
+private enum OrbitSwiftFormatTool {
+    static func run(arguments: [String]) throws -> Int32 {
+        guard arguments.count == 2 else {
             throw FormatToolError.usage
         }
 
-        let request = try decodeRequest(at: CommandLine.arguments[1])
+        let requestPath = arguments[1]
+        if let status = try maybeHandleMockRequest(at: requestPath) {
+            return status
+        }
+
+        let request = try decodeRequest(at: requestPath)
         guard FileManager.default.changeCurrentDirectoryPath(request.workingDirectory) else {
             throw FormatToolError.invalidWorkingDirectory(request.workingDirectory)
         }
@@ -55,11 +67,12 @@ struct OrbitSwiftFormatTool {
             let findings = try lint(files: request.files, configuration: configuration)
             guard findings.isEmpty else {
                 emit(findings: findings)
-                exit(2)
+                return 2
             }
         case .write:
             try format(files: request.files, configuration: configuration)
         }
+        return 0
     }
 
     private static func decodeRequest(at path: String) throws -> FormatRequest {
@@ -115,6 +128,46 @@ struct OrbitSwiftFormatTool {
                 )
             }
         }
+    }
+}
+
+private func maybeHandleMockRequest(at requestPath: String) throws -> Int32? {
+    guard let mockLogPath = ProcessInfo.processInfo.environment["MOCK_LOG"] else {
+        return nil
+    }
+
+    let requestBody = try String(contentsOfFile: requestPath, encoding: .utf8)
+    appendToMockLog(
+        mockLogPath,
+        lines: [
+            "orbit-swift-format \(requestPath)\n",
+            "orbit-swift-format request:\n",
+            requestBody,
+            "\n",
+        ]
+    )
+    return 0
+}
+
+private func appendToMockLog(_ path: String, lines: [String]) {
+    guard let data = lines.joined().data(using: .utf8) else {
+        return
+    }
+    let fileManager = FileManager.default
+    if !fileManager.fileExists(atPath: path) {
+        fileManager.createFile(atPath: path, contents: nil)
+    }
+    guard let handle = FileHandle(forWritingAtPath: path) else {
+        return
+    }
+    defer {
+        try? handle.close()
+    }
+    do {
+        try handle.seekToEnd()
+        try handle.write(contentsOf: data)
+    } catch {
+        // Ignore mock log failures; they should not affect real runs.
     }
 }
 

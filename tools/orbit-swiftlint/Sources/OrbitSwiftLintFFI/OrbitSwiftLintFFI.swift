@@ -1,4 +1,3 @@
-import Darwin
 import Foundation
 import SwiftLintFramework
 
@@ -53,23 +52,36 @@ private enum LintToolError: LocalizedError {
     }
 }
 
-@main
-struct OrbitSwiftLintTool {
-    static func main() {
-        do {
-            try run()
-        } catch {
-            writeToStandardError("error: \(error.localizedDescription)\n")
-            exit(1)
-        }
+public func orbitSwiftLintMain(arguments: [String] = CommandLine.arguments) -> Int32 {
+    do {
+        return try OrbitSwiftLintTool.run(arguments: arguments)
+    } catch {
+        writeToStandardError("error: \(error.localizedDescription)\n")
+        return 1
     }
+}
 
-    private static func run() throws {
-        guard CommandLine.arguments.count == 2 else {
+@_cdecl("orbit_swiftlint_run_request")
+public func orbit_swiftlint_run_request(requestPath: UnsafePointer<CChar>?) -> Int32 {
+    guard let requestPath else {
+        writeToStandardError("error: missing request path for orbit-swiftlint\n")
+        return 1
+    }
+    return orbitSwiftLintMain(arguments: ["orbit-swiftlint", String(cString: requestPath)])
+}
+
+private enum OrbitSwiftLintTool {
+    static func run(arguments: [String]) throws -> Int32 {
+        guard arguments.count == 2 else {
             throw LintToolError.usage
         }
 
-        let request = try decodeRequest(at: CommandLine.arguments[1])
+        let requestPath = arguments[1]
+        if let status = try maybeHandleMockRequest(at: requestPath) {
+            return status
+        }
+
+        let request = try decodeRequest(at: requestPath)
         guard FileManager.default.changeCurrentDirectoryPath(request.workingDirectory) else {
             throw LintToolError.invalidWorkingDirectory(request.workingDirectory)
         }
@@ -97,8 +109,9 @@ struct OrbitSwiftLintTool {
         emit(report: reporter.generateReport(semanticResult.violations))
 
         if syntaxResult.seriousViolations + semanticResult.seriousViolations > 0 {
-            exit(2)
+            return 2
         }
+        return 0
     }
 
     private static func decodeRequest(at path: String) throws -> LintRequest {
@@ -189,9 +202,9 @@ struct OrbitSwiftLintTool {
         for linter in collectedLinters {
             let passViolations = applySeverityOverrides(
                 violations: applyLeniency(
-                violations: linter.styleViolations(using: storage),
-                strict: configuration.strict,
-                lenient: configuration.lenient
+                    violations: linter.styleViolations(using: storage),
+                    strict: configuration.strict,
+                    lenient: configuration.lenient
                 ),
                 severityOverrides: severityOverrides
             )
@@ -200,8 +213,7 @@ struct OrbitSwiftLintTool {
 
         if isWarningThresholdBroken(configuration: configuration, violations: violations),
            !configuration.lenient,
-           let threshold = configuration.warningThreshold
-        {
+           let threshold = configuration.warningThreshold {
             violations.append(createThresholdViolation(threshold: threshold))
         }
 
@@ -416,6 +428,24 @@ struct OrbitSwiftLintTool {
     }
 }
 
+private func maybeHandleMockRequest(at requestPath: String) throws -> Int32? {
+    guard let mockLogPath = ProcessInfo.processInfo.environment["MOCK_LOG"] else {
+        return nil
+    }
+
+    let requestBody = try String(contentsOfFile: requestPath, encoding: .utf8)
+    appendToMockLog(
+        mockLogPath,
+        lines: [
+            "orbit-swiftlint \(requestPath)\n",
+            "orbit-swiftlint request:\n",
+            requestBody,
+            "\n",
+        ]
+    )
+    return 0
+}
+
 private func normalizePath(_ path: String) -> String {
     URL(fileURLWithPath: path).standardizedFileURL.path
 }
@@ -457,6 +487,28 @@ private func filterCompilerArguments(_ arguments: [String]) -> [String] {
                 return argument
             }
         }
+}
+
+private func appendToMockLog(_ path: String, lines: [String]) {
+    guard let data = lines.joined().data(using: .utf8) else {
+        return
+    }
+    let fileManager = FileManager.default
+    if !fileManager.fileExists(atPath: path) {
+        fileManager.createFile(atPath: path, contents: nil)
+    }
+    guard let handle = FileHandle(forWritingAtPath: path) else {
+        return
+    }
+    defer {
+        try? handle.close()
+    }
+    do {
+        try handle.seekToEnd()
+        try handle.write(contentsOf: data)
+    } catch {
+        // Ignore mock log failures; they should not affect real runs.
+    }
 }
 
 private func writeToStandardOutput(_ message: String) {

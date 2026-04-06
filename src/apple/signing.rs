@@ -46,7 +46,7 @@ use crate::apple::asc_api::{
     AscClient, BundleIdAttributes, CapabilityOption, CapabilitySetting, Resource,
     remote_capabilities_from_included,
 };
-use crate::apple::auth::{resolve_api_key_auth, resolve_user_auth_metadata};
+use crate::apple::auth::resolve_api_key_auth;
 use crate::apple::capabilities::{
     CapabilityRelationships, CapabilitySyncOptions, CapabilityUpdate, RemoteCapability,
     capability_sync_plan_from_dictionary_with_options,
@@ -59,11 +59,14 @@ use crate::apple::runtime::{
 use crate::cli::{SigningExportArgs, SigningImportArgs};
 use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, ProfileManifest, TargetManifest};
-use crate::util::{CliSpinner, copy_file, ensure_dir, ensure_parent_dir, prompt_password};
+use crate::util::{
+    CliSpinner, copy_file, ensure_dir, ensure_parent_dir, prompt_password, read_json_file,
+};
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
 use plist::Dictionary;
 use serde::{Deserialize, Serialize};
+use serde_json::Value as JsonValue;
 
 const P12_PASSWORD_SERVICE: &str = "dev.orbit.cli.codesign-p12";
 const ASC_SUPPORTED_CAPABILITIES: &[&str] = &[
@@ -274,16 +277,15 @@ fn resolve_local_team_id_if_known(project: &ProjectContext) -> Result<Option<Str
         .ok()
         .or_else(|| project.resolved_manifest.team_id.clone())
         .or_else(|| {
-            resolve_user_auth_metadata(&project.app)
+            persisted_manifest_team_id(&project.manifest_path)
                 .ok()
                 .flatten()
-                .and_then(|user| user.team_id)
         }))
 }
 
 fn resolve_local_team_id(project: &ProjectContext) -> Result<String> {
     resolve_local_team_id_if_known(project)?.context(
-        "signing state is scoped by Apple team; set `team_id` in orbit.json, export ORBIT_APPLE_TEAM_ID, or log in once so Orbit can persist the team selection",
+        "signing state is scoped by Apple team; set `team_id` in orbit.json or export ORBIT_APPLE_TEAM_ID",
     )
 }
 
@@ -291,6 +293,27 @@ fn canonical_ids(ids: &[String]) -> Vec<String> {
     let mut ids = ids.to_vec();
     ids.sort();
     ids
+}
+
+fn profile_covers_requested_ids(actual: &[String], requested: &[String]) -> bool {
+    if requested.is_empty() {
+        return actual.is_empty();
+    }
+
+    // Apple-managed development profiles can legitimately expand to a superset
+    // of the requested devices, especially on macOS where team provisioning
+    // profiles may include every registered Mac for the team.
+    let actual = actual.iter().map(String::as_str).collect::<HashSet<_>>();
+    requested.iter().all(|id| actual.contains(id.as_str()))
+}
+
+fn persisted_manifest_team_id(manifest_path: &Path) -> Result<Option<String>> {
+    let manifest: JsonValue = read_json_file(manifest_path)?;
+    Ok(manifest
+        .get("team_id")
+        .and_then(JsonValue::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned))
 }
 
 #[cfg(test)]

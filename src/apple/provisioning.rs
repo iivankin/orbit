@@ -518,25 +518,19 @@ impl ProvisioningClient {
 
     pub fn create_profile(
         &mut self,
+        name: &str,
         profile_type: &str,
         bundle_id_id: &str,
+        certificate_ids: &[String],
+        device_ids: &[String],
     ) -> Result<ProvisioningProfile> {
-        let request = json!({
-            "data": {
-                "type": "profiles",
-                "attributes": {
-                    "profileType": profile_type,
-                },
-                "relationships": {
-                    "bundleId": {
-                        "data": {
-                            "id": bundle_id_id,
-                            "type": "bundleIds",
-                        }
-                    }
-                }
-            }
-        });
+        let request = build_profile_create_request(
+            name,
+            profile_type,
+            bundle_id_id,
+            certificate_ids,
+            device_ids,
+        );
         let response: JsonApiDocument<ProfileAttributes> =
             self.request_json(Method::POST, "profiles", &[], Some(request))?;
         Ok(parse_provisioning_profile(response.data, &HashMap::new()))
@@ -915,9 +909,55 @@ fn capability_relationships(
     map
 }
 
+fn build_profile_create_request(
+    name: &str,
+    profile_type: &str,
+    bundle_id_id: &str,
+    certificate_ids: &[String],
+    device_ids: &[String],
+) -> serde_json::Value {
+    json!({
+        "data": {
+            "type": "profiles",
+            "attributes": {
+                "name": name,
+                "profileType": profile_type,
+            },
+            "relationships": {
+                "bundleId": {
+                    "data": {
+                        "id": bundle_id_id,
+                        "type": "bundleIds",
+                    }
+                },
+                "certificates": {
+                    "data": certificate_ids
+                        .iter()
+                        .map(|id| json!({
+                            "id": id,
+                            "type": "certificates",
+                        }))
+                        .collect::<Vec<_>>(),
+                },
+                "devices": {
+                    "data": device_ids
+                        .iter()
+                        .map(|id| json!({
+                            "id": id,
+                            "type": "devices",
+                        }))
+                        .collect::<Vec<_>>(),
+                },
+            }
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
-    use super::parse_provisioning_profiles;
+    use serde_json::json;
+
+    use super::{build_profile_create_request, parse_provisioning_profiles};
     use crate::apple::asc_api::JsonApiListDocument;
 
     #[test]
@@ -969,5 +1009,53 @@ mod tests {
         );
         assert_eq!(profiles[0].certificate_ids, vec!["CERT123"]);
         assert_eq!(profiles[0].device_ids, vec!["DEVICE123"]);
+    }
+
+    #[test]
+    fn profile_create_request_includes_name_certificates_and_devices() {
+        let request = build_profile_create_request(
+            "*[orbit] dev.orbit.example MAC_APP_DEVELOPMENT 123",
+            "MAC_APP_DEVELOPMENT",
+            "BUNDLE123",
+            &["CERT123".to_owned()],
+            &["DEVICE123".to_owned()],
+        );
+
+        assert_eq!(
+            request,
+            json!({
+                "data": {
+                    "type": "profiles",
+                    "attributes": {
+                        "name": "*[orbit] dev.orbit.example MAC_APP_DEVELOPMENT 123",
+                        "profileType": "MAC_APP_DEVELOPMENT",
+                    },
+                    "relationships": {
+                        "bundleId": {
+                            "data": {
+                                "id": "BUNDLE123",
+                                "type": "bundleIds",
+                            }
+                        },
+                        "certificates": {
+                            "data": [
+                                {
+                                    "id": "CERT123",
+                                    "type": "certificates",
+                                }
+                            ],
+                        },
+                        "devices": {
+                            "data": [
+                                {
+                                    "id": "DEVICE123",
+                                    "type": "devices",
+                                }
+                            ],
+                        },
+                    }
+                }
+            })
+        );
     }
 }

@@ -249,6 +249,7 @@ pub(super) fn create_scaffold(
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
     ensure_gitignore_entry(project_root, ".bsp/")?;
+    ensure_gitignore_entry(project_root, ".orbit/")?;
 
     Ok(())
 }
@@ -592,5 +593,8 @@ mod tests {
                 .join("Sources/App/HomeView.swift")
                 .is_file()
         );
+        let gitignore =
+            std::fs::read_to_string(manifest_path.parent().unwrap().join(".gitignore")).unwrap();
+        assert_eq!(gitignore, ".bsp/\n.orbit/\n");
     }
 }

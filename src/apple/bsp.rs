@@ -40,6 +40,12 @@ pub fn serve(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()> 
 
 pub fn install_connection_files(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()> {
     let manifest_path = app.resolve_manifest_path_for_dispatch(requested_manifest)?;
+    let standard_path = install_connection_file_for_manifest(&manifest_path)?;
+    print_success(format!("Installed {}", standard_path.display()));
+    Ok(())
+}
+
+pub(crate) fn install_connection_file_for_manifest(manifest_path: &Path) -> Result<PathBuf> {
     let manifest_path = manifest_path
         .canonicalize()
         .with_context(|| format!("failed to canonicalize {}", manifest_path.display()))?;
@@ -50,8 +56,7 @@ pub fn install_connection_files(app: &AppContext, requested_manifest: Option<&Pa
 
     let standard_path = project_root.join(".bsp").join(BSP_CONNECTION_FILE_NAME);
     write_json_file(&standard_path, &details)?;
-    print_success(format!("Installed {}", standard_path.display()));
-    Ok(())
+    Ok(standard_path)
 }
 
 pub(crate) fn connection_details(manifest_path: &Path) -> Result<BspConnectionDetails> {
@@ -341,13 +346,20 @@ impl BspServer {
         let Some(mut options) = target.sourcekit_options(&document_path, requested_language) else {
             return Ok(Value::Null);
         };
-        if options.language_id.as_deref() == Some("swift")
-            && let Some(index_unit_output_path) = options.index_unit_output_path.take()
-        {
-            options
+        if options.language_id.as_deref() == Some("swift") {
+            if options
                 .compiler_arguments
-                .push("-index-unit-output-path".to_owned());
-            options.compiler_arguments.push(index_unit_output_path);
+                .first()
+                .is_some_and(|argument| argument == "swiftc")
+            {
+                options.compiler_arguments.remove(0);
+            }
+            if let Some(index_unit_output_path) = options.index_unit_output_path.take() {
+                options
+                    .compiler_arguments
+                    .push("-index-unit-output-path".to_owned());
+                options.compiler_arguments.push(index_unit_output_path);
+            }
         }
         Ok(json!({
             "compilerArguments": options.compiler_arguments,
@@ -1595,4 +1607,39 @@ fn write_jsonrpc_message<W: Write>(writer: &mut W, message: &Value) -> Result<()
         .write_all(&body)
         .context("failed to write JSON-RPC body")?;
     writer.flush().context("failed to flush JSON-RPC response")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::util::read_json_file;
+
+    #[test]
+    fn install_connection_file_for_manifest_writes_standard_bsp_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest_path = temp.path().join("orbit.json");
+        std::fs::write(&manifest_path, "{}").unwrap();
+
+        let standard_path = install_connection_file_for_manifest(&manifest_path).unwrap();
+
+        assert_eq!(
+            standard_path,
+            manifest_path
+                .canonicalize()
+                .unwrap()
+                .parent()
+                .unwrap()
+                .join(".bsp/orbit.json")
+        );
+
+        let details: Value = read_json_file(&standard_path).unwrap();
+        assert_eq!(details["name"], "orbit");
+        assert_eq!(details["bspVersion"], BSP_VERSION);
+        assert_eq!(details["argv"][1], "--manifest");
+        assert_eq!(
+            details["argv"][2],
+            manifest_path.canonicalize().unwrap().display().to_string()
+        );
+        assert_eq!(details["argv"][3], "bsp");
+    }
 }

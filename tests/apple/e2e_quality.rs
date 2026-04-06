@@ -10,6 +10,19 @@ use crate::support::{
     run_and_capture,
 };
 
+fn quality_tools_are_unavailable_in_debug_build() -> bool {
+    cfg!(debug_assertions)
+}
+
+fn assert_debug_build_quality_tool_unavailable(output: &std::process::Output) {
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("Orbit debug builds skip embedded Swift quality tooling"),
+        "{stderr}"
+    );
+}
+
 #[test]
 fn lint_runs_swiftlint_and_semantic_analysis_by_default() {
     let temp = tempfile::tempdir().unwrap();
@@ -31,6 +44,10 @@ fn lint_runs_swiftlint_and_semantic_analysis_by_default() {
         "lint",
     ]);
     let output = run_and_capture(&mut command);
+    if quality_tools_are_unavailable_in_debug_build() {
+        assert_debug_build_quality_tool_unavailable(&output);
+        return;
+    }
     assert!(
         output.status.success(),
         "{}",
@@ -38,8 +55,7 @@ fn lint_runs_swiftlint_and_semantic_analysis_by_default() {
     );
 
     let log = read_log(&log_path);
-    assert!(log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("--product orbit-swiftlint"));
+    assert!(!log.contains("swift build --disable-keychain --package-path"));
     assert!(log.contains("orbit-swiftlint "));
     assert!(log.contains("xcrun --sdk iphonesimulator --show-sdk-path"));
     assert!(log.contains("\"compiler_invocations\""));
@@ -52,6 +68,10 @@ fn lint_runs_swiftlint_and_semantic_analysis_by_default() {
 
 #[test]
 fn lint_platform_flag_limits_semantic_analysis_scope() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_watch_workspace(temp.path());
     let home = create_home(temp.path());
@@ -80,8 +100,7 @@ fn lint_platform_flag_limits_semantic_analysis_scope() {
     );
 
     let log = read_log(&log_path);
-    assert!(log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("--product orbit-swiftlint"));
+    assert!(!log.contains("swift build --disable-keychain --package-path"));
     assert!(log.contains("orbit-swiftlint "));
     assert!(log.contains("xcrun --sdk iphonesimulator --show-sdk-path"));
     assert!(log.contains("\"swiftc\""));
@@ -94,6 +113,10 @@ fn lint_platform_flag_limits_semantic_analysis_scope() {
 
 #[test]
 fn lint_runs_compiler_backed_c_family_diagnostics_for_mixed_targets() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_mixed_language_workspace(temp.path());
     let home = create_home(temp.path());
@@ -129,6 +152,10 @@ fn lint_runs_compiler_backed_c_family_diagnostics_for_mixed_targets() {
 
 #[test]
 fn lint_reuses_cached_semantic_artifact_between_runs() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_signing_workspace(temp.path());
     let home = create_home(temp.path());
@@ -181,6 +208,10 @@ fn lint_reuses_cached_semantic_artifact_between_runs() {
 
 #[test]
 fn lint_reuses_cached_swift_package_outputs_between_runs() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_swift_package_workspace(temp.path());
     let home = create_home(temp.path());
@@ -236,6 +267,10 @@ fn lint_reuses_cached_swift_package_outputs_between_runs() {
 
 #[test]
 fn lint_resolves_git_swift_package_dependencies_from_pinned_revisions() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let (workspace, fixture) = create_git_swift_package_workspace(temp.path());
     let home = create_home(temp.path());
@@ -305,6 +340,10 @@ fn lint_resolves_git_swift_package_dependencies_from_pinned_revisions() {
 
 #[test]
 fn lint_accepts_semver_pinned_git_swift_package_dependencies() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let (workspace, fixture) = create_semver_git_swift_package_workspace(temp.path());
     let home = create_home(temp.path());
@@ -361,6 +400,10 @@ fn lint_accepts_semver_pinned_git_swift_package_dependencies() {
 
 #[test]
 fn lint_recreates_internal_lockfile_for_versioned_git_swift_package_dependencies() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let (workspace, fixture) = create_semver_git_swift_package_workspace(temp.path());
     let home = create_home(temp.path());
@@ -416,6 +459,10 @@ fn format_defaults_to_read_only_check() {
         "format",
     ]);
     let output = run_and_capture(&mut command);
+    if quality_tools_are_unavailable_in_debug_build() {
+        assert_debug_build_quality_tool_unavailable(&output);
+        return;
+    }
     assert!(
         output.status.success(),
         "{}",
@@ -423,8 +470,7 @@ fn format_defaults_to_read_only_check() {
     );
 
     let log = read_log(&log_path);
-    assert!(log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("--product orbit-swift-format"));
+    assert!(!log.contains("swift build --disable-keychain --package-path"));
     assert!(log.contains("orbit-swift-format "));
     assert!(log.contains("\"mode\": \"check\""));
     assert!(!log.contains("\"mode\": \"write\""));
@@ -432,7 +478,45 @@ fn format_defaults_to_read_only_check() {
 }
 
 #[test]
+fn format_uses_orbit_default_four_space_indentation() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = create_signing_workspace(temp.path());
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    create_quality_swift_mock(&mock_bin);
+
+    let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command.args([
+        "--non-interactive",
+        "--manifest",
+        workspace.join("orbit.json").to_str().unwrap(),
+        "format",
+    ]);
+    let output = run_and_capture(&mut command);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let log = read_log(&log_path);
+    assert!(log.contains("\"configuration_json\""));
+    assert!(log.contains("\\\"indentation\\\":{\\\"spaces\\\":4}"));
+}
+
+#[test]
 fn format_write_runs_swift_format_in_place() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_signing_workspace(temp.path());
     let home = create_home(temp.path());
@@ -458,8 +542,7 @@ fn format_write_runs_swift_format_in_place() {
     );
 
     let log = read_log(&log_path);
-    assert!(log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("--product orbit-swift-format"));
+    assert!(!log.contains("swift build --disable-keychain --package-path"));
     assert!(log.contains("orbit-swift-format "));
     assert!(log.contains("\"mode\": \"write\""));
     assert!(log.contains("Sources/App/App.swift"));
@@ -467,6 +550,10 @@ fn format_write_runs_swift_format_in_place() {
 
 #[test]
 fn lint_reads_orbit_json_rules_and_ignore_globs() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_signing_workspace(temp.path());
     let home = create_home(temp.path());
@@ -530,6 +617,10 @@ fn lint_reads_orbit_json_rules_and_ignore_globs() {
 
 #[test]
 fn format_reads_editorconfig_rules_and_ignore_globs_from_orbit_json() {
+    if quality_tools_are_unavailable_in_debug_build() {
+        return;
+    }
+
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_signing_workspace(temp.path());
     let home = create_home(temp.path());

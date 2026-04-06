@@ -6,13 +6,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::apple::asc_api::AscClient;
-use crate::apple::auth::{resolve_api_key_auth, resolve_user_auth_metadata};
+use crate::apple::auth::resolve_api_key_auth;
 use crate::apple::provisioning::{ProvisioningClient, ProvisioningDevice};
 use crate::cli::{
     DevicePlatform, ImportDevicesArgs, ListDevicesArgs, RegisterDeviceArgs, RemoveDeviceArgs,
 };
 use crate::context::{AppContext, DeviceCache};
-use crate::util::{prompt_input, prompt_select};
+use crate::util::{prompt_input, prompt_select, read_json_file};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedDevice {
@@ -351,18 +351,24 @@ pub(crate) fn current_machine_provisioning_udid(platform: DevicePlatform) -> Res
     Ok(current_machine_device(platform)?.udid)
 }
 
-fn resolve_team_id(app: &AppContext) -> Result<String> {
+fn resolve_team_id(_app: &AppContext) -> Result<String> {
     std::env::var("ORBIT_APPLE_TEAM_ID")
         .ok()
-        .or_else(|| {
-            resolve_user_auth_metadata(app)
-                .ok()
-                .flatten()
-                .and_then(|user| user.team_id)
-        })
-        .context(
-            "device management requires an Apple team selection; set `ORBIT_APPLE_TEAM_ID` or log in once so Orbit can persist the team choice",
-        )
+        .or_else(|| manifest_team_id(_app).ok().flatten())
+        .context("device management requires an Apple team selection; set ORBIT_APPLE_TEAM_ID")
+}
+
+fn manifest_team_id(app: &AppContext) -> Result<Option<String>> {
+    let manifest_path = match app.resolve_manifest_path_for_dispatch(None) {
+        Ok(path) => path,
+        Err(_) => return Ok(None),
+    };
+    let manifest: Value = read_json_file(&manifest_path)?;
+    Ok(manifest
+        .get("team_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned))
 }
 
 fn load_cached_or_remote_devices(app: &AppContext, refresh: bool) -> Result<DeviceCache> {
@@ -436,4 +442,60 @@ fn find_registered_device_by_id(
         .list_devices()?
         .into_iter()
         .find(|device| device.id == id))
+}
+
+#[cfg(test)]
+mod tests {
+    use std::fs;
+
+    use serde_json::json;
+    use tempfile::tempdir;
+
+    use super::manifest_team_id;
+    use crate::context::{AppContext, GlobalPaths};
+
+    #[test]
+    fn manifest_team_id_reads_project_team_selection() {
+        let temp = tempdir().unwrap();
+        let root = temp.path().join("project");
+        let data_dir = temp.path().join("data");
+        let cache_dir = temp.path().join("cache");
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&data_dir).unwrap();
+        fs::create_dir_all(&cache_dir).unwrap();
+        fs::write(
+            root.join("orbit.json"),
+            serde_json::to_vec_pretty(&json!({
+                "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+                "name": "ExampleMacApp",
+                "bundle_id": "dev.orbit.examples.macos",
+                "version": "0.1.0",
+                "build": 1,
+                "team_id": "TEAM123456",
+                "platforms": { "macos": "14.0" },
+                "sources": ["Sources/App"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let app = AppContext {
+            cwd: root,
+            interactive: false,
+            verbose: false,
+            global_paths: GlobalPaths {
+                data_dir: data_dir.clone(),
+                cache_dir,
+                schema_dir: data_dir.join("schemas"),
+                auth_state_path: data_dir.join("auth.json"),
+                device_cache_path: data_dir.join("devices.json"),
+                keychain_path: data_dir.join("orbit.keychain-db"),
+            },
+        };
+
+        assert_eq!(
+            manifest_team_id(&app).unwrap().as_deref(),
+            Some("TEAM123456")
+        );
+    }
 }
