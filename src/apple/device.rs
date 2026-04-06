@@ -12,7 +12,7 @@ use crate::cli::{
     DevicePlatform, ImportDevicesArgs, ListDevicesArgs, RegisterDeviceArgs, RemoveDeviceArgs,
 };
 use crate::context::{AppContext, DeviceCache};
-use crate::util::{prompt_input, prompt_select, read_json_file};
+use crate::util::{prompt_input, prompt_select};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CachedDevice {
@@ -363,7 +363,7 @@ fn manifest_team_id(app: &AppContext) -> Result<Option<String>> {
         Ok(path) => path,
         Err(_) => return Ok(None),
     };
-    let manifest: Value = read_json_file(&manifest_path)?;
+    let manifest = crate::manifest::read_manifest_value(&manifest_path, app.manifest_env())?;
     Ok(manifest
         .get("team_id")
         .and_then(Value::as_str)
@@ -483,6 +483,7 @@ mod tests {
             cwd: root,
             interactive: false,
             verbose: false,
+            manifest_env: None,
             global_paths: GlobalPaths {
                 data_dir: data_dir.clone(),
                 cache_dir,

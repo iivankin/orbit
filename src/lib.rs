@@ -13,6 +13,6 @@ use crate::context::AppContext;
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
-    let app = AppContext::new(cli.non_interactive, cli.verbose)?;
+    let app = AppContext::new(cli.non_interactive, cli.verbose, cli.env.clone())?;
     commands::execute(&app, &cli)
 }

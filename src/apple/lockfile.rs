@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use crate::apple::git_dependencies::exact_remote_version_revision;
-use crate::manifest::{ResolvedManifest, SwiftPackageSource};
+use crate::manifest::{ResolvedManifest, SwiftPackageSource, read_manifest_value};
 use crate::util::{read_json_file, write_json_file};
 
 pub(crate) const LOCKFILE_NAME: &str = "orbit.lock";
@@ -44,11 +44,20 @@ struct RequestedVersionedGitDependency {
     version: String,
 }
 
+#[allow(dead_code)]
 pub(crate) fn ensure_lockfile(
     manifest_path: &Path,
     resolved_manifest: &mut ResolvedManifest,
 ) -> Result<()> {
-    let requested_dependencies = collect_versioned_git_dependencies(manifest_path)?;
+    ensure_lockfile_with_env(manifest_path, resolved_manifest, None)
+}
+
+pub(crate) fn ensure_lockfile_with_env(
+    manifest_path: &Path,
+    resolved_manifest: &mut ResolvedManifest,
+    env: Option<&str>,
+) -> Result<()> {
+    let requested_dependencies = collect_versioned_git_dependencies(manifest_path, env)?;
     if requested_dependencies.is_empty() {
         return Ok(());
     }
@@ -58,7 +67,7 @@ pub(crate) fn ensure_lockfile(
         .as_ref()
         .is_some_and(|lockfile| lockfile_matches_requested(lockfile, &requested_dependencies));
     if !lockfile_matches {
-        sync_lockfile(manifest_path)?;
+        sync_lockfile_with_env(manifest_path, env)?;
     }
     let lockfile = read_json_file::<OrbitLockfile>(&lockfile_path)?;
 
@@ -95,8 +104,16 @@ pub(crate) fn ensure_lockfile(
     Ok(())
 }
 
+#[allow(dead_code)]
 pub(crate) fn sync_lockfile(manifest_path: &Path) -> Result<LockfileSyncSummary> {
-    let requested_dependencies = collect_versioned_git_dependencies(manifest_path)?;
+    sync_lockfile_with_env(manifest_path, None)
+}
+
+pub(crate) fn sync_lockfile_with_env(
+    manifest_path: &Path,
+    env: Option<&str>,
+) -> Result<LockfileSyncSummary> {
+    let requested_dependencies = collect_versioned_git_dependencies(manifest_path, env)?;
     let lockfile_path = lockfile_path(manifest_path)?;
 
     if requested_dependencies.is_empty() {
@@ -157,11 +174,9 @@ pub(crate) fn lockfile_path(manifest_path: &Path) -> Result<PathBuf> {
 
 fn collect_versioned_git_dependencies(
     manifest_path: &Path,
+    env: Option<&str>,
 ) -> Result<BTreeMap<String, RequestedVersionedGitDependency>> {
-    let manifest_bytes = fs::read(manifest_path)
-        .with_context(|| format!("failed to read {}", manifest_path.display()))?;
-    let manifest: Value = serde_json::from_slice(&manifest_bytes)
-        .with_context(|| format!("failed to parse {}", manifest_path.display()))?;
+    let manifest = read_manifest_value(manifest_path, env)?;
     let mut dependencies = BTreeMap::new();
     collect_versioned_git_dependencies_from_value(&manifest, &mut dependencies)?;
     Ok(dependencies)

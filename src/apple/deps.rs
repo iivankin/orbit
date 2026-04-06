@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value};
 
 use crate::apple::git_dependencies::{latest_remote_revision, latest_remote_version_revision};
-use crate::apple::lockfile::sync_lockfile;
+use crate::apple::lockfile::sync_lockfile_with_env;
 use crate::cli::DepsUpdateArgs;
 use crate::context::AppContext;
 use crate::util::{print_success, write_json_file};
@@ -50,7 +50,7 @@ pub fn update_dependencies(
     if manifest_changed {
         write_json_file(&manifest_path, &manifest)?;
     }
-    let lock_summary = sync_lockfile(&manifest_path)?;
+    let lock_summary = sync_lockfile_with_env(&manifest_path, app.manifest_env())?;
 
     if !manifest_changed && !lock_summary.changed() {
         print_success(match args.dependency.as_deref() {

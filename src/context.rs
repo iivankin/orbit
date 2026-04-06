@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
 
 use crate::apple::xcode::{SelectedXcode, resolve_requested_xcode_for_app};
-use crate::manifest::{ManifestSchema, ResolvedManifest, detect_schema};
+use crate::manifest::{ManifestSchema, ResolvedManifest, detect_schema_with_env};
 use crate::util::{
     ensure_dir, prompt_select, read_json_file_if_exists, resolve_path, write_json_file,
 };
@@ -15,6 +15,7 @@ pub struct AppContext {
     pub cwd: PathBuf,
     pub interactive: bool,
     pub verbose: bool,
+    pub manifest_env: Option<String>,
     pub global_paths: GlobalPaths,
 }
 
@@ -53,7 +54,7 @@ pub struct DeviceCache {
 }
 
 impl AppContext {
-    pub fn new(non_interactive: bool, verbose: bool) -> Result<Self> {
+    pub fn new(non_interactive: bool, verbose: bool, manifest_env: Option<String>) -> Result<Self> {
         let cwd =
             std::env::current_dir().context("failed to resolve the current working directory")?;
 
@@ -61,6 +62,7 @@ impl AppContext {
             cwd,
             interactive: !non_interactive,
             verbose,
+            manifest_env,
             global_paths: resolve_global_paths()?,
         })
     }
@@ -83,8 +85,9 @@ impl AppContext {
         ensure_dir(&build_dir)?;
         ensure_dir(&artifacts_dir)?;
         ensure_dir(&receipts_dir)?;
-        let manifest_schema = detect_schema(&manifest_path)?;
-        let resolved_manifest = ResolvedManifest::load(&manifest_path, &orbit_dir)?;
+        let manifest_schema = detect_schema_with_env(&manifest_path, self.manifest_env())?;
+        let resolved_manifest =
+            ResolvedManifest::load_with_env(&manifest_path, &orbit_dir, self.manifest_env())?;
         let selected_xcode =
             resolve_requested_xcode_for_app(self, resolved_manifest.xcode.as_deref())?;
 
@@ -117,6 +120,10 @@ impl AppContext {
         requested_manifest: Option<&Path>,
     ) -> Result<PathBuf> {
         self.resolve_manifest_path(requested_manifest)
+    }
+
+    pub fn manifest_env(&self) -> Option<&str> {
+        self.manifest_env.as_deref()
     }
 
     fn resolve_manifest_path(&self, requested_manifest: Option<&Path>) -> Result<PathBuf> {

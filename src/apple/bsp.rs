@@ -40,31 +40,57 @@ pub fn serve(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()> 
 
 pub fn install_connection_files(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()> {
     let manifest_path = app.resolve_manifest_path_for_dispatch(requested_manifest)?;
-    let standard_path = install_connection_file_for_manifest(&manifest_path)?;
+    let standard_path =
+        install_connection_file_for_manifest_with_env(&manifest_path, app.manifest_env())?;
     print_success(format!("Installed {}", standard_path.display()));
     Ok(())
 }
 
 pub(crate) fn install_connection_file_for_manifest(manifest_path: &Path) -> Result<PathBuf> {
+    install_connection_file_for_manifest_with_env(manifest_path, None)
+}
+
+pub(crate) fn install_connection_file_for_manifest_with_env(
+    manifest_path: &Path,
+    env: Option<&str>,
+) -> Result<PathBuf> {
     let manifest_path = manifest_path
         .canonicalize()
         .with_context(|| format!("failed to canonicalize {}", manifest_path.display()))?;
     let project_root = manifest_path
         .parent()
         .context("manifest path did not contain a parent directory")?;
-    let details = connection_details(&manifest_path)?;
+    let details = connection_details_with_env(&manifest_path, env)?;
 
     let standard_path = project_root.join(".bsp").join(BSP_CONNECTION_FILE_NAME);
     write_json_file(&standard_path, &details)?;
     Ok(standard_path)
 }
 
+#[allow(dead_code)]
 pub(crate) fn connection_details(manifest_path: &Path) -> Result<BspConnectionDetails> {
+    connection_details_with_env(manifest_path, None)
+}
+
+pub(crate) fn connection_details_with_env(
+    manifest_path: &Path,
+    env: Option<&str>,
+) -> Result<BspConnectionDetails> {
     let executable_path = std::env::current_exe()
         .context("failed to resolve the current Orbit executable")?
         .canonicalize()
         .context("failed to canonicalize the current Orbit executable")?;
     let manifest_arg = manifest_path.to_string_lossy().into_owned();
+    let mut argv = vec![
+        executable_path.to_string_lossy().into_owned(),
+        "--manifest".to_owned(),
+        manifest_arg,
+    ];
+    if let Some(env) = env {
+        argv.push("--env".to_owned());
+        argv.push(env.to_owned());
+    }
+    argv.push("bsp".to_owned());
     Ok(BspConnectionDetails {
         name: "orbit".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
@@ -76,12 +102,7 @@ pub(crate) fn connection_details(manifest_path: &Path) -> Result<BspConnectionDe
             "cpp".to_owned(),
             "objective-cpp".to_owned(),
         ],
-        argv: vec![
-            executable_path.to_string_lossy().into_owned(),
-            "--manifest".to_owned(),
-            manifest_arg,
-            "bsp".to_owned(),
-        ],
+        argv,
     })
 }
 
@@ -1641,5 +1662,20 @@ mod tests {
             manifest_path.canonicalize().unwrap().display().to_string()
         );
         assert_eq!(details["argv"][3], "bsp");
+    }
+
+    #[test]
+    fn install_connection_file_with_env_writes_env_into_bsp_file() {
+        let temp = tempfile::tempdir().unwrap();
+        let manifest_path = temp.path().join("orbit.json");
+        std::fs::write(&manifest_path, "{}").unwrap();
+
+        let standard_path =
+            install_connection_file_for_manifest_with_env(&manifest_path, Some("stage")).unwrap();
+
+        let details: Value = read_json_file(&standard_path).unwrap();
+        assert_eq!(details["argv"][3], "--env");
+        assert_eq!(details["argv"][4], "stage");
+        assert_eq!(details["argv"][5], "bsp");
     }
 }

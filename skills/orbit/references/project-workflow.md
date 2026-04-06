@@ -18,6 +18,9 @@ Orbit resolves manifests in this order:
 2. `./orbit.json`
 3. recursive search under the working directory
 
+When you pass `--env <value>`, Orbit loads `orbit.json` first and then deep-merges
+`orbit.<value>.json` from the same directory on top of it.
+
 In non-interactive mode, multiple matching manifests are an error. Agents
 should not rely on interactive manifest selection.
 

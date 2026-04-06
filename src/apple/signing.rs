@@ -59,9 +59,7 @@ use crate::apple::runtime::{
 use crate::cli::{SigningExportArgs, SigningImportArgs};
 use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, ProfileManifest, TargetManifest};
-use crate::util::{
-    CliSpinner, copy_file, ensure_dir, ensure_parent_dir, prompt_password, read_json_file,
-};
+use crate::util::{CliSpinner, copy_file, ensure_dir, ensure_parent_dir, prompt_password};
 use anyhow::{Context, Result, bail};
 use base64::Engine as _;
 use plist::Dictionary;
@@ -289,7 +287,7 @@ fn resolve_local_team_id_if_known(project: &ProjectContext) -> Result<Option<Str
         .ok()
         .or_else(|| project.resolved_manifest.team_id.clone())
         .or_else(|| {
-            persisted_manifest_team_id(&project.manifest_path)
+            persisted_manifest_team_id(&project.manifest_path, project.app.manifest_env())
                 .ok()
                 .flatten()
         }))
@@ -319,8 +317,8 @@ fn profile_covers_requested_ids(actual: &[String], requested: &[String]) -> bool
     requested.iter().all(|id| actual.contains(id.as_str()))
 }
 
-fn persisted_manifest_team_id(manifest_path: &Path) -> Result<Option<String>> {
-    let manifest: JsonValue = read_json_file(manifest_path)?;
+fn persisted_manifest_team_id(manifest_path: &Path, env: Option<&str>) -> Result<Option<String>> {
+    let manifest = crate::manifest::read_manifest_value(manifest_path, env)?;
     Ok(manifest
         .get("team_id")
         .and_then(JsonValue::as_str)

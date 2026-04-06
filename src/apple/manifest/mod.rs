@@ -337,8 +337,12 @@ impl ExtensionEntry {
 
 impl ResolvedManifest {
     pub fn load(path: &Path, orbit_dir: &Path) -> Result<Self> {
-        let mut manifest = normalize::load_manifest(path, orbit_dir)?;
-        crate::apple::lockfile::ensure_lockfile(path, &mut manifest)?;
+        Self::load_with_env(path, orbit_dir, None)
+    }
+
+    pub fn load_with_env(path: &Path, orbit_dir: &Path, env: Option<&str>) -> Result<Self> {
+        let mut manifest = normalize::load_manifest_with_env(path, orbit_dir, env)?;
+        crate::apple::lockfile::ensure_lockfile_with_env(path, &mut manifest, env)?;
         Ok(manifest)
     }
 

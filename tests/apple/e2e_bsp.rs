@@ -54,6 +54,50 @@ fn ide_install_build_server_writes_standard_connection_file() {
     );
 }
 
+#[test]
+fn ide_install_build_server_writes_env_into_connection_file() {
+    let temp = tempfile::tempdir().unwrap();
+    let workspace = create_signing_workspace(temp.path());
+    fs::write(workspace.join("orbit.stage.json"), b"{}").unwrap();
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("commands.log");
+    fs::create_dir_all(&mock_bin).unwrap();
+
+    let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command.args([
+        "--non-interactive",
+        "--manifest",
+        workspace.join("orbit.json").to_str().unwrap(),
+        "--env",
+        "stage",
+        "ide",
+        "install-build-server",
+    ]);
+    let output = run_and_capture(&mut command);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let standard_path = workspace.join(".bsp/orbit.json");
+    let standard_bytes = fs::read(&standard_path).unwrap();
+    let manifest_path = workspace.join("orbit.json").canonicalize().unwrap();
+    let details: Value = serde_json::from_slice(&standard_bytes).unwrap();
+    assert_eq!(
+        details["argv"],
+        json!([
+            orbit_bin(),
+            "--manifest",
+            manifest_path,
+            "--env",
+            "stage",
+            "bsp"
+        ])
+    );
+}
+
 #[cfg(target_os = "macos")]
 #[test]
 fn bsp_server_serves_targets_sources_and_sourcekit_options() {

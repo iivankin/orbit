@@ -20,7 +20,7 @@ use crate::apple::xcode::resolve_requested_xcode_for_app;
 use crate::context::{AppContext, ProjectContext, ProjectPaths};
 use crate::manifest::{
     ApplePlatform, BuildConfiguration, DistributionKind, ManifestSchema, ProfileManifest,
-    ResolvedManifest, SwiftPackageSource, TargetKind, TargetManifest, detect_schema,
+    ResolvedManifest, SwiftPackageSource, TargetKind, TargetManifest, detect_schema_with_env,
 };
 use crate::util::{
     collect_files_with_extensions, ensure_dir, read_json_file_if_exists, resolve_path,
@@ -132,7 +132,8 @@ fn load_analysis_project_with_orbit_dir(
     ensure_dir(&artifacts_dir)?;
     ensure_dir(&receipts_dir)?;
 
-    let resolved_manifest = ResolvedManifest::load(&manifest_path, &orbit_dir)?;
+    let resolved_manifest =
+        ResolvedManifest::load_with_env(&manifest_path, &orbit_dir, app.manifest_env())?;
     let selected_xcode = resolve_requested_xcode_for_app(app, resolved_manifest.xcode.as_deref())?;
     let project = ProjectContext {
         app: app.clone(),
@@ -160,12 +161,19 @@ fn resolve_analysis_manifest(
     let manifest_path = manifest_path
         .canonicalize()
         .with_context(|| format!("failed to canonicalize {}", manifest_path.display()))?;
-    let manifest_schema = detect_schema(&manifest_path)?;
+    let manifest_schema = detect_schema_with_env(&manifest_path, app.manifest_env())?;
     Ok((manifest_path, manifest_schema))
 }
 
 fn cached_analysis_orbit_dir(app: &AppContext, manifest_path: &Path) -> PathBuf {
-    let manifest_key = short_hash(manifest_path.to_string_lossy().as_ref());
+    let manifest_key = short_hash(
+        format!(
+            "{}::{}",
+            manifest_path.to_string_lossy(),
+            app.manifest_env().unwrap_or("base")
+        )
+        .as_str(),
+    );
     app.global_paths
         .cache_dir
         .join("analysis")

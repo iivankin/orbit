@@ -5,7 +5,7 @@ use anyhow::Result;
 
 use crate::cli::{AppleCommand, Cli, Command, UiCommand};
 use crate::context::AppContext;
-use crate::manifest::{ManifestBackend, detect_schema};
+use crate::manifest::{ManifestBackend, detect_schema_with_env};
 
 pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
     match &cli.command {
@@ -25,7 +25,7 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
 
 fn dispatch_project_command(app: &AppContext, cli: &Cli) -> Result<()> {
     let manifest_path = app.resolve_manifest_path_for_dispatch(cli.manifest.as_deref())?;
-    match detect_schema(&manifest_path)?.backend() {
+    match detect_schema_with_env(&manifest_path, app.manifest_env())?.backend() {
         ManifestBackend::Apple => apple::execute(app, cli),
         ManifestBackend::Android => {
             unreachable!("unsupported backend is rejected by detect_schema")

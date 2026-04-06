@@ -250,6 +250,7 @@ mod tests {
             cwd: root.to_path_buf(),
             interactive: false,
             verbose: false,
+            manifest_env: None,
             global_paths: GlobalPaths {
                 data_dir: data_dir.clone(),
                 cache_dir,

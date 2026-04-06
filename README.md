@@ -5,6 +5,7 @@ Orbit is a local-first Apple app build, signing, and submission CLI.
 ## Mental Model
 
 - One `orbit.json` describes one product.
+- Optional overlays live next to it as `orbit.<env>.json` and apply on top of the base manifest when you pass `--env <env>`.
 - The root object is the app itself, not an Xcode-style target graph.
 - Embedded pieces live under the app:
   - `extensions`

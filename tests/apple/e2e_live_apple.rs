@@ -267,7 +267,7 @@ fn assert_single_remote_profile(config: &LiveAppleConfig, bundle_id: &str, profi
 #[ignore = "manual live Apple account test"]
 fn live_developer_services_lists_configured_team() {
     let config = require_live_apple_config("ORBIT_RUN_LIVE_APPLE_E2E");
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let developer_services = DeveloperServicesClient::authenticate(&app).unwrap();
     let teams = developer_services.list_teams().unwrap();
     assert!(
@@ -1667,7 +1667,7 @@ fn live_revoked_test_owned_remote_certificate_recovers_on_next_build() {
         return;
     }
 
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     for profile in remote_profiles_for_bundle_id(&config, &bundle_id, Some("IOS_APP_STORE")) {
         provisioning.delete_profile(&profile.id).unwrap();

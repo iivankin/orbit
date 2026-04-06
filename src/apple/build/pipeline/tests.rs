@@ -51,6 +51,7 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
             cwd: root.clone(),
             interactive: false,
             verbose: false,
+            manifest_env: None,
             global_paths: GlobalPaths {
                 data_dir: data_dir.clone(),
                 cache_dir,

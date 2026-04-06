@@ -141,7 +141,7 @@ fn require_live_config(enable_env: &str, require_apple_id: bool) -> LiveAppleCon
         "set {enable_env}=1 to run this live Apple account test"
     );
 
-    let saved_user = AppContext::new(true, false)
+    let saved_user = AppContext::new(true, false, None)
         .ok()
         .and_then(|app| resolve_user_auth_metadata(&app).ok().flatten());
     let apple_id = std::env::var("ORBIT_APPLE_ID")
@@ -292,7 +292,7 @@ pub fn remote_app_groups_for_identifier(
     config: &LiveAppleConfig,
     identifier: &str,
 ) -> Vec<ProvisioningAppGroup> {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     provisioning
         .list_app_groups()
@@ -318,7 +318,7 @@ pub fn remote_merchant_ids_for_identifier(
     config: &LiveAppleConfig,
     identifier: &str,
 ) -> Vec<ProvisioningMerchantId> {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     provisioning
         .list_merchant_ids()
@@ -344,7 +344,7 @@ pub fn remote_cloud_containers_for_identifier(
     config: &LiveAppleConfig,
     identifier: &str,
 ) -> Vec<ProvisioningCloudContainer> {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     provisioning
         .list_cloud_containers()
@@ -358,7 +358,7 @@ pub fn remote_certificates_for_type(
     config: &LiveAppleConfig,
     certificate_type: &str,
 ) -> Vec<ProvisioningCertificate> {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     provisioning.list_certificates(certificate_type).unwrap()
 }
@@ -393,7 +393,7 @@ pub fn remote_devices_for_platform(
     config: &LiveAppleConfig,
     platform: &str,
 ) -> Vec<ProvisioningDevice> {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     provisioning
         .list_devices()
@@ -443,7 +443,7 @@ where
 }
 
 fn wait_for_remote_bundle_id(config: &LiveAppleConfig, bundle_id: &str) -> ProvisioningBundleId {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     for _ in 0..30 {
         if let Some(bundle) = provisioning.find_bundle_id(bundle_id).unwrap() {
@@ -459,7 +459,7 @@ pub fn remote_profiles_for_bundle_id(
     bundle_id: &str,
     profile_type: Option<&str>,
 ) -> Vec<ProvisioningProfile> {
-    let app = AppContext::new(true, false).unwrap();
+    let app = AppContext::new(true, false, None).unwrap();
     let mut provisioning = ProvisioningClient::authenticate(&app, config.team_id.clone()).unwrap();
     provisioning
         .list_profiles(profile_type)
@@ -483,7 +483,7 @@ pub fn wait_for_remote_profile_count(
 }
 
 fn seed_live_auth_state(orbit_data_dir: &Path) {
-    let source_app = match AppContext::new(true, false) {
+    let source_app = match AppContext::new(true, false, None) {
         Ok(app) => app,
         Err(_) => return,
     };
@@ -501,7 +501,7 @@ fn seed_live_auth_state(orbit_data_dir: &Path) {
 }
 
 fn seed_live_team_state(orbit_data_dir: &Path, team_id: &str) {
-    let source_app = match AppContext::new(true, false) {
+    let source_app = match AppContext::new(true, false, None) {
         Ok(app) => app,
         Err(_) => return,
     };

@@ -5,6 +5,7 @@
 Useful flags across Orbit commands:
 
 - `--manifest <path>` to pick the exact product
+- `--env <value>` to merge `orbit.<value>.json` on top of the base manifest
 - `--platform <platform>` when the manifest is multi-platform
 - `--non-interactive` for repeatable agent runs
 - `--verbose` for deeper diagnostics

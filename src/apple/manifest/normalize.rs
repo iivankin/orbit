@@ -1,5 +1,4 @@
 use std::collections::{BTreeMap, BTreeSet};
-use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
@@ -50,9 +49,18 @@ enum DefaultExtensionEntry {
     MainStoryboard(&'static str),
 }
 
+#[cfg_attr(not(test), allow(dead_code))]
 pub fn load_manifest(path: &Path, orbit_dir: &Path) -> Result<ResolvedManifest> {
-    let bytes = fs::read(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let manifest: AppManifest = serde_json::from_slice(&bytes)
+    load_manifest_with_env(path, orbit_dir, None)
+}
+
+pub fn load_manifest_with_env(
+    path: &Path,
+    orbit_dir: &Path,
+    env: Option<&str>,
+) -> Result<ResolvedManifest> {
+    let manifest_value = crate::manifest::read_manifest_value(path, env)?;
+    let manifest: AppManifest = serde_json::from_value(manifest_value)
         .with_context(|| format!("failed to parse {}", path.display()))?;
     normalize_manifest(path, orbit_dir, manifest)
 }
