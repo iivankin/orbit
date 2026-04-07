@@ -169,8 +169,7 @@ fn build_distribution_with_command(
 }
 
 fn signing_state_path(workspace: &Path, config: &LiveAppleConfig) -> PathBuf {
-    config
-        .orbit_data_dir(workspace)
+    LiveAppleConfig::orbit_data_dir(workspace)
         .join("teams")
         .join(&config.team_id)
         .join("signing.json")

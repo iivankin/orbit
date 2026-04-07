@@ -28,13 +28,41 @@ pub(crate) struct LockedGitDependency {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct LockfileSyncSummary {
     pub versioned_dependency_count: usize,
-    pub wrote_file: bool,
-    pub removed_file: bool,
+    pub change: LockfileChange,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub(crate) enum LockfileChange {
+    #[default]
+    Unchanged,
+    Written,
+    Removed,
 }
 
 impl LockfileSyncSummary {
     pub(crate) fn changed(&self) -> bool {
-        self.wrote_file || self.removed_file
+        self.change != LockfileChange::Unchanged
+    }
+
+    fn unchanged(versioned_dependency_count: usize) -> Self {
+        Self {
+            versioned_dependency_count,
+            change: LockfileChange::Unchanged,
+        }
+    }
+
+    fn written(versioned_dependency_count: usize) -> Self {
+        Self {
+            versioned_dependency_count,
+            change: LockfileChange::Written,
+        }
+    }
+
+    fn removed() -> Self {
+        Self {
+            versioned_dependency_count: 0,
+            change: LockfileChange::Removed,
+        }
     }
 }
 
@@ -120,11 +148,7 @@ pub(crate) fn sync_lockfile_with_env(
         if lockfile_path.exists() {
             fs::remove_file(&lockfile_path)
                 .with_context(|| format!("failed to remove {}", lockfile_path.display()))?;
-            return Ok(LockfileSyncSummary {
-                versioned_dependency_count: 0,
-                wrote_file: false,
-                removed_file: true,
-            });
+            return Ok(LockfileSyncSummary::removed());
         }
         return Ok(LockfileSyncSummary::default());
     }
@@ -150,19 +174,11 @@ pub(crate) fn sync_lockfile_with_env(
     }
     let lockfile = OrbitLockfile { dependencies };
     if previous.as_ref() == Some(&lockfile) {
-        return Ok(LockfileSyncSummary {
-            versioned_dependency_count: requested_dependencies.len(),
-            wrote_file: false,
-            removed_file: false,
-        });
+        return Ok(LockfileSyncSummary::unchanged(requested_dependencies.len()));
     }
 
     write_json_file(&lockfile_path, &lockfile)?;
-    Ok(LockfileSyncSummary {
-        versioned_dependency_count: requested_dependencies.len(),
-        wrote_file: true,
-        removed_file: false,
-    })
+    Ok(LockfileSyncSummary::written(requested_dependencies.len()))
 }
 
 pub(crate) fn lockfile_path(manifest_path: &Path) -> Result<PathBuf> {

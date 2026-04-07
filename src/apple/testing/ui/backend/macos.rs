@@ -1106,12 +1106,12 @@ cleanup "${{launcher_status}}"
 }
 
 fn macos_expect_wrapper_coordinator() -> String {
-    r#"set timeout -1
+    r"set timeout -1
 set wrapper [lindex $argv 0]
 
 spawn -noecho /bin/zsh $wrapper
 expect eof
-"#
+"
     .to_owned()
 }
 

@@ -41,23 +41,24 @@ pub struct LiveCleanupGuard {
 
 impl LiveAppleConfig {
     pub fn unique_app_identity(&self, label: &str) -> (String, String) {
+        let normalized_label = normalize_label(label);
         let suffix = Uuid::new_v4().simple().to_string();
         let short_suffix = &suffix[..12];
-        let name = format!("Orbit{}{}", normalize_label(label), short_suffix);
+        let name = format!("Orbit{normalized_label}{short_suffix}");
         let bundle_id = format!(
             "{}.{}.{}",
             self.bundle_prefix,
-            normalize_label(label).to_ascii_lowercase(),
+            normalized_label.to_ascii_lowercase(),
             short_suffix.to_ascii_lowercase()
         );
         (name, bundle_id)
     }
 
-    pub fn orbit_data_dir(&self, workspace: &Path) -> PathBuf {
+    pub fn orbit_data_dir(workspace: &Path) -> PathBuf {
         workspace.join(".live-orbit-data")
     }
 
-    pub fn orbit_cache_dir(&self, workspace: &Path) -> PathBuf {
+    pub fn orbit_cache_dir(workspace: &Path) -> PathBuf {
         workspace.join(".live-orbit-cache")
     }
 }
@@ -238,8 +239,8 @@ pub fn live_command_without_team_state(workspace: &Path, config: &LiveAppleConfi
 }
 
 pub fn live_asc_command(workspace: &Path, config: &LiveAscConfig) -> Command {
-    let orbit_data_dir = config.apple.orbit_data_dir(workspace);
-    let orbit_cache_dir = config.apple.orbit_cache_dir(workspace);
+    let orbit_data_dir = LiveAppleConfig::orbit_data_dir(workspace);
+    let orbit_cache_dir = LiveAppleConfig::orbit_cache_dir(workspace);
     fs::create_dir_all(&orbit_data_dir).unwrap();
     fs::create_dir_all(&orbit_cache_dir).unwrap();
 
@@ -257,8 +258,8 @@ pub fn live_asc_command(workspace: &Path, config: &LiveAscConfig) -> Command {
 }
 
 fn live_command_impl(workspace: &Path, config: &LiveAppleConfig, seed_team_state: bool) -> Command {
-    let orbit_data_dir = config.orbit_data_dir(workspace);
-    let orbit_cache_dir = config.orbit_cache_dir(workspace);
+    let orbit_data_dir = LiveAppleConfig::orbit_data_dir(workspace);
+    let orbit_cache_dir = LiveAppleConfig::orbit_cache_dir(workspace);
     fs::create_dir_all(&orbit_data_dir).unwrap();
     fs::create_dir_all(&orbit_cache_dir).unwrap();
     seed_live_auth_state(&orbit_data_dir);
@@ -483,14 +484,9 @@ pub fn wait_for_remote_profile_count(
 }
 
 fn seed_live_auth_state(orbit_data_dir: &Path) {
-    let source_app = match AppContext::new(true, false, None) {
-        Ok(app) => app,
-        Err(_) => return,
-    };
-    let source_data_dir = source_app.global_paths.data_dir;
-    if source_data_dir == orbit_data_dir {
+    let Some(source_data_dir) = seed_source_data_dir(orbit_data_dir) else {
         return;
-    }
+    };
 
     let source_auth = source_data_dir.join("auth.json");
     let destination_auth = orbit_data_dir.join("auth.json");
@@ -501,14 +497,9 @@ fn seed_live_auth_state(orbit_data_dir: &Path) {
 }
 
 fn seed_live_team_state(orbit_data_dir: &Path, team_id: &str) {
-    let source_app = match AppContext::new(true, false, None) {
-        Ok(app) => app,
-        Err(_) => return,
-    };
-    let source_data_dir = source_app.global_paths.data_dir;
-    if source_data_dir == orbit_data_dir {
+    let Some(source_data_dir) = seed_source_data_dir(orbit_data_dir) else {
         return;
-    }
+    };
 
     let source_team_dir = source_data_dir.join("teams").join(team_id);
     if !source_team_dir.exists() {
@@ -535,6 +526,14 @@ fn copy_dir_recursive(source: &Path, destination: &Path) {
     }
 }
 
+fn seed_source_data_dir(orbit_data_dir: &Path) -> Option<PathBuf> {
+    let Ok(source_app) = AppContext::new(true, false, None) else {
+        return None;
+    };
+    let source_data_dir = source_app.global_paths.data_dir;
+    (source_data_dir != orbit_data_dir).then_some(source_data_dir)
+}
+
 fn required_env(name: &str) -> String {
     std::env::var(name).unwrap_or_else(|_| panic!("missing required env `{name}`"))
 }
@@ -544,8 +543,5 @@ fn env_path(name: &str) -> PathBuf {
 }
 
 fn normalize_label(label: &str) -> String {
-    label
-        .chars()
-        .filter(|character| character.is_ascii_alphanumeric())
-        .collect()
+    label.chars().filter(char::is_ascii_alphanumeric).collect()
 }

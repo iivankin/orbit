@@ -5,7 +5,7 @@ use anyhow::{Context, Result, bail};
 use serde_json::{Map, Value};
 
 use crate::apple::git_dependencies::{latest_remote_revision, latest_remote_version_revision};
-use crate::apple::lockfile::sync_lockfile_with_env;
+use crate::apple::lockfile::{LockfileChange, sync_lockfile_with_env};
 use crate::cli::DepsUpdateArgs;
 use crate::context::AppContext;
 use crate::util::{print_success, write_json_file};
@@ -104,20 +104,24 @@ pub fn update_dependencies(
         }
     }
 
-    if lock_summary.wrote_file {
-        print_success(format!(
-            "Wrote .orbit/orbit.lock for {} versioned git dependenc{}.",
-            lock_summary.versioned_dependency_count,
-            if lock_summary.versioned_dependency_count == 1 {
-                "y"
-            } else {
-                "ies"
-            }
-        ));
-    } else if lock_summary.removed_file {
-        print_success(
-            "Removed stale .orbit/orbit.lock because the manifest no longer contains versioned git dependencies.",
-        );
+    match lock_summary.change {
+        LockfileChange::Written => {
+            print_success(format!(
+                "Wrote .orbit/orbit.lock for {} versioned git dependenc{}.",
+                lock_summary.versioned_dependency_count,
+                if lock_summary.versioned_dependency_count == 1 {
+                    "y"
+                } else {
+                    "ies"
+                }
+            ));
+        }
+        LockfileChange::Removed => {
+            print_success(
+                "Removed stale .orbit/orbit.lock because the manifest no longer contains versioned git dependencies.",
+            );
+        }
+        LockfileChange::Unchanged => {}
     }
     Ok(())
 }

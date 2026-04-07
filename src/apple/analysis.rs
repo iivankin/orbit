@@ -444,7 +444,7 @@ where
             use_nsextension_main: target
                 .extension
                 .as_ref()
-                .is_some_and(|extension| extension.uses_nsextension_main()),
+                .is_some_and(crate::manifest::ExtensionManifest::uses_nsextension_main),
             module_name: &target.name,
             product_path: &product_path,
             module_output_path: module_output_path.as_deref(),
