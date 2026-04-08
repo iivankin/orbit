@@ -361,6 +361,9 @@ impl UiFlowRunner {
                 Ok(None)
             }
             UiCommand::TapOn(target) => {
+                if self.backend.activate_selector(target)? {
+                    return Ok(None);
+                }
                 let element = self.find_tappable_element(target)?;
                 let frame = element.frame.expect("tappable element must expose a frame");
                 let (x, y) = frame.center();

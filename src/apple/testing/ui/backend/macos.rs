@@ -11,14 +11,13 @@ use tempfile::{Builder as TempfileBuilder, TempDir, tempdir};
 
 use super::super::{
     UiCrashDeleteRequest, UiCrashQuery, UiHardwareButton, UiKeyModifier, UiKeyPress,
-    UiPermissionConfig, UiPressKey, UiSwipeDirection, UiTravel,
+    UiPermissionConfig, UiPressKey, UiSelector, UiSwipeDirection, UiTravel,
 };
 use super::{ActiveVideoRecording, MacosDoctorStatus, MacosWindowInfo, UiBackend};
 use crate::apple::build::pipeline::macos_executable_path;
 use crate::apple::logs::MacosInferiorLogRelay;
 use crate::apple::script::{
-    lldb_quote_arg, macos_quit_applescript, macos_xcode_log_redirect_env, shell_quote_arg,
-    tcl_quote_arg,
+    macos_quit_applescript, macos_xcode_log_redirect_env, shell_quote_arg, tcl_quote_arg,
 };
 use crate::apple::xcode::{SelectedXcode, lldb_path as selected_xcode_lldb_path, xcrun_command};
 use crate::context::ProjectContext;
@@ -39,6 +38,7 @@ pub struct MacosBackend {
 }
 
 struct MacosLaunchedSession {
+    launched_pid: u32,
     child: Child,
     _launch_dir: TempDir,
     _log_pipe_anchor: fs::File,
@@ -179,6 +179,7 @@ impl MacosBackend {
     ) -> Result<MacosLaunchedSession> {
         let launch_dir = tempdir().context("failed to create macOS UI launch tempdir")?;
         let log_pipe = launch_dir.path().join("inferior-stdio.pipe");
+        let pid_file = launch_dir.path().join("inferior-pid.txt");
         let lldb_script = launch_dir.path().join("run.expect");
         let coordinator_script = launch_dir.path().join("coordinator.expect");
         let wrapper_script = launch_dir.path().join("launch.zsh");
@@ -209,6 +210,7 @@ impl MacosBackend {
                 self.executable_path.as_path(),
                 lldb_script.as_path(),
                 log_pipe.as_path(),
+                pid_file.as_path(),
             )?
             .as_bytes(),
         )
@@ -232,11 +234,20 @@ impl MacosBackend {
         child.stdin(Stdio::inherit());
         child.stdout(Stdio::inherit());
         child.stderr(Stdio::inherit());
-        let child = child
+        let mut child = child
             .spawn()
             .with_context(|| format!("failed to start `{}` under LLDB", self.bundle_id))?;
+        let launched_pid = match wait_for_launched_app_pid(&pid_file) {
+            Ok(pid) => pid,
+            Err(error) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(error);
+            }
+        };
 
         Ok(MacosLaunchedSession {
+            launched_pid,
             child,
             _launch_dir: launch_dir,
             _log_pipe_anchor: log_pipe_anchor,
@@ -399,6 +410,7 @@ impl UiBackend for MacosBackend {
         }
 
         let session = self.start_attached_log_session(arguments)?;
+        self.pin_running_target_pid(session.launched_pid)?;
         *self
             .launched_session
             .lock()
@@ -512,6 +524,28 @@ impl UiBackend for MacosBackend {
             .map_err(|_| anyhow::anyhow!("failed to lock the macOS UI backend tap state"))?;
         *last_tap = Some((x, y));
         Ok(())
+    }
+
+    fn activate_selector(&self, selector: &UiSelector) -> Result<bool> {
+        if selector.id.is_none() && selector.text.is_none() {
+            return Ok(false);
+        }
+
+        self.focus()?;
+        thread::sleep(Duration::from_millis(80));
+
+        let mut arguments = vec!["activate-element".to_owned()];
+        arguments.extend(self.target_selector_arguments()?);
+        if let Some(id) = selector.id.as_ref() {
+            arguments.push("--id".to_owned());
+            arguments.push(id.clone());
+        }
+        if let Some(text) = selector.text.as_ref() {
+            arguments.push("--text".to_owned());
+            arguments.push(text.clone());
+        }
+        self.run_helper(&arguments)?;
+        Ok(true)
     }
 
     fn hover_point(&self, x: f64, y: f64) -> Result<()> {
@@ -975,20 +1009,60 @@ fn remove_path_if_exists(path: &Path) -> Result<()> {
     Ok(())
 }
 
-fn macos_lldb_launch_command(arguments: &[(String, String)]) -> String {
-    let mut command = "process launch -s -o $log_pipe -e $log_pipe".to_owned();
-    let launch_arguments = arguments
+fn wait_for_launched_app_pid(pid_file: &Path) -> Result<u32> {
+    let started = Instant::now();
+    while started.elapsed() < Duration::from_secs(10) {
+        if let Ok(contents) = fs::read_to_string(pid_file) {
+            let pid_text = contents.trim();
+            if !pid_text.is_empty() {
+                let pid = pid_text.parse::<u32>().with_context(|| {
+                    format!(
+                        "failed to parse launched macOS app pid from `{}`",
+                        pid_file.display()
+                    )
+                })?;
+                return Ok(pid);
+            }
+        }
+        thread::sleep(Duration::from_millis(50));
+    }
+    bail!(
+        "timed out waiting for the launched macOS app pid in `{}`",
+        pid_file.display()
+    )
+}
+
+fn macos_lldb_launch_arguments(arguments: &[(String, String)]) -> Vec<String> {
+    arguments
         .iter()
         .flat_map(|(key, value)| [format!("-{key}"), value.clone()])
-        .collect::<Vec<_>>();
-    if !launch_arguments.is_empty() {
-        command.push_str(" --");
-        for argument in launch_arguments {
-            command.push(' ');
-            command.push_str(&lldb_quote_arg(&argument));
-        }
-    }
-    command
+        .collect()
+}
+
+fn macos_tcl_list_items(values: &[String]) -> String {
+    values
+        .iter()
+        .map(|value| format!("\"{}\"", tcl_quote_arg(value)))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+fn macos_lldb_launch_command_setup(arguments: &[(String, String)]) -> String {
+    let launch_arguments = macos_lldb_launch_arguments(arguments);
+    let launch_argument_items = macos_tcl_list_items(&launch_arguments);
+    format!(
+        r#"set launch_arguments [list {launch_argument_items}]
+set launch_parts [list process launch -s -o $log_pipe -e $log_pipe]
+if {{[llength $launch_arguments] > 0}} {{
+    lappend launch_parts --
+    foreach arg $launch_arguments {{
+        set escaped_arg [string map [list "\\" "\\\\" "\"" "\\\""] $arg]
+        lappend launch_parts "\"$escaped_arg\""
+    }}
+}}
+set launch_command [join $launch_parts " "]
+"#
+    )
 }
 
 fn macos_lldb_run_script(
@@ -996,7 +1070,7 @@ fn macos_lldb_run_script(
     arguments: &[(String, String)],
 ) -> Result<String> {
     let lldb_path = selected_xcode_lldb_path(selected_xcode)?;
-    let launch_command = macos_lldb_launch_command(arguments);
+    let launch_command_setup = macos_lldb_launch_command_setup(arguments);
     Ok(format!(
         r#"set timeout -1
 log_user 0
@@ -1017,16 +1091,32 @@ proc wait_for_message {{pattern message}} {{
     }}
 }}
 
+proc wait_for_launch_and_record_pid {{pattern pid_file message}} {{
+    expect {{
+        -re $pattern {{
+            set inferior_pid $expect_out(1,string)
+            set file_handle [open $pid_file "w"]
+            puts $file_handle $inferior_pid
+            close $file_handle
+            return
+        }}
+        timeout {{ send_user "$message\n"; exit 1 }}
+        eof {{ send_user "LLDB exited unexpectedly\n"; exit 1 }}
+    }}
+}}
+
 set exe [lindex $argv 0]
 set log_pipe [lindex $argv 1]
+set pid_file [lindex $argv 2]
 set lldb_path "{lldb_path}"
+{launch_command_setup}
 
 spawn $lldb_path $exe
 wait_for_prompt
 send -- "settings set target.env-vars {env_vars}\r"
 wait_for_prompt
-send -- "{launch_command}\r"
-wait_for_message {{Process [0-9]+ launched}} "timed out waiting for LLDB to launch the macOS app"
+send -- "$launch_command\r"
+wait_for_launch_and_record_pid {{Process ([0-9]+) launched}} $pid_file "timed out waiting for LLDB to launch the macOS app"
 wait_for_prompt
 send -- "continue\r"
 wait_for_message {{Process [0-9]+ resuming}} "timed out waiting for LLDB to continue the macOS app"
@@ -1042,7 +1132,7 @@ expect {{
                 .context("macOS LLDB path contains invalid UTF-8")?,
         ),
         env_vars = tcl_quote_arg(&macos_xcode_log_redirect_env(selected_xcode)?),
-        launch_command = launch_command,
+        launch_command_setup = launch_command_setup,
     ))
 }
 
@@ -1051,6 +1141,7 @@ fn macos_attached_launch_wrapper(
     executable_path: &Path,
     lldb_script_path: &Path,
     log_pipe_path: &Path,
+    pid_file_path: &Path,
 ) -> Result<String> {
     Ok(format!(
         r#"#!/bin/zsh
@@ -1080,7 +1171,7 @@ trap 'cleanup 130' INT
 trap 'cleanup 143' TERM HUP
 trap 'cleanup $?' EXIT
 
-/usr/bin/expect -f {lldb_script} {executable} {log_pipe} &
+ /usr/bin/expect -f {lldb_script} {executable} {log_pipe} {pid_file} &
 launcher_pid=$!
 wait "${{launcher_pid}}"
 launcher_status=$?
@@ -1101,6 +1192,11 @@ cleanup "${{launcher_status}}"
             log_pipe_path
                 .to_str()
                 .context("macOS log pipe path contains invalid UTF-8")?,
+        ),
+        pid_file = shell_quote_arg(
+            pid_file_path
+                .to_str()
+                .context("macOS pid file path contains invalid UTF-8")?,
         ),
     ))
 }
@@ -1240,7 +1336,15 @@ fn ensure_macos_driver_binary(project: &ProjectContext) -> Result<PathBuf> {
 
 #[cfg(test)]
 mod tests {
-    use super::traced_process_candidates;
+    use super::{
+        macos_attached_launch_wrapper, macos_lldb_launch_arguments,
+        macos_lldb_launch_command_setup, traced_process_candidates, wait_for_launched_app_pid,
+    };
+    use std::fs;
+    use std::path::Path;
+    use std::thread;
+    use std::time::Duration;
+    use tempfile::tempdir;
 
     #[test]
     fn filters_launch_recorder_pid_from_traced_process_candidates() {
@@ -1252,5 +1356,67 @@ mod tests {
     fn keeps_unique_sorted_traced_process_candidates() {
         let pids = traced_process_candidates("42\n7\n42\n", None);
         assert_eq!(pids, vec![7, 42]);
+    }
+
+    #[test]
+    fn flattens_launch_argument_pairs_for_lldb() {
+        let arguments = macos_lldb_launch_arguments(&[
+            ("mockOpenAIOAuth".to_owned(), "instant_success".to_owned()),
+            ("mockOpenAIEmail".to_owned(), "qa@example.com".to_owned()),
+        ]);
+        assert_eq!(
+            arguments,
+            vec![
+                "-mockOpenAIOAuth".to_owned(),
+                "instant_success".to_owned(),
+                "-mockOpenAIEmail".to_owned(),
+                "qa@example.com".to_owned(),
+            ]
+        );
+    }
+
+    #[test]
+    fn lldb_launch_setup_uses_tcl_list_instead_of_inline_quoted_send() {
+        let setup = macos_lldb_launch_command_setup(&[
+            ("mockOpenAIOAuth".to_owned(), "instant_success".to_owned()),
+            ("mockOpenAIEmail".to_owned(), "qa@example.com".to_owned()),
+        ]);
+        assert!(setup.contains(
+            r#"set launch_arguments [list "-mockOpenAIOAuth" "instant_success" "-mockOpenAIEmail" "qa@example.com"]"#
+        ));
+        assert!(setup.contains(r#"foreach arg $launch_arguments {"#));
+        assert!(setup.contains(r#"lappend launch_parts "\"$escaped_arg\"""#));
+    }
+
+    #[test]
+    fn attached_launch_wrapper_passes_pid_file_to_expect() {
+        let wrapper = macos_attached_launch_wrapper(
+            "sh.orbit.desktop",
+            Path::new("/tmp/Accord.app/Contents/MacOS/Accord"),
+            Path::new("/tmp/run.expect"),
+            Path::new("/tmp/inferior-stdio.pipe"),
+            Path::new("/tmp/inferior-pid.txt"),
+        )
+        .unwrap();
+        assert!(wrapper.contains("/usr/bin/expect -f"));
+        assert!(wrapper.contains("/tmp/run.expect"));
+        assert!(wrapper.contains("/tmp/Accord.app/Contents/MacOS/Accord"));
+        assert!(wrapper.contains("/tmp/inferior-stdio.pipe"));
+        assert!(wrapper.contains("/tmp/inferior-pid.txt"));
+    }
+
+    #[test]
+    fn waits_for_launched_app_pid_file() {
+        let temp = tempdir().unwrap();
+        let pid_file = temp.path().join("inferior-pid.txt");
+        let writer_path = pid_file.clone();
+        let writer = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(120));
+            fs::write(writer_path, "43210\n").unwrap();
+        });
+
+        let pid = wait_for_launched_app_pid(&pid_file).unwrap();
+        writer.join().unwrap();
+        assert_eq!(pid, 43210);
     }
 }

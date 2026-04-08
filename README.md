@@ -531,6 +531,12 @@ Run the manifest's `tests.ui` suite on macOS:
 orbit test --ui --platform macos
 ```
 
+Run only a selected UI flow by its configured `name`, file stem, file name, or path:
+
+```sh
+orbit test --ui --platform macos --flow onboarding-provider-setup
+```
+
 Preflight macOS UI automation permissions and tooling:
 
 ```sh

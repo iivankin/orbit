@@ -77,6 +77,9 @@ pub struct TestArgs {
     #[arg(long)]
     pub ui: bool,
 
+    #[arg(long = "flow")]
+    pub flows: Vec<String>,
+
     #[arg(long, value_enum)]
     pub platform: Option<TargetPlatform>,
 

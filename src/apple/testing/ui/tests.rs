@@ -7,18 +7,22 @@ use serde_json::json;
 use tempfile::tempdir;
 
 use super::backend::UiBackend;
+use super::flow::select_ui_flow_paths;
 use super::{
     UiCommand, UiCrashDeleteRequest, UiCrashQuery, UiFlowRunner, UiHardwareButton, UiKeyModifier,
     UiKeyPress, UiPermissionConfig, UiSelector, UiSwipeDirection, UiTravel,
     find_element_by_selector, find_visible_element_by_selector, find_visible_scroll_container,
-    infer_screen_frame, plan_macos_ui_trace,
+    infer_screen_frame, plan_macos_ui_trace, ui_testing_destination,
 };
+use crate::apple::build::toolchain::DestinationKind;
+use crate::manifest::ApplePlatform;
 
 type LaunchRecords = Arc<Mutex<Vec<Vec<(String, String)>>>>;
 
 #[derive(Default)]
 struct TestUiBackend {
     launches: LaunchRecords,
+    selector_taps: Arc<Mutex<Vec<UiSelector>>>,
 }
 
 impl UiBackend for TestUiBackend {
@@ -66,6 +70,11 @@ impl UiBackend for TestUiBackend {
 
     fn tap_point(&self, _x: f64, _y: f64, _duration_ms: Option<u32>) -> Result<()> {
         Ok(())
+    }
+
+    fn activate_selector(&self, selector: &UiSelector) -> Result<bool> {
+        self.selector_taps.lock().unwrap().push(selector.clone());
+        Ok(true)
     }
 
     fn swipe_points(
@@ -274,6 +283,22 @@ fn selector_can_match_identifier_and_copy_label_text() {
 }
 
 #[test]
+fn macos_ui_uses_device_destination() {
+    assert_eq!(
+        ui_testing_destination(ApplePlatform::Macos),
+        DestinationKind::Device
+    );
+}
+
+#[test]
+fn ios_ui_keeps_simulator_destination() {
+    assert_eq!(
+        ui_testing_destination(ApplePlatform::Ios),
+        DestinationKind::Simulator
+    );
+}
+
+#[test]
 fn visible_scroll_container_prefers_largest_visible_scroll_role() {
     let tree = json!([
         { "frame": { "x": 0, "y": 0, "width": 500, "height": 500 } },
@@ -332,6 +357,7 @@ fn ui_runner_skips_only_the_first_launch_when_trace_prelaunched_the_app() {
     let launches = Arc::new(Mutex::new(Vec::new()));
     let backend = TestUiBackend {
         launches: launches.clone(),
+        selector_taps: Arc::new(Mutex::new(Vec::new())),
     };
     let mut runner = UiFlowRunner::new(
         Box::new(backend),
@@ -358,4 +384,78 @@ fn ui_runner_skips_only_the_first_launch_when_trace_prelaunched_the_app() {
         recorded[0],
         vec![("seedUser".to_owned(), "qa@example.com".to_owned())]
     );
+}
+
+#[test]
+fn ui_runner_prefers_backend_selector_activation_for_tap_on() {
+    let temp = tempdir().unwrap();
+    let selector_taps = Arc::new(Mutex::new(Vec::new()));
+    let backend = TestUiBackend {
+        launches: Arc::new(Mutex::new(Vec::new())),
+        selector_taps: selector_taps.clone(),
+    };
+    let mut runner = UiFlowRunner::new(
+        Box::new(backend),
+        temp.path().join("artifacts"),
+        "dev.orbit.fixture".to_owned(),
+        false,
+    );
+
+    runner
+        .run_leaf_command(&UiCommand::TapOn(UiSelector {
+            text: None,
+            id: Some("continue-button".to_owned()),
+        }))
+        .unwrap();
+
+    let recorded = selector_taps.lock().unwrap();
+    assert_eq!(recorded.len(), 1);
+    assert!(recorded[0].text.is_none());
+    assert_eq!(recorded[0].id.as_deref(), Some("continue-button"));
+}
+
+#[test]
+fn flow_selector_matches_configured_name_and_file_stem() {
+    let temp = tempdir().unwrap();
+    let named = write_flow(
+        temp.path(),
+        "onboarding-profile.yaml",
+        "name: onboarding-provider-setup-profile\n---\n- launchApp\n",
+    )
+    .canonicalize()
+    .unwrap();
+    let plain = write_flow(temp.path(), "relaunch.yaml", "---\n- launchApp\n")
+        .canonicalize()
+        .unwrap();
+
+    let selected = select_ui_flow_paths(
+        &[named.clone(), plain.clone()],
+        &[
+            "onboarding-provider-setup-profile".to_owned(),
+            "relaunch".to_owned(),
+        ],
+        temp.path(),
+    )
+    .unwrap();
+
+    assert_eq!(selected, vec![named, plain]);
+}
+
+#[test]
+fn flow_selector_reports_available_flows_when_no_match_exists() {
+    let temp = tempdir().unwrap();
+    let named = write_flow(
+        temp.path(),
+        "onboarding-profile.yaml",
+        "name: onboarding-provider-setup-profile\n---\n- launchApp\n",
+    )
+    .canonicalize()
+    .unwrap();
+
+    let error =
+        select_ui_flow_paths(&[named], &["missing-flow".to_owned()], temp.path()).unwrap_err();
+    let message = error.to_string();
+    assert!(message.contains("missing-flow"));
+    assert!(message.contains("onboarding-profile.yaml"));
+    assert!(message.contains("onboarding-provider-setup-profile"));
 }

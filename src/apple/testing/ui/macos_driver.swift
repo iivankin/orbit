@@ -420,6 +420,110 @@ func collectSnapshots(from root: AXUIElement) -> [[String: Any]] {
     return results
 }
 
+struct SelectorMatch {
+    let element: AXUIElement
+    let score: Int
+    let area: Double
+}
+
+func selectorScore(_ candidate: String?, needle: String) -> Int {
+    guard let candidate = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
+          !candidate.isEmpty
+    else {
+        return 0
+    }
+
+    if candidate == needle {
+        return 4
+    }
+    if candidate.localizedCaseInsensitiveContains(needle) {
+        return 2
+    }
+    return 0
+}
+
+func selectorMatch(
+    for element: AXUIElement,
+    text: String?,
+    identifier: String?
+) -> SelectorMatch? {
+    let idScore = identifier.map {
+        selectorScore(stringAttribute(element, attribute: kAXIdentifierAttribute as String), needle: $0)
+    } ?? 1
+    if identifier != nil && idScore == 0 {
+        return nil
+    }
+
+    let textCandidates = [
+        stringAttribute(element, attribute: kAXTitleAttribute as String),
+        stringAttribute(element, attribute: kAXDescriptionAttribute as String),
+        attributeValue(element, attribute: kAXValueAttribute as String).flatMap(stringValue),
+    ]
+    let textScore = text.map { needle in
+        textCandidates.map { selectorScore($0, needle: needle) }.max() ?? 0
+    } ?? 1
+    if text != nil && textScore == 0 {
+        return nil
+    }
+
+    let frame = frame(for: element)
+    let area = frame.map { max(1, Double($0.width * $0.height)) } ?? Double.greatestFiniteMagnitude
+    return SelectorMatch(
+        element: element,
+        score: idScore + textScore,
+        area: area
+    )
+}
+
+func bestMatchingElement(
+    root: AXUIElement,
+    text: String?,
+    identifier: String?
+) -> AXUIElement? {
+    var visited = Set<CFHashCode>()
+    var bestMatch: SelectorMatch?
+
+    func visit(_ element: AXUIElement) {
+        let hash = CFHash(element)
+        guard visited.insert(hash).inserted else {
+            return
+        }
+
+        if let candidate = selectorMatch(for: element, text: text, identifier: identifier) {
+            if let current = bestMatch {
+                if candidate.score > current.score
+                    || (candidate.score == current.score && candidate.area < current.area)
+                {
+                    bestMatch = candidate
+                }
+            } else {
+                bestMatch = candidate
+            }
+        }
+
+        for child in childElements(of: element) {
+            visit(child)
+        }
+    }
+
+    visit(root)
+    return bestMatch?.element
+}
+
+func pressElementOrAncestor(_ element: AXUIElement) throws {
+    var candidate: AXUIElement? = element
+    for _ in 0..<6 {
+        guard let current = candidate else {
+            break
+        }
+        if AXUIElementPerformAction(current, kAXPressAction as CFString) == .success {
+            return
+        }
+        candidate = elementAttribute(current, attribute: kAXParentAttribute as String)
+    }
+    throw DriverError.helper("failed to activate the matched accessibility element")
+}
+
 func outputJSON(_ object: Any) throws {
     let data = try JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted])
     guard let string = String(data: data, encoding: .utf8) else {
@@ -1055,6 +1159,21 @@ func run() throws {
         let y = try requireDoubleFlag("--y", in: arguments)
         let durationMs = try optionalIntFlag("--duration-ms", in: arguments)
         try tap(at: CGPoint(x: x, y: y), durationMs: durationMs)
+
+    case "activate-element":
+        let target = try requireApplicationTarget(in: arguments)
+        let identifier = try optionalFlag("--id", in: arguments)
+        let text = try optionalFlag("--text", in: arguments)
+        guard identifier != nil || text != nil else {
+            throw DriverError.usage("activate-element requires --id and/or --text")
+        }
+        try bringApplicationToFront(target: target)
+        usleep(80_000)
+        let (_, element) = try applicationElement(target: target)
+        guard let match = bestMatchingElement(root: element, text: text, identifier: identifier) else {
+            throw DriverError.helper("failed to resolve a matching accessibility element")
+        }
+        try pressElementOrAncestor(match)
 
     case "move":
         let x = try requireDoubleFlag("--x", in: arguments)

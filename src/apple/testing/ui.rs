@@ -70,7 +70,7 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
         args.platform.map(runtime::apple_platform_from_cli),
         "Select a platform to test",
     )?;
-    let flow_paths = collect_ui_flow_paths(project, ui_tests)?;
+    let flow_paths = collect_ui_flow_paths(project, ui_tests, args.flows.as_slice())?;
     if flow_paths.is_empty() {
         bail!("`tests.ui.sources` did not contain any `.yml` or `.yaml` files");
     }
@@ -330,14 +330,12 @@ fn prepare_ui_session(
     platform: ApplePlatform,
     launch_app: bool,
 ) -> Result<PreparedUiSession> {
+    let destination = ui_testing_destination(platform);
     match platform {
         ApplePlatform::Ios => {
             ensure_idb_tooling_available()?;
-            let build_outcome = build::build_for_testing_destination(
-                project,
-                platform,
-                DestinationKind::Simulator,
-            )?;
+            let build_outcome =
+                build::build_for_testing_destination(project, platform, destination)?;
             let backend = IosSimulatorBackend::prepare(project, &build_outcome.receipt)?;
             if launch_app {
                 backend.launch_app(&build_outcome.receipt.bundle_id, true, &[])?;
@@ -350,11 +348,8 @@ fn prepare_ui_session(
             })
         }
         ApplePlatform::Macos => {
-            let build_outcome = build::build_for_testing_destination(
-                project,
-                platform,
-                DestinationKind::Simulator,
-            )?;
+            let build_outcome =
+                build::build_for_testing_destination(project, platform, destination)?;
             let backend = MacosBackend::prepare(project, &build_outcome.receipt)?;
             if launch_app {
                 backend.launch_app(&build_outcome.receipt.bundle_id, true, &[])?;
@@ -369,6 +364,13 @@ fn prepare_ui_session(
         _ => bail!(
             "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
         ),
+    }
+}
+
+fn ui_testing_destination(platform: ApplePlatform) -> DestinationKind {
+    match platform {
+        ApplePlatform::Macos => DestinationKind::Device,
+        _ => DestinationKind::Simulator,
     }
 }
 

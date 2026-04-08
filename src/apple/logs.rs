@@ -409,7 +409,7 @@ fn filter_macos_inferior_line<'a>(line: &'a str, bundle_id: &str) -> Option<&'a 
         return None;
     }
 
-    if trimmed.starts_with("os_unix.c:") {
+    if is_macos_runtime_noise(trimmed) {
         return None;
     }
 
@@ -426,7 +426,20 @@ fn filter_macos_inferior_line<'a>(line: &'a str, bundle_id: &str) -> Option<&'a 
         return None;
     }
 
-    Some(trimmed.rsplit('\t').next().unwrap_or(trimmed))
+    let message = trimmed.rsplit('\t').next().unwrap_or(trimmed);
+    if is_macos_runtime_noise(message) {
+        return None;
+    }
+
+    Some(message)
+}
+
+fn is_macos_runtime_noise(line: &str) -> bool {
+    line.starts_with("os_unix.c:")
+        || line.contains("__delegate_identifier__:Performance Diagnostics__")
+            && line.contains(
+                "This method should not be called on the main thread as it may lead to UI unresponsiveness.",
+            )
 }
 
 fn filter_simulator_log_line<'a>(
@@ -574,6 +587,24 @@ mod tests {
     #[test]
     fn macos_inferior_filter_drops_other_subsystems() {
         let line = "libLogRedirect: 7 80 L 2 {subsystem:\"com.apple.BaseBoard\",category:\"Common\"}\tUnable to obtain a task name port right\n";
+        assert_eq!(
+            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            None
+        );
+    }
+
+    #[test]
+    fn macos_inferior_filter_drops_detached_signature_noise_from_log_redirect() {
+        let line = "libLogRedirect: 7 80 L 3 {t:1775597903.760651}\tos_unix.c:51044: (2) open(/private/var/db/DetachedSignatures) - No such file or directory\n";
+        assert_eq!(
+            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            None
+        );
+    }
+
+    #[test]
+    fn macos_inferior_filter_drops_performance_diagnostics_noise_without_subsystem() {
+        let line = "libLogRedirect: 7 80 L 5 {t:1775597903.762038}\t__delegate_identifier__:Performance Diagnostics__:::____message__:This method should not be called on the main thread as it may lead to UI unresponsiveness.\n";
         assert_eq!(
             filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
             None

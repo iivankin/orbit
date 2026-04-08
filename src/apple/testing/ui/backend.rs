@@ -7,7 +7,7 @@ use serde_json::Value as JsonValue;
 
 use super::{
     UiCrashDeleteRequest, UiCrashQuery, UiHardwareButton, UiKeyModifier, UiKeyPress,
-    UiPermissionConfig, UiSwipeDirection, UiTravel,
+    UiPermissionConfig, UiSelector, UiSwipeDirection, UiTravel,
 };
 
 #[path = "backend/ios_simulator.rs"]
@@ -51,6 +51,9 @@ pub trait UiBackend {
         Ok(())
     }
     fn tap_point(&self, x: f64, y: f64, duration_ms: Option<u32>) -> Result<()>;
+    fn activate_selector(&self, _selector: &UiSelector) -> Result<bool> {
+        Ok(false)
+    }
     fn hover_point(&self, _x: f64, _y: f64) -> Result<()> {
         bail!(
             "`hoverOn` is not supported by the current {} backend",

@@ -27,6 +27,8 @@ subset.
   `orbit test --ui --platform ios`
 - macOS:
   `orbit test --ui --platform macos`
+- specific flow:
+  `orbit test --ui --platform macos --flow onboarding-provider-setup`
 
 Orbit can also profile test runs:
 
@@ -54,6 +56,7 @@ Recommended authoring pattern:
 
 - keep one flow per file
 - use `name` for readable reports
+- use `orbit test --flow ...` when you need to run one top-level flow without changing the manifest
 - use `runFlow` for reuse
 - keep setup explicit near the top of the flow
 - prefer stable `id` selectors where possible
