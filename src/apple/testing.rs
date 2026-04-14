@@ -10,9 +10,7 @@ pub(crate) mod ui;
 use crate::apple::build::external::resolve_swift_package_dependency;
 use crate::cli::TestArgs;
 use crate::context::ProjectContext;
-use crate::manifest::{
-    SwiftPackageDependency, SwiftPackageSource, TargetManifest, TestTargetManifest,
-};
+use crate::manifest::{SwiftPackageDependency, SwiftPackageSource, TargetManifest};
 use crate::util::{
     collect_files_with_extensions, ensure_dir, print_success, resolve_path, run_command,
 };
@@ -30,7 +28,7 @@ pub fn run_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
         bail!("`orbit test --platform ...` is only supported together with `--ui`");
     }
 
-    let Some(unit_tests) = project.resolved_manifest.tests.unit.as_ref() else {
+    let Some(unit_tests) = project.resolved_manifest.tests.unit.as_deref() else {
         if project.resolved_manifest.tests.ui.is_some() {
             bail!("manifest does not declare `tests.unit`; pass `orbit test --ui` to run UI tests");
         }
@@ -58,7 +56,7 @@ pub fn run_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     print_success(format!(
         "Swift Testing passed for `{}` using {} test source root(s).",
         root_target.name,
-        unit_tests.sources.len()
+        unit_tests.len()
     ));
     Ok(())
 }
@@ -87,7 +85,7 @@ struct GeneratedPackageDependency {
 fn validate_swift_testing_layout(
     project: &ProjectContext,
     root_target: &TargetManifest,
-    unit_tests: &TestTargetManifest,
+    unit_tests: &[PathBuf],
 ) -> Result<()> {
     let app_swift_sources =
         collect_declared_sources(project, &root_target.sources, SWIFT_SOURCE_EXTENSIONS)?;
@@ -109,7 +107,7 @@ fn validate_swift_testing_layout(
     }
 
     let test_swift_sources =
-        collect_declared_sources(project, &unit_tests.sources, SWIFT_SOURCE_EXTENSIONS)?;
+        collect_declared_sources(project, unit_tests, SWIFT_SOURCE_EXTENSIONS)?;
     if test_swift_sources.is_empty() {
         bail!("`tests.unit` does not contain any Swift sources");
     }
@@ -120,7 +118,7 @@ fn validate_swift_testing_layout(
 fn materialize_swift_testing_package(
     project: &ProjectContext,
     root_target: &TargetManifest,
-    unit_tests: &TestTargetManifest,
+    unit_tests: &[PathBuf],
 ) -> Result<GeneratedSwiftTestingPackage> {
     let runner_root = project.project_paths.orbit_dir.join(GENERATED_TESTS_DIR);
     let package_root = runner_root.join("package");
@@ -148,8 +146,7 @@ fn materialize_swift_testing_package(
         &root_target.sources,
         &root_target.resources,
     )?;
-    let test_layout =
-        materialize_target_layout(&project.root, &test_target_dir, &unit_tests.sources, &[])?;
+    let test_layout = materialize_target_layout(&project.root, &test_target_dir, unit_tests, &[])?;
     let package_dependencies = resolve_package_dependencies(project, &root_target.swift_packages)?;
     let package_manifest = render_package_manifest(
         root_target.name.as_str(),

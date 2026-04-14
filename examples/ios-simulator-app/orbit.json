@@ -17,12 +17,9 @@
     "Resources"
   ],
   "tests": {
-    "ui": {
-      "format": "maestro",
-      "sources": [
-        "Tests/UI"
-      ]
-    }
+    "ui": [
+      "Tests/UI"
+    ]
   },
   "dependencies": {
     "OrbitGreeting": {

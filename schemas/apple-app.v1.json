@@ -18,6 +18,10 @@
       "type": "string",
       "description": "Schema identifier used by Orbit backend dispatch and editor validation. This can be a version-pinned published URL from `https://orbitstorage.dev/schemas/` or a local path ending with `apple-app.v1.json`."
     },
+    "_description": {
+      "type": "string",
+      "description": "Optional informational note for humans and agents. Orbit ignores this field at runtime. `orbit init` uses it to point readers at `orbit --help` and `orbit ui schema`."
+    },
     "name": {
       "type": "string",
       "minLength": 1,
@@ -1898,31 +1902,13 @@
       "additionalProperties": false,
       "properties": {
         "unit": {
-          "$ref": "#/$defs/testTargetManifest"
+          "$ref": "#/$defs/pathArray",
+          "description": "Root directories for Swift Testing source files."
         },
         "ui": {
-          "$ref": "#/$defs/testTargetManifest"
+          "$ref": "#/$defs/pathArray",
+          "description": "Root directories for Orbit UI flow YAML files."
         }
-      }
-    },
-    "testTargetManifest": {
-      "type": "object",
-      "additionalProperties": false,
-      "properties": {
-        "format": {
-          "$ref": "#/$defs/testFormat"
-        },
-        "sources": {
-          "$ref": "#/$defs/pathArray"
-        }
-      }
-    },
-    "testFormat": {
-      "type": "string",
-      "enum": [
-        "swift-testing",
-        "maestro"
-      ]
     },
     "qualitySeverity": {
       "type": "string",

@@ -462,13 +462,8 @@ package and invoking `swift test`.
 
 ```json
 "tests": {
-  "unit": {
-    "sources": ["Tests/Unit"]
-  },
-  "ui": {
-    "format": "maestro",
-    "sources": ["Tests/UI"]
-  }
+  "unit": ["Tests/Unit"],
+  "ui": ["Tests/UI"]
 }
 ```
 
@@ -485,11 +480,13 @@ orbit test --ui --platform ios
 ```
 
 `tests.ui` currently supports an Orbit-native runner that executes a
-Maestro-style YAML subset against iOS simulators. Common commands such as
+YAML UI flow subset against iOS simulators. Common commands such as
 `assertVisible`, `assertNotVisible`, and `tapOn` include built-in polling, and
 each top-level flow writes an `.mp4` screen recording alongside screenshots and
 the JSON report. Orbit also streams app logs to the terminal during
 `orbit test --ui`, `orbit run --platform ios --simulator`, and iOS device runs.
+Run `orbit ui schema [--platform ...]` to inspect the accepted flow grammar and
+backend support directly from the CLI.
 
 Current iOS simulator command support includes:
 `launchApp`, `stopApp`, `killApp`, `clearState`, `clearKeychain`, `tapOn`,

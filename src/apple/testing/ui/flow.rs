@@ -7,17 +7,16 @@ use anyhow::{Context, Result, bail};
 use super::UiCommand;
 use super::parser::parse_ui_flow;
 use crate::context::ProjectContext;
-use crate::manifest::TestTargetManifest;
 use crate::util::{collect_files_with_extensions, resolve_path};
 
 pub(super) fn collect_ui_flow_paths(
     project: &ProjectContext,
-    target: &TestTargetManifest,
+    sources: &[PathBuf],
     selectors: &[String],
 ) -> Result<Vec<PathBuf>> {
     let mut flows = Vec::new();
     let mut seen = HashSet::new();
-    for root in &target.sources {
+    for root in sources {
         let resolved = resolve_path(&project.root, root);
         if !resolved.exists() {
             bail!("declared path `{}` does not exist", resolved.display());

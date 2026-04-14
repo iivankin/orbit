@@ -11,8 +11,7 @@ pub use crate::apple::manifest::{
     ExtensionRuntime, HooksManifest, IosDeviceFamily, IosInterfaceOrientation,
     IosSupportedOrientationsManifest, IosTargetManifest, PlatformManifest, ProfileManifest,
     PushManifest, QualityManifest, ResolvedManifest, SwiftPackageDependency, SwiftPackageSource,
-    TargetKind, TargetManifest, TestFormat, TestTargetManifest, TestsManifest,
-    XcframeworkDependency,
+    TargetKind, TargetManifest, TestsManifest, XcframeworkDependency,
 };
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]

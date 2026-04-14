@@ -11,7 +11,7 @@ use crate::apple::xcode::validate_requested_xcode_version;
 use super::authoring::{
     AccessorySetupSupport, AppManifest, BroadcastUploadProcessMode, DependencySpec,
     EntitlementsManifest, ExportedTypeDeclarationConfig, ExtensionConfig, ExtensionKind,
-    FileProviderActionConfig, InfoManifest, PhotoProjectCategory, TestFormat,
+    FileProviderActionConfig, InfoManifest, PhotoProjectCategory,
 };
 use super::entitlements::build_entitlements_dictionary;
 use super::{
@@ -223,35 +223,20 @@ fn validate_root_manifest(app: &AppManifest) -> Result<()> {
     }
     validate_test_target_manifest(
         "tests.unit",
-        app.tests.as_ref().and_then(|tests| tests.unit.as_ref()),
-        false,
+        app.tests.as_ref().and_then(|tests| tests.unit.as_deref()),
     )?;
     validate_test_target_manifest(
         "tests.ui",
-        app.tests.as_ref().and_then(|tests| tests.ui.as_ref()),
-        true,
+        app.tests.as_ref().and_then(|tests| tests.ui.as_deref()),
     )?;
     Ok(())
 }
 
-fn validate_test_target_manifest(
-    field_name: &str,
-    target: Option<&super::authoring::TestTargetManifest>,
-    require_maestro_format: bool,
-) -> Result<()> {
-    if let Some(target) = target {
-        if target.sources.is_empty() {
-            bail!("`{field_name}` must declare at least one source root");
-        }
-        if require_maestro_format {
-            if target.format != Some(TestFormat::Maestro) {
-                bail!("`{field_name}.format` must be set to `maestro`");
-            }
-        } else if let Some(format) = target.format
-            && format != TestFormat::SwiftTesting
-        {
-            bail!("`{field_name}.format` currently supports only `swift-testing`");
-        }
+fn validate_test_target_manifest(field_name: &str, sources: Option<&[PathBuf]>) -> Result<()> {
+    if let Some(sources) = sources
+        && sources.is_empty()
+    {
+        bail!("`{field_name}` must declare at least one source root");
     }
     Ok(())
 }

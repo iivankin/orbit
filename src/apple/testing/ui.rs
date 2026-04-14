@@ -21,6 +21,8 @@ mod parser;
 mod report;
 #[path = "ui/runner.rs"]
 mod runner;
+#[path = "ui/schema.rs"]
+mod schema;
 #[path = "ui/trace.rs"]
 mod trace;
 
@@ -40,6 +42,7 @@ pub(crate) use self::model::{
 };
 use self::report::{RunStatus, UiTestRunReport, unix_timestamp_secs};
 use self::runner::UiFlowRunner;
+pub(crate) use self::schema::{schema_json, schema_text};
 use self::trace::{
     UiTracePlan, apply_macos_ui_trace_prelaunch, plan_macos_ui_trace,
     prepare_macos_ui_trace_launch_command,
@@ -68,7 +71,7 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
         .resolved_manifest
         .tests
         .ui
-        .as_ref()
+        .as_deref()
         .context("manifest does not declare `tests.ui`")?;
     let platform = runtime::resolve_platform(
         project,
@@ -77,7 +80,7 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     )?;
     let flow_paths = collect_ui_flow_paths(project, ui_tests, args.flows.as_slice())?;
     if flow_paths.is_empty() {
-        bail!("`tests.ui.sources` did not contain any `.yml` or `.yaml` files");
+        bail!("`tests.ui` did not contain any `.yml` or `.yaml` files");
     }
     let trace_plan = match (platform, args.trace) {
         (ApplePlatform::Ios, kind) => {

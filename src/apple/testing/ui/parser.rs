@@ -959,7 +959,7 @@ mod tests {
     };
 
     #[test]
-    fn parses_two_document_maestro_style_flow() {
+    fn parses_two_document_ui_flow() {
         let temp = tempdir().unwrap();
         let path = temp.path().join("flow.yaml");
         fs::write(

@@ -11,6 +11,8 @@ use super::ApplePlatform;
 pub struct AppManifest {
     #[serde(rename = "$schema")]
     pub schema: String,
+    #[serde(rename = "_description", default)]
+    pub description_hint: Option<String>,
     pub name: String,
     #[serde(default)]
     pub display_name: Option<String>,
@@ -714,23 +716,7 @@ pub struct HooksManifest {
 #[serde(deny_unknown_fields)]
 pub struct TestsManifest {
     #[serde(default)]
-    pub unit: Option<TestTargetManifest>,
+    pub unit: Option<Vec<PathBuf>>,
     #[serde(default)]
-    pub ui: Option<TestTargetManifest>,
-}
-
-#[derive(Debug, Clone, Copy, Deserialize, Serialize, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
-pub enum TestFormat {
-    SwiftTesting,
-    Maestro,
-}
-
-#[derive(Debug, Clone, Default, Deserialize, Serialize)]
-#[serde(deny_unknown_fields)]
-pub struct TestTargetManifest {
-    #[serde(default)]
-    pub format: Option<TestFormat>,
-    #[serde(default)]
-    pub sources: Vec<PathBuf>,
+    pub ui: Option<Vec<PathBuf>>,
 }

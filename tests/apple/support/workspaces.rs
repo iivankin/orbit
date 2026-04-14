@@ -253,9 +253,7 @@ pub fn create_testing_workspace(root: &Path) -> PathBuf {
             },
             "sources": ["Sources/App"],
             "tests": {
-                "unit": {
-                    "sources": ["Tests/Unit"]
-                }
+                "unit": ["Tests/Unit"]
             }
         }),
     )
@@ -293,10 +291,7 @@ pub fn create_ui_testing_workspace(root: &Path) -> PathBuf {
             },
             "sources": ["Sources/App"],
             "tests": {
-                "ui": {
-                    "format": "maestro",
-                    "sources": ["Tests/UI"]
-                }
+                "ui": ["Tests/UI"]
             }
         }),
     )

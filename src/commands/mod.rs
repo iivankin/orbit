@@ -11,7 +11,12 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
     match &cli.command {
         Command::Init(_) => init::execute(app, cli.manifest.as_deref()),
         Command::InspectTrace(args) => crate::apple::profile::inspect_trace_command(app, args),
-        Command::Ui(ui_args) if matches!(&ui_args.command, UiCommand::ResetIdb(_)) => {
+        Command::Ui(ui_args)
+            if matches!(
+                &ui_args.command,
+                UiCommand::Schema(_) | UiCommand::ResetIdb(_)
+            ) =>
+        {
             apple::execute(app, cli)
         }
         Command::Apple(apple_args)

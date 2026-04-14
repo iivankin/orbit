@@ -21,22 +21,12 @@ Use this skill when a repository is driven by `orbit.json` and Orbit CLI.
   - mutating `orbit apple ...` commands
   - signing import/export against real credentials
 
-## Read This First
+## Product Sources Of Truth
 
-- General workflow and guardrails: [references/project-workflow.md](references/project-workflow.md)
-- Manifest shape and authoring rules: [references/manifest-guide.md](references/manifest-guide.md)
-- Command selection and validation flow: [references/command-guide.md](references/command-guide.md)
-
-## UI Tests
-
-Read these when a task touches `tests.ui`, `orbit test --ui`, or `orbit ui`:
-
-- Overview and debugging flow: [references/ui-tests-overview.md](references/ui-tests-overview.md)
-- YAML/YML syntax and supported parser forms: [references/ui-test-yaml.md](references/ui-test-yaml.md)
-- Backend support and platform caveats: [references/ui-test-platforms.md](references/ui-test-platforms.md)
-
-The parser accepts more commands than every backend supports. Always check the
-platform support file before authoring or changing a flow.
+- Manifest field docs live in the `orbit.json` schema. Prefer editor/schema help over handwritten markdown.
+- Workflow and command docs live in `orbit --help` and `orbit <command> --help`.
+- UI flow grammar and backend support live in `orbit ui schema [--platform ...]`.
+- Use `examples/` for canonical manifest shapes and example UI flows.
 
 ## Inside The Orbit CLI Repository
 

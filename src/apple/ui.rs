@@ -4,10 +4,21 @@ use crate::apple::runtime;
 use crate::apple::testing::ui::{self, UiCrashDeleteRequest, UiCrashQuery, backend::UiBackend};
 use crate::cli::{
     UiAddMediaArgs, UiCrashArgs, UiCrashCommand, UiDescribePointArgs, UiDoctorArgs, UiDumpTreeArgs,
-    UiFocusArgs, UiInstallDylibArgs, UiInstrumentsArgs, UiLogsArgs, UiOpenArgs,
+    UiFocusArgs, UiInstallDylibArgs, UiInstrumentsArgs, UiLogsArgs, UiOpenArgs, UiSchemaArgs,
     UiUpdateContactsArgs,
 };
 use crate::context::ProjectContext;
+
+pub fn schema(args: &UiSchemaArgs) -> Result<()> {
+    let platform = args.platform.map(runtime::apple_platform_from_cli);
+    if args.json {
+        let value = ui::schema_json(platform);
+        println!("{}", serde_json::to_string_pretty(&value)?);
+    } else {
+        println!("{}", ui::schema_text(platform));
+    }
+    Ok(())
+}
 
 pub fn doctor(project: &ProjectContext, args: &UiDoctorArgs) -> Result<()> {
     let platform = runtime::resolve_platform(

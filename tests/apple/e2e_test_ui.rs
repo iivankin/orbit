@@ -11,7 +11,7 @@ use crate::support::{
 use tempfile::tempdir;
 
 #[test]
-fn orbit_test_runs_ui_flows_for_maestro_manifest_tests() {
+fn orbit_test_runs_ui_flows_for_manifest_tests() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
     let mock_bin = temp.path().join("mock-bin");

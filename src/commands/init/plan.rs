@@ -16,6 +16,7 @@ const DEFAULT_RESOURCES_DIR: &str = "Resources";
 const DEFAULT_WATCH_APP_SOURCE_DIR: &str = "Sources/WatchApp";
 const DEFAULT_WATCH_EXTENSION_SOURCE_DIR: &str = "Sources/WatchExtension";
 const HOME_VIEW_NAME: &str = "HomeView";
+const MANIFEST_DESCRIPTION: &str = "This file is documented by its `$schema`. Start with `orbit --help` for the common workflow and `orbit ui schema` for the `tests.ui` DSL.";
 
 const APPLE_TEMPLATE_CHOICES: [TemplateChoice; 6] = [
     TemplateChoice {
@@ -290,6 +291,7 @@ fn watch_companion_plan(answers: &InitAnswers, schema_reference: &str) -> Scaffo
     let swift_name = swift_type_name(&answers.name);
     let mut manifest = json!({
         "$schema": schema_reference,
+        "_description": MANIFEST_DESCRIPTION,
         "name": answers.name,
         "bundle_id": answers.bundle_id,
         "version": DEFAULT_VERSION,
@@ -363,6 +365,7 @@ fn app_manifest(
 ) -> JsonValue {
     let mut manifest = json!({
         "$schema": schema_reference,
+        "_description": MANIFEST_DESCRIPTION,
         "name": answers.name,
         "bundle_id": answers.bundle_id,
         "version": DEFAULT_VERSION,
@@ -505,6 +508,7 @@ mod tests {
             plan.manifest,
             json!({
                 "$schema": schema_path,
+                "_description": MANIFEST_DESCRIPTION,
                 "name": "Example App",
                 "bundle_id": "dev.orbit.exampleapp",
                 "version": "1.0.0",
@@ -550,6 +554,7 @@ mod tests {
             plan.manifest,
             json!({
                 "$schema": schema_path,
+                "_description": MANIFEST_DESCRIPTION,
                 "name": "Example App",
                 "bundle_id": "dev.orbit.exampleapp",
                 "version": "1.0.0",
