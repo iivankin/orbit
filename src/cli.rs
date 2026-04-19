@@ -126,7 +126,7 @@ pub struct FormatArgs {
 #[command(
     about = "Run unit tests, UI flows, or profiling sessions declared in the manifest.",
     long_about = "By default `orbit test` runs the manifest's `tests.unit` suite.\n\nUse `--ui` to run `tests.ui`, and use `orbit ui schema` when you need the accepted YAML grammar or backend support matrix.",
-    after_help = "Examples:\n  orbit test\n  orbit test --ui --platform ios\n  orbit test --ui --platform macos --flow onboarding-provider-setup\n  orbit test --trace\n  orbit ui schema --platform ios"
+    after_help = "Examples:\n  orbit test\n  orbit test --ui --platform ios\n  orbit test --ui --platform macos --flow onboarding-provider-setup\n  orbit test --ui --platform macos --focus\n  orbit test --trace\n  orbit ui schema --platform ios"
 )]
 pub struct TestArgs {
     #[arg(long, help = "Run `tests.ui` instead of the unit-test suite.")]
@@ -153,6 +153,13 @@ pub struct TestArgs {
         help = "Collect a CPU or memory trace while the test run executes."
     )]
     pub trace: Option<ProfileKind>,
+
+    #[arg(
+        long,
+        requires = "ui",
+        help = "Best-effort: bring the automation target to the foreground after each `launchApp`."
+    )]
+    pub focus: bool,
 }
 
 #[derive(Debug, Args)]
@@ -216,7 +223,7 @@ pub struct PreviewShotArgs {
 #[command(
     about = "Inspect automation targets and query the UI test dialect.",
     long_about = "Use `orbit ui schema` for product-level documentation of the accepted `tests.ui` YAML dialect and backend support.\n\nUse the other subcommands when you need to inspect a running automation target, debug selectors, or mutate simulator state.",
-    after_help = "Common commands:\n  orbit ui schema --platform ios\n  orbit ui dump-tree --platform ios\n  orbit ui describe-point --platform ios --x 140 --y 142\n  orbit ui doctor --platform macos"
+    after_help = "Common commands:\n  orbit ui schema --platform ios\n  orbit ui tap --platform ios --text Continue\n  orbit ui swipe --platform ios --direction left\n  orbit ui dump-tree --platform ios\n  orbit ui describe-point --platform ios --x 140 --y 142\n  orbit ui doctor --platform macos"
 )]
 pub struct UiArgs {
     #[command(subcommand)]
@@ -237,12 +244,87 @@ pub enum UiCommand {
     DescribePoint(UiDescribePointArgs),
     /// Bring the current automation target to the foreground.
     Focus(UiFocusArgs),
+    /// Launch the manifest app or an explicit bundle id.
+    LaunchApp(UiLaunchAppArgs),
+    /// Stop the manifest app or an explicit bundle id.
+    StopApp(UiAppTargetArgs),
+    /// Kill the manifest app or an explicit bundle id.
+    KillApp(UiAppTargetArgs),
+    /// Clear the manifest app's installed simulator state.
+    ClearState(UiAppTargetArgs),
+    /// Clear the target runtime keychain.
+    ClearKeychain(UiPlatformOnlyArgs),
+    /// Tap an element by accessibility text and/or identifier.
+    #[command(alias = "tap-on")]
+    Tap(UiSelectorActionArgs),
+    /// Hover over an element by accessibility text and/or identifier.
+    #[command(alias = "hover-on")]
+    Hover(UiSelectorActionArgs),
+    /// Right-click an element by accessibility text and/or identifier.
+    #[command(alias = "right-click-on")]
+    RightClick(UiSelectorActionArgs),
+    /// Tap a point like `140,142` or `50%,80%`.
+    #[command(alias = "tap-on-point")]
+    TapPoint(UiTapPointArgs),
+    /// Double-tap an element by accessibility text and/or identifier.
+    #[command(alias = "double-tap-on")]
+    DoubleTap(UiSelectorActionArgs),
+    /// Long-press an element by accessibility text and/or identifier.
+    #[command(alias = "long-press-on")]
+    LongPress(UiLongPressArgs),
+    /// Swipe by direction or between explicit points.
+    Swipe(UiSwipeArgs),
+    /// Swipe on an element in one direction.
+    SwipeOn(UiSwipeOnArgs),
+    /// Drag from one element to another.
+    #[command(alias = "drag-and-drop")]
+    Drag(UiDragArgs),
+    /// Scroll in one direction.
+    Scroll(UiScrollArgs),
+    /// Scroll within an element in one direction.
+    ScrollOn(UiScrollOnArgs),
+    /// Scroll until an element becomes visible.
+    ScrollUntilVisible(UiScrollUntilVisibleArgs),
+    /// Type text into the focused control.
+    InputText(UiInputTextArgs),
+    /// Delete characters from the focused control.
+    EraseText(UiEraseTextArgs),
+    /// Press a named key with optional modifiers.
+    PressKey(UiPressKeyArgs),
+    /// Press a raw key code with optional modifiers.
+    PressKeyCode(UiPressKeyCodeArgs),
+    /// Press a sequence of raw key codes.
+    KeySequence(UiKeySequenceArgs),
+    /// Press a simulator or device hardware button.
+    PressButton(UiPressButtonArgs),
+    /// Select a menu item path such as `File > New Window`.
+    SelectMenuItem(UiSelectMenuItemArgs),
+    /// Hide the software keyboard.
+    HideKeyboard(UiPlatformOnlyArgs),
+    /// Assert that an element is visible.
+    AssertVisible(UiSelectorActionArgs),
+    /// Assert that an element is not visible.
+    AssertNotVisible(UiSelectorActionArgs),
+    /// Wait until an element becomes visible and/or invisible.
+    #[command(alias = "extended-wait-until")]
+    WaitUntil(UiWaitUntilArgs),
+    /// Wait for animations to settle.
+    WaitForAnimationToEnd(UiWaitForAnimationToEndArgs),
+    /// Capture a screenshot into Orbit's artifacts directory.
+    TakeScreenshot(UiTakeScreenshotArgs),
     /// Stream simulator or automation logs.
     Logs(UiLogsArgs),
     /// Import media into the target runtime.
     AddMedia(UiAddMediaArgs),
     /// Open a URL or deep link in the target runtime.
+    #[command(alias = "open-link")]
     Open(UiOpenArgs),
+    /// Override the runtime location.
+    SetLocation(UiSetLocationArgs),
+    /// Apply simulator or runtime permissions for an app.
+    SetPermissions(UiSetPermissionsArgs),
+    /// Travel through a sequence of coordinates.
+    Travel(UiTravelArgs),
     /// Install a test dylib into the simulator runtime.
     InstallDylib(UiInstallDylibArgs),
     /// Run Instruments against the selected runtime.
@@ -253,6 +335,396 @@ pub enum UiCommand {
     Crash(UiCrashArgs),
     #[command(hide = true)]
     ResetIdb(UiResetIdbArgs),
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UiPlatformOnlyArgs {
+    #[arg(
+        long,
+        value_enum,
+        help = PLATFORM_ARG_HELP,
+        long_help = PLATFORM_ARG_LONG_HELP
+    )]
+    pub platform: Option<TargetPlatform>,
+}
+
+#[derive(Debug, Args, Clone)]
+pub struct UiSelectorArgs {
+    #[arg(long, help = "Match the accessibility text or label.")]
+    pub text: Option<String>,
+
+    #[arg(long, help = "Match the accessibility identifier.")]
+    pub id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiAppTargetArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, help = "Override the default manifest app bundle identifier.")]
+    pub app_id: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiSelectorActionArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[command(flatten)]
+    pub selector: UiSelectorArgs,
+}
+
+#[derive(Debug, Args)]
+pub struct UiLaunchAppArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, help = "Override the default manifest app bundle identifier.")]
+    pub app_id: Option<String>,
+
+    #[arg(long, help = "Clear installed app data before launch.")]
+    pub clear_state: bool,
+
+    #[arg(long, help = "Clear keychain entries before launch.")]
+    pub clear_keychain: bool,
+
+    #[arg(
+        long,
+        default_value_t = true,
+        action = clap::ArgAction::Set,
+        help = "Stop the target before launching it again."
+    )]
+    pub stop_app: bool,
+
+    #[arg(
+        long = "arg",
+        help = "Repeat `--arg key=value` to pass launch arguments."
+    )]
+    pub arguments: Vec<String>,
+
+    #[arg(
+        long = "permission",
+        help = "Repeat `--permission name=allow|deny|unset` to set launch permissions."
+    )]
+    pub permissions: Vec<String>,
+
+    #[arg(
+        long,
+        help = "Best-effort: bring the automation target to the foreground after `launch-app`."
+    )]
+    pub focus: bool,
+}
+
+#[derive(Debug, Args)]
+pub struct UiTapPointArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(help = "Point expression like `140,142` or `50%,80%`.")]
+    pub point: String,
+}
+
+#[derive(Debug, Args)]
+pub struct UiLongPressArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[command(flatten)]
+    pub selector: UiSelectorArgs,
+
+    #[arg(long, help = "Press duration like `1500ms` or `1.5s`.")]
+    pub duration: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiSwipeArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(
+        long,
+        value_enum,
+        help = "Swipe in one direction using Orbit's default path."
+    )]
+    pub direction: Option<UiSwipeDirectionArg>,
+
+    #[arg(long, help = "Explicit start point like `90%,50%`.")]
+    pub start: Option<String>,
+
+    #[arg(long, help = "Explicit end point like `10%,50%`.")]
+    pub end: Option<String>,
+
+    #[arg(long, help = "Swipe duration like `500ms` or `0.5s`.")]
+    pub duration: Option<String>,
+
+    #[arg(
+        long,
+        help = "Pointer delta in points between intermediate swipe samples."
+    )]
+    pub delta: Option<u32>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiSwipeOnArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[command(flatten)]
+    pub selector: UiSelectorArgs,
+
+    #[arg(long, value_enum, help = "Swipe direction.")]
+    pub direction: UiSwipeDirectionArg,
+
+    #[arg(long, help = "Swipe duration like `500ms` or `0.5s`.")]
+    pub duration: Option<String>,
+
+    #[arg(
+        long,
+        help = "Pointer delta in points between intermediate swipe samples."
+    )]
+    pub delta: Option<u32>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiDragArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long = "from-text", help = "Source accessibility text or label.")]
+    pub from_text: Option<String>,
+
+    #[arg(long = "from-id", help = "Source accessibility identifier.")]
+    pub from_id: Option<String>,
+
+    #[arg(long = "to-text", help = "Destination accessibility text or label.")]
+    pub to_text: Option<String>,
+
+    #[arg(long = "to-id", help = "Destination accessibility identifier.")]
+    pub to_id: Option<String>,
+
+    #[arg(long, help = "Drag duration like `650ms` or `0.65s`.")]
+    pub duration: Option<String>,
+
+    #[arg(
+        long,
+        help = "Pointer delta in points between intermediate drag samples."
+    )]
+    pub delta: Option<u32>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiScrollArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, value_enum, default_value = "down", help = "Scroll direction.")]
+    pub direction: UiSwipeDirectionArg,
+}
+
+#[derive(Debug, Args)]
+pub struct UiScrollOnArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[command(flatten)]
+    pub selector: UiSelectorArgs,
+
+    #[arg(long, value_enum, default_value = "down", help = "Scroll direction.")]
+    pub direction: UiSwipeDirectionArg,
+}
+
+#[derive(Debug, Args)]
+pub struct UiScrollUntilVisibleArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[command(flatten)]
+    pub selector: UiSelectorArgs,
+
+    #[arg(long, value_enum, default_value = "down", help = "Scroll direction.")]
+    pub direction: UiSwipeDirectionArg,
+
+    #[arg(long, help = "Maximum wait like `20s` or `20000ms`.")]
+    pub timeout: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiInputTextArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(help = "Text to type into the focused control.")]
+    pub text: String,
+}
+
+#[derive(Debug, Args)]
+pub struct UiEraseTextArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, default_value_t = 50, help = "Characters to delete.")]
+    pub characters: u32,
+}
+
+#[derive(Debug, Args)]
+pub struct UiPressKeyArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(help = "Named key like `ENTER`, `LEFT`, or one character.")]
+    pub key: String,
+
+    #[arg(
+        long = "modifier",
+        value_enum,
+        help = "Repeat to add key modifiers like `--modifier command`."
+    )]
+    pub modifiers: Vec<UiKeyModifierArg>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiPressKeyCodeArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(help = "Raw platform key code.")]
+    pub keycode: u32,
+
+    #[arg(long, help = "Press duration like `200ms` or `0.2s`.")]
+    pub duration: Option<String>,
+
+    #[arg(
+        long = "modifier",
+        value_enum,
+        help = "Repeat to add key modifiers like `--modifier control`."
+    )]
+    pub modifiers: Vec<UiKeyModifierArg>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiKeySequenceArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(required = true, help = "One or more raw platform key codes.")]
+    pub keycodes: Vec<u32>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiPressButtonArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(value_enum, help = "Hardware button to press.")]
+    pub button: UiHardwareButtonArg,
+
+    #[arg(long, help = "Press duration like `500ms` or `0.5s`.")]
+    pub duration: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiSelectMenuItemArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(help = "Menu path like `File > New Window`.")]
+    pub path: String,
+}
+
+#[derive(Debug, Args)]
+pub struct UiWaitUntilArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(
+        long = "visible-text",
+        help = "Require this accessibility text to appear."
+    )]
+    pub visible_text: Option<String>,
+
+    #[arg(
+        long = "visible-id",
+        help = "Require this accessibility identifier to appear."
+    )]
+    pub visible_id: Option<String>,
+
+    #[arg(
+        long = "not-visible-text",
+        help = "Require this accessibility text to disappear."
+    )]
+    pub not_visible_text: Option<String>,
+
+    #[arg(
+        long = "not-visible-id",
+        help = "Require this accessibility identifier to disappear."
+    )]
+    pub not_visible_id: Option<String>,
+
+    #[arg(long, help = "Maximum wait like `10s` or `10000ms`.")]
+    pub timeout: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiWaitForAnimationToEndArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, help = "Maximum wait like `5s` or `5000ms`.")]
+    pub timeout: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiTakeScreenshotArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(help = "Optional screenshot name or relative artifact path.")]
+    pub name: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiSetLocationArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, help = "Latitude in decimal degrees.")]
+    pub latitude: f64,
+
+    #[arg(long, help = "Longitude in decimal degrees.")]
+    pub longitude: f64,
+}
+
+#[derive(Debug, Args)]
+pub struct UiSetPermissionsArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(long, help = "Override the default manifest app bundle identifier.")]
+    pub app_id: Option<String>,
+
+    #[arg(
+        long = "permission",
+        required = true,
+        help = "Repeat `--permission name=allow|deny|unset`."
+    )]
+    pub permissions: Vec<String>,
+}
+
+#[derive(Debug, Args)]
+pub struct UiTravelArgs {
+    #[command(flatten)]
+    pub runtime: UiPlatformOnlyArgs,
+
+    #[arg(
+        long = "point",
+        required = true,
+        help = "Repeat `--point lat,lon` for at least two coordinates."
+    )]
+    pub points: Vec<String>,
+
+    #[arg(long, help = "Meters per second.")]
+    pub speed: Option<f64>,
 }
 
 #[derive(Debug, Args)]
@@ -929,6 +1401,32 @@ pub enum DistributionArg {
     MacAppStore,
 }
 
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+pub enum UiSwipeDirectionArg {
+    Left,
+    Right,
+    Up,
+    Down,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+pub enum UiKeyModifierArg {
+    Command,
+    Shift,
+    Option,
+    Control,
+    Function,
+}
+
+#[derive(Debug, Clone, Copy, Eq, PartialEq, ValueEnum)]
+pub enum UiHardwareButtonArg {
+    ApplePay,
+    Home,
+    Lock,
+    SideButton,
+    Siri,
+}
+
 #[cfg(test)]
 mod tests {
     use clap::CommandFactory;
@@ -963,6 +1461,8 @@ mod tests {
         let help = ui.render_long_help().to_string();
 
         assert!(help.contains("schema"));
+        assert!(help.contains("tap"));
+        assert!(help.contains("swipe"));
         assert!(help.contains("clean-trace-temp"));
         assert!(help.contains("tests.ui"));
     }

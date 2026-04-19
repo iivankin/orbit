@@ -25,6 +25,7 @@ type LaunchRecords = Arc<Mutex<Vec<Vec<(String, String)>>>>;
 struct TestUiBackend {
     launches: LaunchRecords,
     selector_taps: Arc<Mutex<Vec<UiSelector>>>,
+    focus_calls: Arc<Mutex<u32>>,
 }
 
 impl UiBackend for TestUiBackend {
@@ -67,6 +68,7 @@ impl UiBackend for TestUiBackend {
     }
 
     fn focus(&self) -> Result<()> {
+        *self.focus_calls.lock().unwrap() += 1;
         Ok(())
     }
 
@@ -336,11 +338,13 @@ fn ui_runner_prefers_backend_selector_activation_for_tap_on() {
     let backend = TestUiBackend {
         launches: Arc::new(Mutex::new(Vec::new())),
         selector_taps: selector_taps.clone(),
+        focus_calls: Arc::new(Mutex::new(0)),
     };
     let mut runner = UiFlowRunner::new(
         Box::new(backend),
         temp.path().join("artifacts"),
         "dev.orbit.fixture".to_owned(),
+        false,
         None,
     );
 
@@ -355,6 +359,30 @@ fn ui_runner_prefers_backend_selector_activation_for_tap_on() {
     assert_eq!(recorded.len(), 1);
     assert!(recorded[0].text.is_none());
     assert_eq!(recorded[0].id.as_deref(), Some("continue-button"));
+}
+
+#[test]
+fn ui_runner_best_effort_focuses_after_launch_when_requested() {
+    let temp = tempdir().unwrap();
+    let focus_calls = Arc::new(Mutex::new(0));
+    let backend = TestUiBackend {
+        launches: Arc::new(Mutex::new(Vec::new())),
+        selector_taps: Arc::new(Mutex::new(Vec::new())),
+        focus_calls: focus_calls.clone(),
+    };
+    let mut runner = UiFlowRunner::new(
+        Box::new(backend),
+        temp.path().join("artifacts"),
+        "dev.orbit.fixture".to_owned(),
+        true,
+        None,
+    );
+
+    runner
+        .run_leaf_command(&UiCommand::LaunchApp(Default::default()))
+        .unwrap();
+
+    assert_eq!(*focus_calls.lock().unwrap(), 1);
 }
 
 #[test]

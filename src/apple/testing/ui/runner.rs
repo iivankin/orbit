@@ -38,6 +38,7 @@ pub(super) struct UiFlowRunner {
     pub(super) backend: Box<dyn UiBackend>,
     artifacts_dir: PathBuf,
     bundle_id: String,
+    focus_after_launch: bool,
     stack: Vec<PathBuf>,
     clipboard: Option<String>,
     manual_recording: Option<PathBuf>,
@@ -49,12 +50,14 @@ impl UiFlowRunner {
         backend: Box<dyn UiBackend>,
         artifacts_dir: PathBuf,
         bundle_id: String,
+        focus_after_launch: bool,
         trace_runtime: Option<MacosUiTraceRuntime>,
     ) -> Self {
         Self {
             backend,
             artifacts_dir,
             bundle_id,
+            focus_after_launch,
             stack: Vec::new(),
             clipboard: None,
             manual_recording: None,
@@ -222,7 +225,6 @@ impl UiFlowRunner {
         }
     }
 
-    #[cfg(test)]
     pub(super) fn run_leaf_command(&mut self, command: &UiCommand) -> Result<Option<PathBuf>> {
         self.run_leaf_command_inner(command)
     }
@@ -388,6 +390,7 @@ impl UiFlowRunner {
                         command.arguments.as_slice(),
                     )?;
                 }
+                self.best_effort_focus_after_launch();
                 Ok(None)
             }
             UiCommand::StopApp(app_id) | UiCommand::KillApp(app_id) => {
@@ -910,6 +913,19 @@ impl UiFlowRunner {
             thread::sleep(Duration::from_millis(200));
         }
         Ok(())
+    }
+
+    fn best_effort_focus_after_launch(&self) {
+        if !self.focus_after_launch {
+            return;
+        }
+
+        if let Err(error) = self.backend.focus() {
+            eprintln!(
+                "warning: failed to focus the {} automation target after launch: {error:#}",
+                self.backend.target_name()
+            );
+        }
     }
 
     fn capture_failure_artifacts(

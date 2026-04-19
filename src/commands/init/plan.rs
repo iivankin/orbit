@@ -17,6 +17,7 @@ const DEFAULT_RESOURCES_DIR: &str = "Resources";
 const DEFAULT_WATCH_APP_SOURCE_DIR: &str = "Sources/WatchApp";
 const DEFAULT_WATCH_EXTENSION_SOURCE_DIR: &str = "Sources/WatchExtension";
 const HOME_VIEW_NAME: &str = "HomeView";
+const HOME_VIEW_CONTROLLER_NAME: &str = "HomeViewController";
 const MANIFEST_DESCRIPTION: &str = "This file is documented by its `$schema`. Start with `orbit --help` for the common workflow and `orbit ui schema` for the `tests.ui` DSL.";
 const ASC_MANIFEST_DESCRIPTION: &str = "This embedded config is documented by its `$schema`. Start with `orbit asc --help` for the common workflow.";
 const ASC_IOS_DEVICE_ID: &str = "local-ios-device";
@@ -72,16 +73,21 @@ const APPLE_MULTIPLATFORM_DEVICE_SLOTS: [InitDeviceSlot; 2] = [
     ),
 ];
 
-const APPLE_TEMPLATE_CHOICES: [TemplateChoice; 6] = [
+const APPLE_TEMPLATE_CHOICES: [TemplateChoice; 7] = [
     TemplateChoice {
         kind: InitTemplate::Ios,
         label: "iOS app",
         description: "Single-target SwiftUI iPhone/iPad app",
     },
     TemplateChoice {
-        kind: InitTemplate::Macos,
-        label: "macOS app",
+        kind: InitTemplate::MacosSwiftUi,
+        label: "macOS SwiftUI app",
         description: "Single-target SwiftUI Mac app",
+    },
+    TemplateChoice {
+        kind: InitTemplate::MacosAppKit,
+        label: "macOS AppKit app",
+        description: "Single-target AppKit Mac app",
     },
     TemplateChoice {
         kind: InitTemplate::AppleMultiplatform,
@@ -130,6 +136,12 @@ const MACOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     "Edit Sources/App/HomeView.swift, then relaunch the app from Orbit.",
     &["orbit run --platform macos"],
 );
+const MACOS_APPKIT_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
+    &MACOS_PLATFORMS,
+    "Orbit is ready for macOS",
+    "Edit Sources/App/HomeViewController.swift, then relaunch the app from Orbit.",
+    &["orbit run --platform macos"],
+);
 const APPLE_MULTIPLATFORM_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &APPLE_MULTIPLATFORM_PLATFORMS,
     "Orbit is ready for iOS and macOS",
@@ -174,7 +186,8 @@ impl InitEcosystem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InitTemplate {
     Ios,
-    Macos,
+    MacosSwiftUi,
+    MacosAppKit,
     AppleMultiplatform,
     IosWatchCompanion,
     Tvos,
@@ -185,7 +198,7 @@ impl InitTemplate {
     pub(super) const fn required_device_slots(self) -> &'static [InitDeviceSlot] {
         match self {
             Self::Ios => &IOS_TEMPLATE_DEVICE_SLOTS,
-            Self::Macos => &MACOS_TEMPLATE_DEVICE_SLOTS,
+            Self::MacosSwiftUi | Self::MacosAppKit => &MACOS_TEMPLATE_DEVICE_SLOTS,
             Self::AppleMultiplatform => &APPLE_MULTIPLATFORM_DEVICE_SLOTS,
             Self::IosWatchCompanion => &WATCH_TEMPLATE_DEVICE_SLOTS,
             Self::Tvos => &TVOS_TEMPLATE_DEVICE_SLOTS,
@@ -303,7 +316,12 @@ impl AppTemplateSpec {
 pub(super) fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan {
     match answers.template {
         InitTemplate::Ios => app_template_plan(answers, schema_reference, &IOS_APP_TEMPLATE),
-        InitTemplate::Macos => app_template_plan(answers, schema_reference, &MACOS_APP_TEMPLATE),
+        InitTemplate::MacosSwiftUi => {
+            app_template_plan(answers, schema_reference, &MACOS_APP_TEMPLATE)
+        }
+        InitTemplate::MacosAppKit => {
+            macos_appkit_plan(answers, schema_reference, &MACOS_APPKIT_TEMPLATE)
+        }
         InitTemplate::AppleMultiplatform => {
             app_template_plan(answers, schema_reference, &APPLE_MULTIPLATFORM_APP_TEMPLATE)
         }
@@ -312,6 +330,41 @@ pub(super) fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> Sc
         InitTemplate::Visionos => {
             app_template_plan(answers, schema_reference, &VISIONOS_APP_TEMPLATE)
         }
+    }
+}
+
+fn macos_appkit_plan(
+    answers: &InitAnswers,
+    schema_reference: &str,
+    template: &AppTemplateSpec,
+) -> ScaffoldPlan {
+    let swift_name = swift_type_name(&answers.name);
+    ScaffoldPlan {
+        manifest: app_manifest(answers, schema_reference, template.platforms),
+        directories: base_directories(),
+        files: vec![
+            generated_file(
+                "Sources/App/App.swift",
+                appkit_app_file_contents(
+                    &format!("{swift_name}App"),
+                    HOME_VIEW_CONTROLLER_NAME,
+                    &answers.name,
+                ),
+            ),
+            generated_file(
+                "Sources/App/HomeViewController.swift",
+                appkit_home_view_controller_file_contents(
+                    HOME_VIEW_CONTROLLER_NAME,
+                    template.home_view_title,
+                    template.home_view_detail,
+                ),
+            ),
+        ],
+        next_commands: template
+            .next_commands
+            .iter()
+            .map(ToString::to_string)
+            .collect(),
     }
 }
 
@@ -499,7 +552,7 @@ fn with_scaffolded_asc(answers: &InitAnswers, mut manifest: JsonValue) -> JsonVa
 fn asc_manifest(answers: &InitAnswers) -> JsonValue {
     with_asc_description(match answers.template {
         InitTemplate::Ios => ios_asc_manifest(answers),
-        InitTemplate::Macos => macos_asc_manifest(answers),
+        InitTemplate::MacosSwiftUi | InitTemplate::MacosAppKit => macos_asc_manifest(answers),
         InitTemplate::AppleMultiplatform => multiplatform_asc_manifest(answers),
         InitTemplate::IosWatchCompanion => watch_companion_asc_manifest(answers),
         InitTemplate::Tvos => tvos_asc_manifest(answers),
@@ -938,6 +991,26 @@ fn home_view_file_contents(view_name: &str, title: &str, detail: &str) -> String
     )
 }
 
+fn appkit_app_file_contents(
+    app_type_name: &str,
+    root_controller_name: &str,
+    app_name: &str,
+) -> String {
+    format!(
+        "import AppKit\n\n@main\nfinal class {app_type_name}: NSObject, NSApplicationDelegate {{\n    private var window: NSWindow?\n\n    func applicationDidFinishLaunching(_ notification: Notification) {{\n        let window = NSWindow(\n            contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),\n            styleMask: [.titled, .closable, .miniaturizable, .resizable],\n            backing: .buffered,\n            defer: false\n        )\n        window.center()\n        window.title = \"{app_name}\"\n        window.contentViewController = {root_controller_name}()\n        window.makeKeyAndOrderFront(nil)\n        self.window = window\n    }}\n\n    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {{\n        true\n    }}\n}}\n"
+    )
+}
+
+fn appkit_home_view_controller_file_contents(
+    controller_name: &str,
+    title: &str,
+    detail: &str,
+) -> String {
+    format!(
+        "import AppKit\n\nfinal class {controller_name}: NSViewController {{\n    override func loadView() {{\n        view = NSView()\n    }}\n\n    override func viewDidLoad() {{\n        super.viewDidLoad()\n\n        let eyebrowLabel = NSTextField(labelWithString: \"Orbit\")\n        eyebrowLabel.font = .systemFont(ofSize: 15, weight: .semibold)\n        eyebrowLabel.textColor = .controlAccentColor\n\n        let titleLabel = NSTextField(labelWithString: \"{title}\")\n        titleLabel.font = .systemFont(ofSize: 30, weight: .bold)\n\n        let detailLabel = NSTextField(wrappingLabelWithString: \"{detail}\")\n        detailLabel.alignment = .center\n        detailLabel.textColor = .secondaryLabelColor\n\n        let stack = NSStackView(views: [eyebrowLabel, titleLabel, detailLabel])\n        stack.orientation = .vertical\n        stack.alignment = .centerX\n        stack.spacing = 16\n        stack.translatesAutoresizingMaskIntoConstraints = false\n\n        view.addSubview(stack)\n        NSLayoutConstraint.activate([\n            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),\n            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),\n            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),\n            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32),\n            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),\n        ])\n    }}\n}}\n"
+    )
+}
+
 fn watch_extension_file_contents() -> String {
     "import Foundation\nimport WatchKit\n\n// Orbit uses this principal class from `watch.extension.entry.class`.\nfinal class WatchExtensionDelegate: NSObject, WKApplicationDelegate {}\n".to_owned()
 }
@@ -1091,6 +1164,52 @@ mod tests {
         assert_eq!(
             plan.next_commands,
             vec!["orbit run --platform ios --simulator".to_owned()]
+        );
+    }
+
+    #[test]
+    fn macos_appkit_template_generates_appkit_sources() {
+        let plan = scaffold_plan(
+            &InitAnswers {
+                ecosystem: InitEcosystem::Apple,
+                name: "Example Mac".to_owned(),
+                bundle_id: "dev.orbit.examplemac".to_owned(),
+                template: InitTemplate::MacosAppKit,
+                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
+                asc_devices: vec![test_init_device(
+                    ASC_MAC_DEVICE_ID,
+                    DeviceFamily::Macos,
+                    TEST_MAC_UDID,
+                    "This Mac",
+                )],
+            },
+            "/tmp/.orbit/schemas/apple-app.v1.json",
+        );
+
+        assert_eq!(
+            plan.files
+                .iter()
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("Sources/App/App.swift"),
+                PathBuf::from("Sources/App/HomeViewController.swift"),
+            ]
+        );
+        assert!(plan.files.iter().any(|file| {
+            file.path == Path::new("Sources/App/App.swift")
+                && file.contents.contains("import AppKit")
+                && file.contents.contains("NSApplicationDelegate")
+        }));
+        assert!(plan.files.iter().any(|file| {
+            file.path == Path::new("Sources/App/HomeViewController.swift")
+                && file
+                    .contents
+                    .contains("final class HomeViewController: NSViewController")
+        }));
+        assert_eq!(
+            plan.next_commands,
+            vec!["orbit run --platform macos".to_owned()]
         );
     }
 

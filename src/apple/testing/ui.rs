@@ -48,7 +48,7 @@ use self::trace::MacosUiTraceRuntime;
 use crate::apple::build::toolchain::DestinationKind;
 use crate::apple::logs::SimulatorAppLogStream;
 use crate::apple::{build, runtime};
-use crate::cli::{TestArgs, UiCleanTraceTempArgs};
+use crate::cli::{ProfileKind, TestArgs, UiCleanTraceTempArgs};
 use crate::context::ProjectContext;
 use crate::manifest::ApplePlatform;
 use crate::util::{ensure_dir, format_elapsed, human_bytes, print_success, write_json_file};
@@ -84,8 +84,54 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     if flow_paths.is_empty() {
         bail!("`tests.ui` did not contain any `.yml` or `.yaml` files");
     }
+    run_ui_flow_paths(project, platform, flow_paths, args.trace, args.focus)
+}
+
+pub fn run_ui_command(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    command: UiCommand,
+    focus_after_launch: bool,
+) -> Result<()> {
+    if platform == ApplePlatform::Macos {
+        let status = backend::macos_doctor(project)?;
+        ensure_macos_ui_test_requirements(&status)?;
+    }
+
+    let run_root = project.project_paths.artifacts_dir.join("ui").join(format!(
+        "{}-{}",
+        unix_timestamp_secs(),
+        Uuid::new_v4()
+    ));
+    ensure_dir(&run_root)?;
+
+    let bundle_id = project
+        .resolved_manifest
+        .resolve_target(None)?
+        .bundle_id
+        .clone();
+    let backend = backend_for_ui_command(project, platform, &command, &bundle_id)?;
+    let mut runner = UiFlowRunner::new(backend, run_root, bundle_id, focus_after_launch, None);
+    let command_summary = command.summary();
+    if let Some(path) = runner.run_leaf_command(&command)? {
+        println!("artifact: {}", path.display());
+    }
+    print_success(format!(
+        "UI command `{command_summary}` completed on {}.",
+        runner.backend.target_name()
+    ));
+    Ok(())
+}
+
+fn run_ui_flow_paths(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    flow_paths: Vec<std::path::PathBuf>,
+    trace: Option<ProfileKind>,
+    focus_after_launch: bool,
+) -> Result<()> {
     if platform == ApplePlatform::Ios {
-        crate::apple::profile::ensure_simulator_profiling_supported(args.trace)?;
+        crate::apple::profile::ensure_simulator_profiling_supported(trace)?;
     }
     if platform == ApplePlatform::Macos {
         let status = backend::macos_doctor(project)?;
@@ -104,7 +150,7 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     let started_at_unix = unix_timestamp_secs();
     let started = Instant::now();
     let prepared = prepare_ui_session(project, platform, false)?;
-    if platform == ApplePlatform::Macos && args.trace.is_some() {
+    if platform == ApplePlatform::Macos && trace.is_some() {
         let target = project.resolved_manifest.resolve_target(None)?;
         crate::apple::signing::prepare_macos_bundle_for_debug_tracing(
             project,
@@ -120,8 +166,9 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
             prepared.backend,
             artifacts_dir.clone(),
             prepared.build_outcome.receipt.bundle_id.clone(),
+            focus_after_launch,
             if platform == ApplePlatform::Macos {
-                args.trace.map(|kind| {
+                trace.map(|kind| {
                     MacosUiTraceRuntime::new(
                         project.root.clone(),
                         &project.project_paths,
@@ -141,7 +188,7 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
                 has_failures = true;
             }
         }
-        if args.trace.is_none()
+        if trace.is_none()
             && let Err(error) = runner
                 .backend
                 .stop_app(prepared.build_outcome.receipt.bundle_id.as_str())
@@ -179,11 +226,11 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
         println!("report: {}", report_path.display());
 
         if has_failures {
-            bail!("UI tests failed; see {}", report_path.display());
+            bail!("UI flow run failed; see {}", report_path.display());
         }
 
         print_success(format!(
-            "UI tests passed for `{}` on {} using {} flow(s) in {}.",
+            "UI flows passed for `{}` on {} using {} flow(s) in {}.",
             prepared.build_outcome.receipt.target,
             runner.backend.target_name(),
             flow_paths.len(),
@@ -300,6 +347,29 @@ pub(crate) fn attach_backend(
             "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
         ),
     }
+}
+
+fn backend_for_ui_command(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    command: &UiCommand,
+    manifest_bundle_id: &str,
+) -> Result<Box<dyn UiBackend>> {
+    let needs_prepared_session = matches!(
+        command,
+        UiCommand::LaunchApp(launch)
+            if launch.app_id.as_deref().unwrap_or(manifest_bundle_id) == manifest_bundle_id
+    ) || matches!(
+        command,
+        UiCommand::ClearState(app_id)
+            if app_id.as_deref().unwrap_or(manifest_bundle_id) == manifest_bundle_id
+    );
+
+    if needs_prepared_session {
+        return Ok(prepare_ui_session(project, platform, false)?.backend);
+    }
+
+    attach_backend(project, platform)
 }
 
 fn print_macos_doctor_status(status: &MacosDoctorStatus) {

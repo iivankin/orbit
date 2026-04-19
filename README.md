@@ -473,6 +473,7 @@ Run UI tests with:
 
 ```sh
 orbit test --ui --platform ios
+orbit test --ui --platform macos --focus
 ```
 
 `tests.ui` currently supports an Orbit-native runner that executes a
@@ -483,6 +484,12 @@ the JSON report. Orbit also streams app logs to the terminal during
 `orbit test --ui`, `orbit run --platform ios --simulator`, and iOS device runs.
 Run `orbit ui schema [--platform ...]` to inspect the accepted flow grammar and
 backend support directly from the CLI.
+
+The common standalone YAML actions are also exposed directly under `orbit ui`,
+for example `orbit ui launch-app`, `orbit ui tap`, `orbit ui swipe`,
+`orbit ui drag`, `orbit ui assert-visible`, `orbit ui set-location`, and
+`orbit ui travel`. Existing utility commands such as `orbit ui open` and
+`orbit ui add-media` cover the YAML `openLink` and `addMedia` actions.
 
 Current iOS simulator command support includes:
 `launchApp`, `stopApp`, `killApp`, `clearState`, `clearKeychain`, `tapOn`,
@@ -533,6 +540,20 @@ Run only a selected UI flow by its configured `name`, file stem, file name, or p
 
 ```sh
 orbit test --ui --platform macos --flow onboarding-provider-setup
+```
+
+Keep the launched automation target frontmost when you want to watch the flow:
+
+```sh
+orbit test --ui --platform macos --focus
+```
+
+Run standalone UI actions directly from the CLI:
+
+```sh
+orbit ui launch-app --platform ios
+orbit ui tap --platform ios --text Continue
+orbit ui swipe --platform ios --direction left
 ```
 
 Preflight macOS UI automation permissions and tooling:

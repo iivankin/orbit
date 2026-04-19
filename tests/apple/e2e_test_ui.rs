@@ -335,6 +335,78 @@ fn orbit_ui_focus_uses_manifest_selected_xcode_and_installs_missing_runtime() {
 }
 
 #[test]
+fn orbit_ui_action_commands_forward_to_runner_and_idb() {
+    let temp = tempdir().unwrap();
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let sdk_root = temp.path().join("sdk-root");
+    let log_path = temp.path().join("mock.log");
+    fs::create_dir_all(&mock_bin).unwrap();
+    create_build_xcrun_mock(&mock_bin, &sdk_root);
+    create_idb_mock(&mock_bin);
+    let workspace = create_ui_testing_workspace(temp.path());
+
+    let mut launch = base_command(&workspace, &home, &mock_bin, &log_path);
+    launch.args([
+        "--non-interactive",
+        "ui",
+        "launch-app",
+        "--platform",
+        "ios",
+        "--focus",
+    ]);
+    let output = run_and_capture(&mut launch);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let mut tap = base_command(&workspace, &home, &mock_bin, &log_path);
+    tap.args([
+        "--non-interactive",
+        "ui",
+        "tap",
+        "--platform",
+        "ios",
+        "--text",
+        "Continue",
+    ]);
+    let output = run_and_capture(&mut tap);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let mut swipe = base_command(&workspace, &home, &mock_bin, &log_path);
+    swipe.args([
+        "--non-interactive",
+        "ui",
+        "swipe",
+        "--platform",
+        "ios",
+        "--direction",
+        "left",
+    ]);
+    let output = run_and_capture(&mut swipe);
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let log = read_log(&log_path);
+    assert!(log.contains("xcrun simctl list devices available --json"));
+    assert!(log.contains("xcrun simctl install IOS-UDID"));
+    assert!(log.contains("xcrun simctl launch IOS-UDID dev.orbit.fixture.ui"));
+    assert!(log.contains("idb focus --udid IOS-UDID"));
+    assert!(log.contains("idb ui describe-all --udid IOS-UDID"));
+    assert!(log.contains("idb ui tap 140 142 --udid IOS-UDID"));
+    assert!(log.contains("idb ui swipe --duration 0.500 --delta 5 354 426 39 426 --udid IOS-UDID"));
+}
+
+#[test]
 fn orbit_ui_aux_commands_forward_to_idb() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
