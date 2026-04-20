@@ -8,7 +8,7 @@ use serde_json::{Map as JsonMap, Value as JsonValue};
 use crate::apple::manifest::{FormatQualityManifest, LintQualityManifest};
 use crate::context::ProjectContext;
 
-const ORBIT_DEFAULT_SWIFT_FORMAT_INDENT_WIDTH: u64 = 4;
+const ORBI_DEFAULT_SWIFT_FORMAT_INDENT_WIDTH: u64 = 4;
 
 pub(super) struct IgnoreMatcher {
     root: PathBuf,
@@ -37,10 +37,7 @@ pub(super) fn lint_quality_config(project: &ProjectContext) -> Result<LintQualit
     let configuration_json = if quality.rules.is_empty() {
         None
     } else {
-        Some(
-            serde_json::to_string(&quality.rules)
-                .context("failed to serialize Orbit lint rules")?,
-        )
+        Some(serde_json::to_string(&quality.rules).context("failed to serialize Orbi lint rules")?)
     };
     Ok(LintQualityConfig {
         ignore_matcher: build_ignore_matcher(&project.root, quality)?,
@@ -58,7 +55,7 @@ pub(super) fn format_configuration_json(
 ) -> Result<Option<String>> {
     let quality = &project.resolved_manifest.quality.format;
     let mut configuration = load_swift_format_configuration(project.root.as_path())?;
-    apply_orbit_format_defaults(&mut configuration);
+    apply_orbi_format_defaults(&mut configuration);
 
     if quality.editorconfig
         && let Some(settings) = resolve_editorconfig_settings(project.root.as_path(), files)?
@@ -66,7 +63,7 @@ pub(super) fn format_configuration_json(
         apply_editorconfig_to_swift_format(&mut configuration, &settings);
     }
 
-    apply_orbit_format_rules(&mut configuration, &quality.rules);
+    apply_orbi_format_rules(&mut configuration, &quality.rules);
 
     if configuration.is_empty() {
         return Ok(None);
@@ -74,17 +71,15 @@ pub(super) fn format_configuration_json(
 
     Ok(Some(
         serde_json::to_string(&JsonValue::Object(configuration))
-            .context("failed to serialize Orbit formatter configuration")?,
+            .context("failed to serialize Orbi formatter configuration")?,
     ))
 }
 
-fn apply_orbit_format_defaults(configuration: &mut JsonMap<String, JsonValue>) {
-    // Orbit uses a 4-space indentation baseline unless the project overrides it.
+fn apply_orbi_format_defaults(configuration: &mut JsonMap<String, JsonValue>) {
+    // Orbi uses a 4-space indentation baseline unless the project overrides it.
     configuration
         .entry("indentation".to_owned())
-        .or_insert_with(
-            || serde_json::json!({ "spaces": ORBIT_DEFAULT_SWIFT_FORMAT_INDENT_WIDTH }),
-        );
+        .or_insert_with(|| serde_json::json!({ "spaces": ORBI_DEFAULT_SWIFT_FORMAT_INDENT_WIDTH }));
 }
 
 fn build_ignore_matcher<T>(root: &Path, config: &T) -> Result<Option<IgnoreMatcher>>
@@ -173,7 +168,7 @@ fn swift_format_configuration_path(project_root: &Path) -> Option<PathBuf> {
         .find(|path| path.exists())
 }
 
-fn apply_orbit_format_rules(
+fn apply_orbi_format_rules(
     configuration: &mut JsonMap<String, JsonValue>,
     rules: &std::collections::BTreeMap<String, JsonValue>,
 ) {
@@ -183,14 +178,14 @@ fn apply_orbit_format_rules(
             .next()
             .is_some_and(|character| character.is_ascii_uppercase())
         {
-            apply_orbit_format_rule(configuration, key, value);
+            apply_orbi_format_rule(configuration, key, value);
         } else {
             configuration.insert(key.clone(), value.clone());
         }
     }
 }
 
-fn apply_orbit_format_rule(
+fn apply_orbi_format_rule(
     configuration: &mut JsonMap<String, JsonValue>,
     rule_id: &str,
     value: &JsonValue,
@@ -382,7 +377,7 @@ fn resolve_editorconfig_settings(
         match &resolved {
             Some((other_file, other_settings)) if *other_settings != current => {
                 bail!(
-                    "`.editorconfig` resolves conflicting Swift formatting settings for `{}` and `{}`; Orbit currently requires one shared formatter profile per run",
+                    "`.editorconfig` resolves conflicting Swift formatting settings for `{}` and `{}`; Orbi currently requires one shared formatter profile per run",
                     other_file.display(),
                     file.display()
                 );

@@ -10,10 +10,10 @@ use crate::apple::git_dependencies::exact_remote_version_revision;
 use crate::manifest::{ResolvedManifest, SwiftPackageSource, read_manifest_value};
 use crate::util::{read_json_file, write_json_file};
 
-pub(crate) const LOCKFILE_NAME: &str = "orbit.lock";
+pub(crate) const LOCKFILE_NAME: &str = "orbi.lock";
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct OrbitLockfile {
+pub(crate) struct OrbiLockfile {
     #[serde(default)]
     pub dependencies: BTreeMap<String, LockedGitDependency>,
 }
@@ -97,7 +97,7 @@ pub(crate) fn ensure_lockfile_with_env(
     if !lockfile_matches {
         sync_lockfile_with_env(manifest_path, env)?;
     }
-    let lockfile = read_json_file::<OrbitLockfile>(&lockfile_path)?;
+    let lockfile = read_json_file::<OrbiLockfile>(&lockfile_path)?;
 
     for target in &mut resolved_manifest.targets {
         for dependency in &mut target.swift_packages {
@@ -115,13 +115,13 @@ pub(crate) fn ensure_lockfile_with_env(
             };
             let locked = lockfile.dependencies.get(&product).with_context(|| {
                 format!(
-                    "dependency `{product}` is versioned in orbit.json but missing from {}",
+                    "dependency `{product}` is versioned in orbi.json but missing from {}",
                     lockfile_path.display()
                 )
             })?;
             if locked.git != *url || locked.version != version {
                 bail!(
-                    "dependency `{product}` in {} no longer matches orbit.json",
+                    "dependency `{product}` in {} no longer matches orbi.json",
                     lockfile_path.display()
                 );
             }
@@ -172,7 +172,7 @@ pub(crate) fn sync_lockfile_with_env(
             },
         );
     }
-    let lockfile = OrbitLockfile { dependencies };
+    let lockfile = OrbiLockfile { dependencies };
     if previous.as_ref() == Some(&lockfile) {
         return Ok(LockfileSyncSummary::unchanged(requested_dependencies.len()));
     }
@@ -185,7 +185,7 @@ pub(crate) fn lockfile_path(manifest_path: &Path) -> Result<PathBuf> {
     let root = manifest_path
         .parent()
         .context("manifest path did not contain a parent directory")?;
-    Ok(root.join(".orbit").join(LOCKFILE_NAME))
+    Ok(root.join(".orbi").join(LOCKFILE_NAME))
 }
 
 fn collect_versioned_git_dependencies(
@@ -245,7 +245,7 @@ fn collect_versioned_git_dependencies_from_map(
         match dependencies.get(name) {
             Some(existing) if existing != &requested => {
                 bail!(
-                    "dependency `{name}` is declared multiple times with different git version sources; Orbit requires a single versioned definition per dependency key"
+                    "dependency `{name}` is declared multiple times with different git version sources; Orbi requires a single versioned definition per dependency key"
                 );
             }
             Some(_) => {}
@@ -258,7 +258,7 @@ fn collect_versioned_git_dependencies_from_map(
 }
 
 fn lockfile_matches_requested(
-    lockfile: &OrbitLockfile,
+    lockfile: &OrbiLockfile,
     requested_dependencies: &BTreeMap<String, RequestedVersionedGitDependency>,
 ) -> bool {
     if lockfile.dependencies.len() != requested_dependencies.len() {
@@ -271,7 +271,7 @@ fn lockfile_matches_requested(
     })
 }
 
-fn read_existing_lockfile(path: &Path) -> Result<Option<OrbitLockfile>> {
+fn read_existing_lockfile(path: &Path) -> Result<Option<OrbiLockfile>> {
     if !path.exists() {
         return Ok(None);
     }

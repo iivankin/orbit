@@ -4,7 +4,7 @@ import SwiftUI
 struct ExampleCompiledResourcesApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Orbit compiled resources fixture")
+            Text("Orbi compiled resources fixture")
         }
     }
 }

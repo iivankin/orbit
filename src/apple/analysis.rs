@@ -99,8 +99,8 @@ pub(crate) fn load_persistent_analysis_project(
         .parent()
         .context("manifest path did not contain a parent directory")?
         .to_path_buf();
-    let orbit_dir = root.join(".orbit").join("ide");
-    load_analysis_project_with_orbit_dir(app, manifest_path, manifest_schema, orbit_dir)
+    let orbi_dir = root.join(".orbi").join("ide");
+    load_analysis_project_with_orbi_dir(app, manifest_path, manifest_schema, orbi_dir)
 }
 
 pub(crate) fn load_cached_analysis_project(
@@ -108,32 +108,32 @@ pub(crate) fn load_cached_analysis_project(
     requested_manifest: Option<&Path>,
 ) -> Result<AnalysisProject> {
     let (manifest_path, manifest_schema) = resolve_analysis_manifest(app, requested_manifest)?;
-    let orbit_dir = cached_analysis_orbit_dir(app, &manifest_path);
-    load_analysis_project_with_orbit_dir(app, manifest_path, manifest_schema, orbit_dir)
+    let orbi_dir = cached_analysis_orbi_dir(app, &manifest_path);
+    load_analysis_project_with_orbi_dir(app, manifest_path, manifest_schema, orbi_dir)
 }
 
-fn load_analysis_project_with_orbit_dir(
+fn load_analysis_project_with_orbi_dir(
     app: &AppContext,
     manifest_path: PathBuf,
     manifest_schema: ManifestSchema,
-    orbit_dir: PathBuf,
+    orbi_dir: PathBuf,
 ) -> Result<AnalysisProject> {
     let root = manifest_path
         .parent()
         .context("manifest path did not contain a parent directory")?
         .to_path_buf();
-    let build_dir = orbit_dir.join("build");
-    let artifacts_dir = orbit_dir.join("artifacts");
-    let receipts_dir = orbit_dir.join("receipts");
+    let build_dir = orbi_dir.join("build");
+    let artifacts_dir = orbi_dir.join("artifacts");
+    let receipts_dir = orbi_dir.join("receipts");
 
-    // Reuse Orbit's build graph without polluting the project's checked-in `.orbit` state.
-    ensure_dir(&orbit_dir)?;
+    // Reuse Orbi's build graph without polluting the project's checked-in `.orbi` state.
+    ensure_dir(&orbi_dir)?;
     ensure_dir(&build_dir)?;
     ensure_dir(&artifacts_dir)?;
     ensure_dir(&receipts_dir)?;
 
     let resolved_manifest =
-        ResolvedManifest::load_with_env(&manifest_path, &orbit_dir, app.manifest_env())?;
+        ResolvedManifest::load_with_env(&manifest_path, &orbi_dir, app.manifest_env())?;
     let selected_xcode = resolve_requested_xcode_for_app(app, resolved_manifest.xcode.as_deref())?;
     let project = ProjectContext {
         app: app.clone(),
@@ -143,7 +143,7 @@ fn load_analysis_project_with_orbit_dir(
         resolved_manifest,
         selected_xcode,
         project_paths: ProjectPaths {
-            orbit_dir,
+            orbi_dir,
             build_dir,
             artifacts_dir,
             receipts_dir,
@@ -165,7 +165,7 @@ fn resolve_analysis_manifest(
     Ok((manifest_path, manifest_schema))
 }
 
-fn cached_analysis_orbit_dir(app: &AppContext, manifest_path: &Path) -> PathBuf {
+fn cached_analysis_orbi_dir(app: &AppContext, manifest_path: &Path) -> PathBuf {
     let manifest_key = short_hash(
         format!(
             "{}::{}",
@@ -195,7 +195,7 @@ where
 {
     let platforms = semantic_compilation_platforms(project, explicit_platform)?;
     let profile = ProfileManifest::new(BuildConfiguration::Debug, DistributionKind::Development);
-    let index_root = project.project_paths.orbit_dir.join("index");
+    let index_root = project.project_paths.orbi_dir.join("index");
     let index_store_path = index_root.join("store");
     let index_database_path = index_root.join("db");
     ensure_dir(&index_store_path)?;
@@ -344,7 +344,7 @@ fn semantic_artifact_cache_path(
     project: &ProjectContext,
     explicit_platform: Option<ApplePlatform>,
 ) -> PathBuf {
-    project.project_paths.orbit_dir.join(format!(
+    project.project_paths.orbi_dir.join(format!(
         "semantic-artifact-{}.json",
         semantic_platform_cache_key(explicit_platform)
     ))

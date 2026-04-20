@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleApp",
+  "bundle_id": "dev.orbi.examples.appclip",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "ios": "18.0"
+  },
+  "sources": [
+    "Sources/App"
+  ],
+  "app_clip": {
+    "sources": [
+      "Sources/Clip"
+    ]
+  }
+}

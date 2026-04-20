@@ -2,9 +2,9 @@
 
 ## Scope
 
-This spec is for the Windows counterpart of Orbit's current macOS desktop UI automation backend and its fixture coverage.
+This spec is for the Windows counterpart of Orbi's current macOS desktop UI automation backend and its fixture coverage.
 
-It is **not** a Windows port of Orbit's Apple build/sign/submit pipeline.
+It is **not** a Windows port of Orbi's Apple build/sign/submit pipeline.
 
 Concretely, the thing being ported is the desktop-testing surface that currently lives in:
 
@@ -13,11 +13,11 @@ Concretely, the thing being ported is the desktop-testing surface that currently
 - `src/apple/testing/ui/macos_driver.swift`
 - `examples/macos-app`
 
-The target outcome is: Orbit can drive a Windows desktop fixture app with the same YAML runner, the same report/artifact model, and equivalent tested flows.
+The target outcome is: Orbi can drive a Windows desktop fixture app with the same YAML runner, the same report/artifact model, and equivalent tested flows.
 
 ## Goals
 
-- Preserve the existing Orbit YAML flow format and runner semantics.
+- Preserve the existing Orbi YAML flow format and runner semantics.
 - Preserve the existing artifact model:
   - screenshots
   - per-flow video
@@ -72,7 +72,7 @@ This should become OS-agnostic shared code.
 
 The current macOS backend in `src/apple/testing/ui/backend.rs` supports:
 
-- launch/stop/clear-state for Orbit's built app only
+- launch/stop/clear-state for Orbi's built app only
 - accessibility tree dump
 - point inspection
 - focus
@@ -106,11 +106,11 @@ Windows must ship with the same flow coverage.
 
 Implement a new backend named:
 
-- `orbit-uia-windows`
+- `orbi-uia-windows`
 
 This backend is the Windows equivalent of:
 
-- `orbit-ax-macos`
+- `orbi-ax-macos`
 
 It targets ordinary Windows desktop apps that expose Microsoft UI Automation data.
 
@@ -123,18 +123,18 @@ It targets ordinary Windows desktop apps that expose Microsoft UI Automation dat
 Reason:
 
 - UI Automation is older, but window-scoped capture via `IGraphicsCaptureItemInterop::CreateForWindow` requires Windows 10 version 1903.
-- Per-flow video is a first-class Orbit artifact, so capture is a hard requirement for this backend.
+- Per-flow video is a first-class Orbi artifact, so capture is a hard requirement for this backend.
 - The WinUI 3 fixture should target `net8.0-windows10.0.19041.0` and be tested on 19041+, which keeps the project/runtime story simpler than trying to optimize around the raw 18362 capture floor.
 
 ### Integrity-Level Rule
 
-Orbit and the application under test must run at the same integrity level.
+Orbi and the application under test must run at the same integrity level.
 
 Reason:
 
 - Windows `SendInput` is blocked by UIPI when targeting a higher-integrity process.
 
-If Orbit tries to drive an elevated target from a non-elevated process, the backend must fail with a clear message instead of silently flaking.
+If Orbi tries to drive an elevated target from a non-elevated process, the backend must fail with a clear message instead of silently flaking.
 
 ## Required Architectural Cutover
 
@@ -184,9 +184,9 @@ This is the only maintainable direction.
 
 Implement Windows as:
 
-1. A Rust backend in Orbit that implements `UiBackend`.
+1. A Rust backend in Orbi that implements `UiBackend`.
 2. A Windows-native sidecar executable:
-   - `orbit-windows-ui-driver.exe`
+   - `orbi-windows-ui-driver.exe`
 3. A Windows example fixture app:
    - WinUI 3 on .NET 8 using the Windows App SDK
 
@@ -218,7 +218,7 @@ The backend itself must remain framework-agnostic and work with any Windows desk
 
 The fixture app should be a **packaged MSIX** WinUI 3 desktop app.
 
-But unlike the standard Microsoft setup, Orbit must not rely on the Visual Studio project system.
+But unlike the standard Microsoft setup, Orbi must not rely on the Visual Studio project system.
 
 ### No Visual Studio Project System
 
@@ -233,7 +233,7 @@ The Windows implementation must not depend on:
 - `devenv`
 - Visual Studio-managed compile/link graphs
 
-Orbit must own:
+Orbi must own:
 
 - source discovery
 - dependency resolution
@@ -262,32 +262,32 @@ Microsoft's official WinUI 3 documentation assumes:
 - app-authored XAML is compiled as part of the build, and normal XAML compilation steps should remain enabled
 - package identity is expressed through an app package manifest and MSIX packaging/deployment flow
 
-Therefore, Orbit must add an explicit **XAML compilation phase** to the Windows build pipeline instead of falling back to code-first-only UI.
+Therefore, Orbi must add an explicit **XAML compilation phase** to the Windows build pipeline instead of falling back to code-first-only UI.
 
 The v1 fixture should now be:
 
 - **WinUI 3**
 - **MSIX packaged**
 - **app-authored XAML**
-- **Orbit-compiled**
-- **Orbit-packaged**
+- **Orbi-compiled**
+- **Orbi-packaged**
 
 That means:
 
 - `App.xaml` is allowed
 - `MainWindow.xaml` is allowed
 - page/control/resource-dictionary XAML files are allowed
-- Orbit, not MSBuild, is responsible for compiling that XAML into generated code and runtime assets
+- Orbi, not MSBuild, is responsible for compiling that XAML into generated code and runtime assets
 
 This keeps the fixture genuinely WinUI 3 and preserves the normal WinUI authoring model while still honoring the no-project-system requirement.
 
-### Orbit-Owned XAML Compilation
+### Orbi-Owned XAML Compilation
 
-Orbit must treat WinUI XAML compilation as a first-class build stage.
+Orbi must treat WinUI XAML compilation as a first-class build stage.
 
 Tooling direction:
 
-- resolve the compiler and companion IO libraries from the pinned WinUI / Windows App SDK tooling payload that Orbit stages itself
+- resolve the compiler and companion IO libraries from the pinned WinUI / Windows App SDK tooling payload that Orbi stages itself
 - use the standalone `XamlCompiler.exe` entrypoint directly
 - do not shell out to `msbuild` targets just to reach the compiler
 
@@ -301,7 +301,7 @@ Known public contract from Microsoft's source:
   - generated XAML page files
   - generated XBF files
 
-Orbit must reproduce the effective WinUI build shape that Microsoft's interop targets use:
+Orbi must reproduce the effective WinUI build shape that Microsoft's interop targets use:
 
 1. Discover authored XAML inputs:
    - `App.xaml`
@@ -315,7 +315,7 @@ Orbit must reproduce the effective WinUI build shape that Microsoft's interop ta
    - Windows metadata and WinRT interop metadata
 3. Run a real **pass 1** equivalent:
    - emit input JSON with `IsPass1=true`
-   - include `XamlApplications`, `XamlPages`, `ReferenceAssemblies`, `ReferenceAssemblyPaths`, `TargetPlatformMinVersion`, `SavedStateFile`, and the WinUI feature/control flags Orbit chooses to support
+   - include `XamlApplications`, `XamlPages`, `ReferenceAssemblies`, `ReferenceAssemblyPaths`, `TargetPlatformMinVersion`, `SavedStateFile`, and the WinUI feature/control flags Orbi chooses to support
    - invoke `XamlCompiler.exe`
    - parse generated code / generated XAML / generated XBF output lists
 4. Compile an **intermediate local assembly** from:
@@ -325,24 +325,24 @@ Orbit must reproduce the effective WinUI build shape that Microsoft's interop ta
    - emit input JSON with `IsPass1=false`
    - pass `LocalAssembly=<intermediate assembly>`
    - preserve and reuse the same `SavedStateFile`
-   - include `RootsLog` and any SDK XAML pages if Orbit later adopts them
+   - include `RootsLog` and any SDK XAML pages if Orbi later adopts them
    - invoke `XamlCompiler.exe`
    - parse the final generated code / generated XAML / generated XBF output lists
 6. Compile the final managed assembly from:
    - user-authored `.cs`
    - final generated `.g.cs`
-7. Stage generated XAML/XBF payloads into the final app package staging directory using the same relative-path logic Orbit assigned to the authored XAML inputs.
+7. Stage generated XAML/XBF payloads into the final app package staging directory using the same relative-path logic Orbi assigned to the authored XAML inputs.
 8. Preserve compiler logs, JSON manifests, generated file lists, and saved state in intermediates for debuggability.
 
 V1 scope note:
 
-- Orbit only needs the real build pipeline, not Visual Studio design-time IntelliSense compilation
-- Orbit does not need to implement the full MSBuild target surface; it needs the equivalent runtime-build behavior of `MarkupCompilePass1 -> XamlPreCompile -> MarkupCompilePass2 -> generated XAML/XBF staging`
+- Orbi only needs the real build pipeline, not Visual Studio design-time IntelliSense compilation
+- Orbi does not need to implement the full MSBuild target surface; it needs the equivalent runtime-build behavior of `MarkupCompilePass1 -> XamlPreCompile -> MarkupCompilePass2 -> generated XAML/XBF staging`
 
-Intermediates should live under an Orbit-owned path such as:
+Intermediates should live under an Orbi-owned path such as:
 
 ```text
-.orbit/intermediates/windows/<target>/<configuration>/
+.orbi/intermediates/windows/<target>/<configuration>/
 ```
 
 Minimum persisted artifacts:
@@ -359,7 +359,7 @@ Minimum persisted artifacts:
 
 ### Managed Compile And Packaging Stages
 
-After XAML compilation, Orbit's Windows pipeline must:
+After XAML compilation, Orbi's Windows pipeline must:
 
 1. Compile the intermediate assembly required by pass 2.
 2. Compile the final app assembly from authored plus generated sources.
@@ -368,21 +368,21 @@ After XAML compilation, Orbit's Windows pipeline must:
    - generated XAML/XBF payloads
    - package assets
    - the package manifest
-   - any PRI/resource outputs Orbit decides to generate
+   - any PRI/resource outputs Orbi decides to generate
 4. Produce a signed `.msix` from that staging layout.
-5. Stage any companion install/test artifacts Orbit wants for CI, such as certificate material or install scripts.
+5. Stage any companion install/test artifacts Orbi wants for CI, such as certificate material or install scripts.
 
-Orbit must build the compile graph itself.
+Orbi must build the compile graph itself.
 
 It may use low-level language compilers, but it must not delegate the graph to `dotnet build` or `msbuild`.
 
-### Orbit-Owned MSIX Packaging
+### Orbi-Owned MSIX Packaging
 
-Orbit must treat MSIX packaging as another first-class build stage.
+Orbi must treat MSIX packaging as another first-class build stage.
 
 Required responsibilities:
 
-1. Generate or materialize `AppxManifest.xml` from Orbit-controlled metadata.
+1. Generate or materialize `AppxManifest.xml` from Orbi-controlled metadata.
 2. Stage package visual assets and other manifest-referenced files.
 3. Generate `resources.pri` with `MakePri.exe` or equivalent MRT tooling when the package layout requires PRI-backed resources.
 4. Pack the staged layout into `.msix` using `MakeAppx.exe` or equivalent AppX packaging APIs.
@@ -402,9 +402,9 @@ V1 scope:
 
 ### MSIX Manifest Requirements In V1
 
-The packaged WinUI 3 fixture must have an Orbit-owned manifest with at least:
+The packaged WinUI 3 fixture must have an Orbi-owned manifest with at least:
 
-- `<Identity>` with Orbit-controlled name, publisher, version, and architecture
+- `<Identity>` with Orbi-controlled name, publisher, version, and architecture
 - `TargetDeviceFamily` for desktop Windows
 - one desktop `Application` entry for the fixture executable
 - visual elements and package assets required for installation and launch
@@ -415,7 +415,7 @@ The package should remain a full-trust packaged desktop app in v1, not an AppCon
 
 ### Supported XAML Features In V1
 
-The Orbit-owned XAML pipeline must support the authored features needed by the fixture:
+The Orbi-owned XAML pipeline must support the authored features needed by the fixture:
 
 - standard page/window XAML
 - `x:Name`
@@ -456,8 +456,8 @@ Required behavior:
 Deployment notes:
 
 - use the Windows App SDK Stable channel only
-- re-check the latest stable patch before implementation and pin it exactly in Orbit's dependency metadata
-- stage or install the required Windows App SDK framework dependencies as part of Orbit's MSIX test/install flow
+- re-check the latest stable patch before implementation and pin it exactly in Orbi's dependency metadata
+- stage or install the required Windows App SDK framework dependencies as part of Orbi's MSIX test/install flow
 - do not rely on project-file auto-generated packaging helpers
 
 V1 rule:
@@ -467,7 +467,7 @@ V1 rule:
 
 ### Package Install, Reset, And Launch Model
 
-Orbit must own the full install and launch lifecycle for the fixture package.
+Orbi must own the full install and launch lifecycle for the fixture package.
 
 Install/update flow:
 
@@ -497,7 +497,7 @@ Reset flow for `clearState`:
 
 `WindowsDesktopBackend` must report:
 
-- `backend_name() -> "orbit-uia-windows"`
+- `backend_name() -> "orbi-uia-windows"`
 - `target_name() ->` the resolved top-level window title if available, otherwise `"Windows"`
 - `target_id() ->` PID string
 - `video_extension() -> "mp4"`
@@ -602,7 +602,7 @@ Reason:
 
 ### Window Resolution
 
-When Orbit launches the AUT:
+When Orbi launches the AUT:
 
 1. Activate the installed package by AUMID and capture the returned PID.
 2. Call `WaitForInputIdle(process, timeout)` when the activated process supports it.
@@ -705,7 +705,7 @@ Do not use `PrintWindow` or GDI capture as primary behavior.
 Reason:
 
 - GDI/`PrintWindow` is not reliable for modern GPU-backed windows.
-- Orbit's desktop recording/screenshot artifacts should behave consistently with the visible rendered window.
+- Orbi's desktop recording/screenshot artifacts should behave consistently with the visible rendered window.
 
 ### Video Recording
 
@@ -731,7 +731,7 @@ The capture border should remain enabled in v1.
 Reason:
 
 - disabling the border requires additional consent/capability handling that is not needed for functional parity
-- border handling does not affect Orbit correctness
+- border handling does not affect Orbi correctness
 
 ### Open Link
 
@@ -743,9 +743,9 @@ Windows does not have a generic equivalent to macOS `log stream --process <name>
 
 Therefore the Windows `logs` contract is:
 
-- supported only for the Orbit-launched process
+- supported only for the Orbi-launched process
 - stream inherited stdout/stderr from the launched child when available
-- if the process was not launched by Orbit, or if the app is a GUI app with no console stream, return a clear unsupported message
+- if the process was not launched by Orbi, or if the app is a GUI app with no console stream, return a clear unsupported message
 
 Explicitly do **not** build v1 around:
 
@@ -862,19 +862,19 @@ Implement as a no-op success in v1.
 
 Reason:
 
-- desktop Windows apps do not have an Orbit-managed soft keyboard concept analogous to iOS
+- desktop Windows apps do not have an Orbi-managed soft keyboard concept analogous to iOS
 - this matches the current macOS backend behavior
 
 ## `clearState` Contract
 
-Like macOS, `clearState` is supported only for the Orbit-launched app under test.
+Like macOS, `clearState` is supported only for the Orbi-launched app under test.
 
 Because the fixture is MSIX-packaged, persist state with package-scoped application data, not ad-hoc host filesystem roots.
 
 For the Windows fixture app, standardize state under:
 
-- `ApplicationData.Current.LocalFolder\\OrbitFixture`
-- `ApplicationData.Current.LocalFolder\\OrbitFixture\\state.json`
+- `ApplicationData.Current.LocalFolder\\OrbiFixture`
+- `ApplicationData.Current.LocalFolder\\OrbiFixture\\state.json`
 
 Primary backend behavior:
 
@@ -892,9 +892,9 @@ Reason:
 
 ## Doctor Command Contract
 
-`orbit ui doctor --platform windows` must print:
+`orbi ui doctor --platform windows` must print:
 
-- `ui backend: orbit-uia-windows`
+- `ui backend: orbi-uia-windows`
 - `uiautomation: ok|missing`
 - `graphics capture: ok|missing`
 - `video encoder: ok|missing`
@@ -923,12 +923,12 @@ Use:
 - packaged desktop deployment via signed `.msix`
 - `AutomationProperties.AutomationId`
 - no Visual Studio project files
-- app-authored XAML compiled by Orbit's XAML pipeline
+- app-authored XAML compiled by Orbi's XAML pipeline
 
 Project shape:
 
 ```text
-examples/windows-app/orbit.json
+examples/windows-app/orbi.json
 examples/windows-app/Sources/App/main.cs
 examples/windows-app/Sources/App/App.xaml
 examples/windows-app/Sources/App/App.xaml.cs
@@ -951,7 +951,7 @@ Implementation constraints:
 - use a single top-level `MainWindow`
 - keep the main test surface in a single root visual tree
 - keep the primary fixture surface in `MainWindow.xaml` plus small supporting resource dictionaries or user controls only when they materially improve clarity
-- keep the manifest `Application Id` stable so Orbit can derive a stable AUMID
+- keep the manifest `Application Id` stable so Orbi can derive a stable AUMID
 - do not add explicit Bootstrapper API startup code; packaged startup should come from package identity and manifest dependencies
 
 Reason:
@@ -959,7 +959,7 @@ Reason:
 - this keeps the top-level HWND story simple
 - it avoids introducing non-client/title-bar automation noise into the fixture
 - it makes PID-to-window resolution deterministic
-- it keeps the build graph under Orbit's control while preserving normal WinUI authoring semantics
+- it keeps the build graph under Orbi's control while preserving normal WinUI authoring semantics
 - it aligns the fixture with the MSIX-only product decision
 
 ### Required UI Surface
@@ -967,7 +967,7 @@ Reason:
 The fixture must mirror the macOS example behavior:
 
 - title label:
-  - text: `Orbit Windows fixture`
+  - text: `Orbi Windows fixture`
   - id: `fixture-title`
 - name text box:
   - id: `name-field`
@@ -1039,7 +1039,7 @@ Do **not** implement the shortcut fixture with `RegisterHotKey` or raw window-me
 #### Hover
 
 - use `PointerEntered` on the hover target to update the status label
-- a tooltip is optional and not sufficient by itself; the fixture must change visible state so Orbit can assert it
+- a tooltip is optional and not sufficient by itself; the fixture must change visible state so Orbi can assert it
 
 #### Drag And Drop
 
@@ -1051,7 +1051,7 @@ Do **not** implement the shortcut fixture with `RegisterHotKey` or raw window-me
 
 #### Persistence
 
-- store persisted state under `ApplicationData.Current.LocalFolder\\OrbitFixture`
+- store persisted state under `ApplicationData.Current.LocalFolder\\OrbiFixture`
 - file I/O inside that package-scoped root is fine, but the root itself should come from `ApplicationData.Current`
 
 ### Shortcut Behavior
@@ -1073,7 +1073,7 @@ Persist:
 - default value: `Clean slate`
 - after button press: `Persisted state restored`
 
-Store the persisted message in the standardized Orbit fixture state root described above using normal file I/O.
+Store the persisted message in the standardized Orbi fixture state root described above using normal file I/O.
 
 ## Windows Example UI Flows
 
@@ -1118,12 +1118,12 @@ Add Windows-only tests for:
 On a Windows CI runner, run:
 
 ```sh
-orbit test --ui --platform windows
+orbi test --ui --platform windows
 ```
 
 Build precondition:
 
-- the installable signed `.msix` must be produced by Orbit's Windows build pipeline, not by a checked-in Visual Studio project
+- the installable signed `.msix` must be produced by Orbi's Windows build pipeline, not by a checked-in Visual Studio project
 - CI should fail if `.sln`, `.csproj`, or `.vcxproj` files are introduced under `examples/windows-app`
 
 Required passing flows:
@@ -1154,14 +1154,14 @@ Add one intentional Windows-only failing flow in test infrastructure, not in the
 
 ### Phase 2
 
-- Add Orbit-owned Windows build plumbing for an authored-XAML WinUI 3 fixture
+- Add Orbi-owned Windows build plumbing for an authored-XAML WinUI 3 fixture
 - Add Windows dependency metadata and exact version pinning for Windows App SDK runtime inputs
-- Add Orbit-owned XAML compilation support:
+- Add Orbi-owned XAML compilation support:
   - pass 1
   - intermediate local-assembly compile
   - pass 2
   - generated XAML/XBF staging
-- Add Orbit-owned MSIX packaging support:
+- Add Orbi-owned MSIX packaging support:
   - manifest generation
   - PRI generation as needed
   - package packing
@@ -1171,7 +1171,7 @@ Add one intentional Windows-only failing flow in test infrastructure, not in the
 ### Phase 3
 
 - Add `WindowsDesktopBackend`
-- Add `orbit-windows-ui-driver.exe`
+- Add `orbi-windows-ui-driver.exe`
 - Implement doctor/tree/point/focus/input/gesture/open-link/screenshot
 - Implement packaged install/activate/reset plumbing
 
@@ -1189,14 +1189,14 @@ Add one intentional Windows-only failing flow in test infrastructure, not in the
 
 This work is done only when all of the following are true:
 
-1. `orbit ui doctor --platform windows` reports the backend ready on a supported Windows machine.
-2. `orbit ui dump-tree --platform windows` returns JSON consumable by the shared selector logic.
-3. `orbit test --ui --platform windows` passes the full Windows fixture flow suite.
+1. `orbi ui doctor --platform windows` reports the backend ready on a supported Windows machine.
+2. `orbi ui dump-tree --platform windows` returns JSON consumable by the shared selector logic.
+3. `orbi test --ui --platform windows` passes the full Windows fixture flow suite.
 4. Each top-level flow writes screenshots/video/report artifacts using the same report model as current desktop backends.
 5. The Windows fixture and backend build without checked-in Visual Studio project files.
-6. The Windows fixture uses Orbit-owned compile/link/staging steps rather than delegating to the Visual Studio project system.
-7. The Windows fixture's authored `App.xaml`, `MainWindow.xaml`, and supporting XAML compile successfully through Orbit's XAML pipeline, including generated `.g.cs` and staged XAML/XBF outputs.
-8. Orbit produces a signed installable `.msix`, installs it, resolves its package identity metadata, and launches the app through packaged activation.
+6. The Windows fixture uses Orbi-owned compile/link/staging steps rather than delegating to the Visual Studio project system.
+7. The Windows fixture's authored `App.xaml`, `MainWindow.xaml`, and supporting XAML compile successfully through Orbi's XAML pipeline, including generated `.g.cs` and staged XAML/XBF outputs.
+8. Orbi produces a signed installable `.msix`, installs it, resolves its package identity metadata, and launches the app through packaged activation.
 9. Unsupported commands fail explicitly and deterministically.
 10. Apple behavior remains unchanged.
 
@@ -1210,7 +1210,7 @@ The Windows API choices above are based on official Microsoft documentation:
 - Microsoft documents that package-identity-gated Windows features are available to packaged apps, and that full MSIX packaging gives full package identity
 - the Windows App SDK Bootstrapper API is explicitly for unpackaged or packaged-with-external-location desktop apps, not for normal packaged startup
 - Microsoft documents framework-dependent packaged deployment around an MSIX plus package-manifest dependency declarations on the Windows App SDK framework package
-- Microsoft recommends using the Deployment API for packaged apps when you need Main/Singleton packages or servicing flow outside the Store; for v1 Orbit should keep the fixture surface inside the packaged framework dependency path unless a feature requires more
+- Microsoft recommends using the Deployment API for packaged apps when you need Main/Singleton packages or servicing flow outside the Store; for v1 Orbi should keep the fixture surface inside the packaged framework dependency path unless a feature requires more
 - Microsoft documents PowerShell package-management cmdlets for MSIX, including `Add-AppxPackage`, `Remove-AppxPackage`, `Get-AppxPackageManifest`, and `Reset-AppxPackage`
 - Microsoft documents that packaged desktop apps needing full trust declare the `runFullTrust` restricted capability
 - Microsoft documents manual MSIX creation with `MakeAppx.exe`
@@ -1239,4 +1239,4 @@ The Windows API choices above are based on official Microsoft documentation:
 
 Inference from those sources:
 
-- because Microsoft's standard WinUI 3 guidance is project-centric and hides both the XAML and packaging pipelines behind project targets, Orbit must explicitly recreate the runtime build graph itself: XAML pass 1, intermediate assembly compile, XAML pass 2, generated XAML/XBF staging, PRI generation when needed, MSIX manifest/resource staging, package packing/signing, package reset, and packaged activation/install flow
+- because Microsoft's standard WinUI 3 guidance is project-centric and hides both the XAML and packaging pipelines behind project targets, Orbi must explicitly recreate the runtime build graph itself: XAML pass 1, intermediate assembly compile, XAML pass 2, generated XAML/XBF staging, PRI generation when needed, MSIX manifest/resource staging, package packing/signing, package reset, and packaged activation/install flow

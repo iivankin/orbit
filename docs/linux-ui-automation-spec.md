@@ -1,16 +1,16 @@
 # Linux UI Automation Spec
 
-This document is a subsystem spec for Linux desktop UI automation. It is not the primary Linux application-platform spec. The main product/platform spec is [linux-application-spec.md](/Users/ilyai/Developer/personal/orbit2/docs/linux-application-spec.md).
+This document is a subsystem spec for Linux desktop UI automation. It is not the primary Linux application-platform spec. The main product/platform spec is [linux-application-spec.md](/Users/ilyai/Developer/personal/orbi2/docs/linux-application-spec.md).
 
 ## Scope
 
-This spec is for a Linux equivalent of Orbit's current desktop UI automation backend:
+This spec is for a Linux equivalent of Orbi's current desktop UI automation backend:
 
-- `orbit test --ui --platform macos`
-- `orbit ui doctor|dump-tree|describe-point|focus|logs --platform macos`
+- `orbi test --ui --platform macos`
+- `orbi ui doctor|dump-tree|describe-point|focus|logs --platform macos`
 - the current macOS YAML command set and artifact/report behavior
 
-This spec is not for a full Linux equivalent of Orbit's Apple build/signing/submission pipeline.
+This spec is not for a full Linux equivalent of Orbi's Apple build/signing/submission pipeline.
 
 Assumption:
 
@@ -27,7 +27,7 @@ The Linux backend must preserve these user-visible behaviors from the current ma
 - same polling behavior for `tapOn`, `assertVisible`, `assertNotVisible`, `scrollUntilVisible`
 - same report format shape
 - same failure artifacts: screenshot + accessibility tree JSON
-- same restriction as macOS for `launchApp`, `stopApp`, `clearState`: they operate only on Orbit's built target
+- same restriction as macOS for `launchApp`, `stopApp`, `clearState`: they operate only on Orbi's built target
 - same backend-driven artifact extension model via `video_extension()`
 
 The current desktop command surface to mirror is:
@@ -119,7 +119,7 @@ Reason:
 
 Use one public Linux backend family name and expose the session type in doctor output.
 
-- backend name for reports: `orbit-a11y-linux`
+- backend name for reports: `orbi-a11y-linux`
 - doctor output session subtype:
   - `session: wayland`
   - `session: x11`
@@ -168,7 +168,7 @@ Reason:
 - the `Notify*` path is standardized and already exposed by `ashpd`
 - `ConnectToEIS` adds extra complexity
 - once EIS is connected, input must go through that path exclusively
-- Orbit does not need that complexity for v1 parity
+- Orbi does not need that complexity for v1 parity
 
 ### X11 input
 
@@ -187,7 +187,7 @@ Reason:
 
 - it is standardized
 - it works consistently on Wayland and X11
-- it matches the desktop-security direction Orbit should align with
+- it matches the desktop-security direction Orbi should align with
 
 ## Required Rust Dependencies
 
@@ -206,8 +206,8 @@ Recommended additions:
 
 Notes:
 
-- `atspi` is the right crate, not `test-by-a11y`. `test-by-a11y` is useful as proof that Linux accessibility-driven testing is viable, but it does not solve Orbit's portal, capture, input, artifact, or CLI integration needs.
-- `zbus` is added explicitly because Orbit will need direct bus calls in addition to crate wrappers.
+- `atspi` is the right crate, not `test-by-a11y`. `test-by-a11y` is useful as proof that Linux accessibility-driven testing is viable, but it does not solve Orbi's portal, capture, input, artifact, or CLI integration needs.
+- `zbus` is added explicitly because Orbi will need direct bus calls in addition to crate wrappers.
 
 ## CLI And Type Changes
 
@@ -228,7 +228,7 @@ pub enum UiPlatform {
 Use `UiPlatform` for:
 
 - `TestArgs.platform` when `--ui` is set
-- all `orbit ui ... --platform ...` argument structs
+- all `orbi ui ... --platform ...` argument structs
 
 Keep the existing `TargetPlatform` enum Apple-only for build, run, submit, signing, and IDE paths.
 
@@ -288,8 +288,8 @@ Use the reverse-DNS application id as the Linux equivalent of `bundle_id`.
 
 Linux app id rules:
 
-- same identifier string Orbit already uses for the desktop app identity
-- also use it as the default desktop-file id and D-Bus application id later when Orbit grows Linux app packaging
+- same identifier string Orbi already uses for the desktop app identity
+- also use it as the default desktop-file id and D-Bus application id later when Orbi grows Linux app packaging
 
 Use this field internally as `app_id`, but keep it serialized to the existing shared report field name `bundle_id` only if changing report schema is not desirable yet.
 
@@ -328,7 +328,7 @@ Determine from:
 
 - connect to the AT-SPI bus
 - discover the target app by PID and app id
-- dump the target app subtree into Orbit's normalized JSON shape
+- dump the target app subtree into Orbi's normalized JSON shape
 - hit-test a point
 - resolve top-level window extents
 - resolve focused window
@@ -409,9 +409,9 @@ Create a persistent portal session:
 5. store the new `restore_token`
 6. store returned stream metadata
 
-Persist the token in Orbit home, not in the project:
+Persist the token in Orbi home, not in the project:
 
-- `~/.orbit/ui/linux-portal-state.json`
+- `~/.orbi/ui/linux-portal-state.json`
 
 Token record key:
 
@@ -433,7 +433,7 @@ Pointer/button mapping:
 
 - left click: Linux evdev button code `BTN_LEFT`
 - right click: `BTN_RIGHT`
-- double click: two left-click sequences with the existing Orbit delay semantics
+- double click: two left-click sequences with the existing Orbi delay semantics
 - long press: left press, sleep, left release
 - hover: absolute motion only
 
@@ -460,13 +460,13 @@ Use `x11rb` with XTEST:
 
 Keycode rules:
 
-- Linux `pressKeyCode` still uses Linux evdev keycodes as the public Orbit contract
+- Linux `pressKeyCode` still uses Linux evdev keycodes as the public Orbi contract
 - convert evdev keycodes to XKB/X11 keycodes by applying the standard XKB offset when needed
 - use `xkbcommon` to derive keysyms and modifier requirements for character-based `pressKey`
 
 Reason:
 
-- Orbit must not hardcode a US-layout-only Linux key map
+- Orbi must not hardcode a US-layout-only Linux key map
 - macOS-style manual key tables are not acceptable on Linux
 
 ### Capture manager
@@ -526,8 +526,8 @@ Linux does not have a true equivalent of macOS unified logging for arbitrary des
 
 Implement logging in two layers:
 
-- always tee Orbit-launched app `stdout` and `stderr` to terminal and to a per-run log file
-- implement `orbit ui logs --platform linux` as best-effort `journalctl --user --follow _EXE=<path>` when `journalctl` is available
+- always tee Orbi-launched app `stdout` and `stderr` to terminal and to a per-run log file
+- implement `orbi ui logs --platform linux` as best-effort `journalctl --user --follow _EXE=<path>` when `journalctl` is available
 
 If `journalctl` is not available, return a clear unsupported error.
 
@@ -583,9 +583,9 @@ Always use raw input for:
 
 ## `doctor` Contract
 
-`orbit ui doctor --platform linux` must print:
+`orbi ui doctor --platform linux` must print:
 
-- `ui backend: orbit-a11y-linux`
+- `ui backend: orbi-a11y-linux`
 - `session: wayland|x11`
 - `atspi: ok|missing`
 - `input: ok|missing`
@@ -613,7 +613,7 @@ X11 checks:
 Wayland first-run behavior:
 
 - if no valid restore token exists, `doctor` should open the permission flow and store the new token
-- in non-interactive mode, fail with a clear message telling the user to run `orbit ui doctor --platform linux` once interactively
+- in non-interactive mode, fail with a clear message telling the user to run `orbi ui doctor --platform linux` once interactively
 
 ## Error Handling
 
@@ -624,9 +624,9 @@ Examples:
 - missing AT-SPI:
   - "Linux UI automation requires the AT-SPI accessibility bus. Ensure the desktop accessibility stack is running and the target app exposes AT-SPI."
 - missing portal permission:
-  - "Wayland UI automation requires a one-time desktop approval for screen capture and input control. Run `orbit ui doctor --platform linux` interactively."
+  - "Wayland UI automation requires a one-time desktop approval for screen capture and input control. Run `orbi ui doctor --platform linux` interactively."
 - unsupported target:
-  - "The target app does not expose a usable AT-SPI tree, so Orbit cannot automate it on Linux."
+  - "The target app does not expose a usable AT-SPI tree, so Orbi cannot automate it on Linux."
 
 ## Tests
 
@@ -680,7 +680,7 @@ Do not claim Linux parity until this fixture passes end-to-end.
 ### Phase 2
 
 - implement Linux AT-SPI tree inspection
-- ship `orbit ui doctor --platform linux`
+- ship `orbi ui doctor --platform linux`
 - ship `dump-tree`, `describe-point`, `focus`
 
 ### Phase 3
@@ -697,7 +697,7 @@ Do not claim Linux parity until this fixture passes end-to-end.
 
 ### Phase 5
 
-- wire Linux into `orbit test --ui`
+- wire Linux into `orbi test --ui`
 - add Linux fixture app
 - validate parity flow-by-flow
 
@@ -750,11 +750,11 @@ Build this as a real Linux desktop backend around:
 - `xkbcommon` for key translation
 - a shared cross-platform UI runner extracted from the current Apple file
 
-Anything narrower will either fail on modern Wayland desktops or create the wrong abstraction boundaries in the Orbit codebase.
+Anything narrower will either fail on modern Wayland desktops or create the wrong abstraction boundaries in the Orbi codebase.
 
 ## Sources
 
-- Orbit repo:
+- Orbi repo:
   - current desktop UI backend contract in `src/apple/testing/ui.rs`
   - macOS backend implementation in `src/apple/testing/ui/backend.rs`
   - macOS helper in `src/apple/testing/ui/macos_driver.swift`

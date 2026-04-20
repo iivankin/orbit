@@ -151,7 +151,7 @@ pub(super) fn resolve_trace_bundle_id<'a>(
         && requested != bundle_id
     {
         bail!(
-            "{source} targets `{requested}`, but traced UI runs currently support only Orbit's built app `{bundle_id}`"
+            "{source} targets `{requested}`, but traced UI runs currently support only Orbi's built app `{bundle_id}`"
         );
     }
     Ok(requested.unwrap_or(bundle_id))

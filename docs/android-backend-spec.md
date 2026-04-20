@@ -1,44 +1,44 @@
-# Orbit Android Backend Spec
+# Orbi Android Backend Spec
 
 Date: April 1, 2026
 Status: Draft for implementation
-Owner: Orbit core
+Owner: Orbi core
 
 ## Goal
 
-Implement an Android backend for Orbit that matches the current product shape of the Apple backend:
+Implement an Android backend for Orbi that matches the current product shape of the Apple backend:
 
 - app-centric manifest, not a Gradle project
 - local-first build, run, test, sign, and submit flows
 - reproducible dependency resolution with a lockfile
 - receipts for later submit/re-run operations
-- no Android Studio or Gradle requirement for normal Orbit usage
+- no Android Studio or Gradle requirement for normal Orbi usage
 
-The backend should feel like "the Android version of Orbit", not "Orbit shells out to Gradle".
+The backend should feel like "the Android version of Orbi", not "Orbi shells out to Gradle".
 
 ## Repo Reality
 
-Current Orbit is an Apple-only backend with these product surfaces:
+Current Orbi is an Apple-only backend with these product surfaces:
 
 - backend dispatch from manifest schema
-- `orbit init`
-- `orbit lint`
-- `orbit format`
-- `orbit test`
-- `orbit ui ...`
-- `orbit deps update`
-- `orbit ide ...`
-- `orbit bsp`
-- `orbit run`
-- `orbit build`
-- `orbit submit`
-- `orbit clean`
-- backend-specific admin utilities under `orbit apple ...`
+- `orbi init`
+- `orbi lint`
+- `orbi format`
+- `orbi test`
+- `orbi ui ...`
+- `orbi deps update`
+- `orbi ide ...`
+- `orbi bsp`
+- `orbi run`
+- `orbi build`
+- `orbi submit`
+- `orbi clean`
+- backend-specific admin utilities under `orbi apple ...`
 
 There is already an architectural seam for Android:
 
-- [`src/manifest.rs`](/Users/ilyai/Developer/personal/orbit2/src/manifest.rs) defines `ManifestBackend::Android`
-- [`src/commands/mod.rs`](/Users/ilyai/Developer/personal/orbit2/src/commands/mod.rs) dispatches by manifest backend
+- [`src/manifest.rs`](/Users/ilyai/Developer/personal/orbi2/src/manifest.rs) defines `ManifestBackend::Android`
+- [`src/commands/mod.rs`](/Users/ilyai/Developer/personal/orbi2/src/commands/mod.rs) dispatches by manifest backend
 
 This spec uses that seam and mirrors the Apple module layout with a new `src/android/` tree.
 
@@ -46,7 +46,7 @@ This spec uses that seam and mirrors the Apple module layout with a new `src/and
 
 ### 1. Native backend, not Gradle orchestration
 
-Orbit Android will use official Android command-line primitives directly:
+Orbi Android will use official Android command-line primitives directly:
 
 - `sdkmanager`
 - `avdmanager`
@@ -73,7 +73,7 @@ V1 supports modern Android apps only:
 Rationale:
 
 - avoids legacy multidex and most desugaring complexity
-- matches Orbit’s existing modern-platform bias on Apple
+- matches Orbi’s existing modern-platform bias on Apple
 - stays Play-compliant as of April 1, 2026
 
 Play policy fact to encode in validation:
@@ -105,13 +105,13 @@ Android replacements:
 
 - reusable modular delivery is modeled with Play Feature Delivery feature modules
 - Wear OS is a separate future backend/form-factor flow, not an embedded child bundle
-- manifest-declared components like services, receivers, providers, widgets, and aliases stay in AndroidManifest authoring instead of a special Orbit DSL
+- manifest-declared components like services, receivers, providers, widgets, and aliases stay in AndroidManifest authoring instead of a special Orbi DSL
 
 Google Play tracks already use form-factor-prefixed track names like `wear:production`. That is a separate distribution concern, not an embedded app packaging model.
 
 ### 5. No remote destructive cleanup
 
-`orbit clean` for Android only removes local Orbit state and local signing material.
+`orbi clean` for Android only removes local Orbi state and local signing material.
 
 It must not delete:
 
@@ -150,7 +150,7 @@ Introduce `schemas/android-app.v1.json`.
 
 Schema URL:
 
-- `https://orbit.dev/schemas/android-app.v1.json`
+- `https://orbi.dev/schemas/android-app.v1.json`
 
 Schema filename:
 
@@ -160,11 +160,11 @@ Schema filename:
 
 ```json
 {
-  "$schema": "/Users/you/.orbit/schemas/android-app.v1.json",
+  "$schema": "/Users/you/.orbi/schemas/android-app.v1.json",
   "name": "ExampleApp",
   "display_name": "Example",
-  "bundle_id": "dev.orbit.example",
-  "namespace": "dev.orbit.example",
+  "bundle_id": "dev.orbi.example",
+  "namespace": "dev.orbi.example",
   "version": "1.0.0",
   "build": 1,
   "platforms": {
@@ -186,7 +186,7 @@ Schema filename:
     }
   },
   "entry": {
-    "launcher_activity": "dev.orbit.example.MainActivity"
+    "launcher_activity": "dev.orbi.example.MainActivity"
   },
   "dependencies": {
     "androidx-core-ktx": {
@@ -242,7 +242,7 @@ Schema filename:
 - `sources`, `resources`, `assets` stay path arrays
 - `manifest.path` is optional
 - `manifest.application` is a small structured overlay for common app-level attributes
-- `entry.launcher_activity` is required unless the manifest path already declares a single launcher activity and Orbit can resolve it unambiguously
+- `entry.launcher_activity` is required unless the manifest path already declares a single launcher activity and Orbi can resolve it unambiguously
 
 ### Deliberate omissions in V1
 
@@ -296,7 +296,7 @@ Android needs a real repository-driven dependency system.
 
 ### Supported dependency sources in V1
 
-`dependencies` is a dictionary keyed by Orbit-local dependency name.
+`dependencies` is a dictionary keyed by Orbi-local dependency name.
 
 Each value is exactly one of:
 
@@ -351,7 +351,7 @@ No dynamic versions:
 
 ### Lockfile
 
-Reuse `.orbit/orbit.lock`.
+Reuse `.orbi/orbi.lock`.
 
 For Android, it records:
 
@@ -362,11 +362,11 @@ For Android, it records:
 - POM SHA-256
 - packaging type (`aar`, `jar`, `pom`)
 
-`orbit deps update` behavior:
+`orbi deps update` behavior:
 
 - query repository metadata
-- rewrite exact version in `orbit.json`
-- rewrite resolved graph in `.orbit/orbit.lock`
+- rewrite exact version in `orbi.json`
+- rewrite resolved graph in `.orbi/orbi.lock`
 - default update policy: newest stable within same major
 
 ### Why no direct AAR-only ecosystem
@@ -387,7 +387,7 @@ Meaning:
 
 - `development`
   - debug APK
-  - Orbit-managed debug signing
+  - Orbi-managed debug signing
   - installable
   - not submit-eligible
 - `sideload`
@@ -410,11 +410,11 @@ Validation:
 
 Default artifact paths:
 
-- debug APK: `.orbit/artifacts/<id>-android-development-debug.apk`
-- release APK: `.orbit/artifacts/<id>-android-sideload-release.apk`
-- Play bundle: `.orbit/artifacts/<id>-android-play-release.aab`
+- debug APK: `.orbi/artifacts/<id>-android-development-debug.apk`
+- release APK: `.orbi/artifacts/<id>-android-sideload-release.apk`
+- Play bundle: `.orbi/artifacts/<id>-android-play-release.aab`
 
-Receipts live in `.orbit/receipts/`.
+Receipts live in `.orbi/receipts/`.
 
 ### Build receipts
 
@@ -428,10 +428,10 @@ Add Android receipt type:
   "configuration": "release",
   "distribution": "play",
   "destination": "bundle",
-  "application_id": "dev.orbit.example",
+  "application_id": "dev.orbi.example",
   "artifact_type": "aab",
-  "artifact_path": "/abs/path/.orbit/artifacts/ExampleApp.aab",
-  "merged_manifest_path": "/abs/path/.orbit/build/android/release/merged/AndroidManifest.xml",
+  "artifact_path": "/abs/path/.orbi/artifacts/ExampleApp.aab",
+  "merged_manifest_path": "/abs/path/.orbi/build/android/release/merged/AndroidManifest.xml",
   "created_at_unix": 1775000000,
   "submit_eligible": true
 }
@@ -457,7 +457,7 @@ Required external tooling:
 - build-tools matching selected `compile_sdk`
 - `platforms;android-<compile_sdk>`
 
-Orbit-managed cached tools:
+Orbi-managed cached tools:
 
 - `bundletool`
 - `ktfmt`
@@ -475,7 +475,7 @@ For `development` and `sideload`:
    - unpack AARs
 4. Merge manifests:
    - app manifest path, if present
-   - generated Orbit overlays
+   - generated Orbi overlays
    - library manifests
 5. Compile resources with `aapt2 compile`.
 6. Link resources with `aapt2 link`:
@@ -538,14 +538,14 @@ V1 should support Compose app sources.
 Required behavior:
 
 - Kotlin 2.x only
-- Orbit injects the Compose compiler plugin when `build_features.compose` or Compose dependencies are detected
+- Orbi injects the Compose compiler plugin when `build_features.compose` or Compose dependencies are detected
 - template apps are Compose-based
 
-This backend should not depend on Gradle’s Compose plugin. Orbit must wire the compiler plugin directly into `kotlinc`.
+This backend should not depend on Gradle’s Compose plugin. Orbi must wire the compiler plugin directly into `kotlinc`.
 
 ## Runtime
 
-### `orbit run --platform android --simulator`
+### `orbi run --platform android --simulator`
 
 Interpret existing `--simulator` as Android emulator for now.
 
@@ -557,7 +557,7 @@ Flow:
 4. launch resolved activity via `adb shell am start -n <applicationId>/<activity>`
 5. stream `logcat`
 
-### `orbit run --platform android --device`
+### `orbi run --platform android --device`
 
 Flow:
 
@@ -582,7 +582,7 @@ No IDE-specific debugger integration in V1.
 
 ### Unit tests
 
-`orbit test` on Android means local JVM unit tests.
+`orbi test` on Android means local JVM unit tests.
 
 Implementation:
 
@@ -597,15 +597,15 @@ Constraints:
 
 ### UI tests
 
-`orbit test --ui --platform android` uses a generated instrumentation harness, not shell-scripted taps.
+`orbi test --ui --platform android` uses a generated instrumentation harness, not shell-scripted taps.
 
 Implementation:
 
 1. build/install debug app
-2. generate Orbit UI test APK containing:
+2. generate Orbi UI test APK containing:
    - AndroidJUnitRunner
    - UI Automator runtime
-   - Orbit YAML flow executor
+   - Orbi YAML flow executor
 3. install test APK
 4. run instrumentation with `adb shell am instrument -w`
 5. collect artifacts
@@ -657,12 +657,12 @@ Commands intentionally deferred:
 
 Support in V1:
 
-- `orbit ui dump-tree --platform android`
-- `orbit ui describe-point --platform android --x ... --y ...`
-- `orbit ui logs --platform android`
-- `orbit ui open --platform android URL`
-- `orbit ui add-media --platform android`
-- `orbit ui doctor --platform android`
+- `orbi ui dump-tree --platform android`
+- `orbi ui describe-point --platform android --x ... --y ...`
+- `orbi ui logs --platform android`
+- `orbi ui open --platform android URL`
+- `orbi ui add-media --platform android`
+- `orbi ui doctor --platform android`
 
 Backend details:
 
@@ -675,7 +675,7 @@ Backend details:
 
 ### Debug signing
 
-Orbit manages a debug keystore under Orbit local data.
+Orbi manages a debug keystore under Orbi local data.
 
 ### Release signing
 
@@ -694,20 +694,20 @@ Manifest shape:
 
 Passwords:
 
-- never stored in `orbit.json`
-- loaded from env or Orbit local encrypted store
+- never stored in `orbi.json`
+- loaded from env or Orbi local encrypted store
 
 Environment overrides:
 
-- `ORBIT_ANDROID_KEYSTORE_PASSWORD`
-- `ORBIT_ANDROID_KEY_PASSWORD`
+- `ORBI_ANDROID_KEYSTORE_PASSWORD`
+- `ORBI_ANDROID_KEY_PASSWORD`
 
 ### Signing utilities
 
 Introduce:
 
-- `orbit android signing export`
-- `orbit android signing import`
+- `orbi android signing export`
+- `orbi android signing import`
 
 These export/import:
 
@@ -725,12 +725,12 @@ Use Google Play Developer API service accounts.
 
 V1 auth sources:
 
-- `ORBIT_PLAY_SERVICE_ACCOUNT_PATH`
-- later: Orbit-managed imported credentials
+- `ORBI_PLAY_SERVICE_ACCOUNT_PATH`
+- later: Orbi-managed imported credentials
 
 ### Play submit
 
-`orbit submit --platform android` from a `play` receipt:
+`orbi submit --platform android` from a `play` receipt:
 
 1. create edit
 2. upload bundle with `edits.bundles.upload`
@@ -765,7 +765,7 @@ Future form-factor tracks use:
 
 ### Internal app sharing
 
-`orbit submit --platform android --internal-sharing`
+`orbi submit --platform android --internal-sharing`
 
 Behavior:
 
@@ -775,7 +775,7 @@ Behavior:
 
 ### Submit validation
 
-Before Play submit, Orbit must block on:
+Before Play submit, Orbi must block on:
 
 - `target_sdk` below current Play minimum
 - unsigned or invalid AAB
@@ -788,8 +788,8 @@ Before Play submit, Orbit must block on:
 
 V1 supports:
 
-- `orbit format`
-- `orbit format --write`
+- `orbi format`
+- `orbi format --write`
 
 Formatter:
 
@@ -810,7 +810,7 @@ Reason:
 
 Until then:
 
-- `orbit lint` on Android should fail with a clear "not implemented yet" message
+- `orbi lint` on Android should fail with a clear "not implemented yet" message
 - do not ship a fake lint mode that only checks formatting
 
 ## IDE And BSP
@@ -819,7 +819,7 @@ Until then:
 
 Support:
 
-- `orbit ide dump-args --platform android`
+- `orbi ide dump-args --platform android`
 
 It returns:
 
@@ -834,7 +834,7 @@ It returns:
 
 Add:
 
-- `orbit ide install-build-server`
+- `orbi ide install-build-server`
 - Android BSP server
 
 Languages:
@@ -846,19 +846,19 @@ Do not block V1 on BSP.
 
 ## Clean
 
-`orbit clean --local`:
+`orbi clean --local`:
 
-- remove `.orbit`
-- remove Orbit-managed debug keystore
+- remove `.orbi`
+- remove Orbi-managed debug keystore
 - optionally remove cached build intermediates for this manifest
 
-`orbit clean --all` on Android is equivalent to local cleanup only.
+`orbi clean --all` on Android is equivalent to local cleanup only.
 
 There is no Android remote cleanup mode in V1.
 
 ## Init Templates
 
-Add Android to `orbit init`.
+Add Android to `orbi init`.
 
 V1 Android templates:
 
@@ -886,7 +886,7 @@ Sources/
 Tests/
   Unit/
   UI/
-orbit.json
+orbi.json
 ```
 
 Defaults written by `init` as of April 1, 2026:
@@ -917,10 +917,10 @@ tests/e2e_android_*.rs
 
 Top-level plumbing changes:
 
-- [`src/manifest.rs`](/Users/ilyai/Developer/personal/orbit2/src/manifest.rs): add Android schema detection and loading
-- [`src/commands/mod.rs`](/Users/ilyai/Developer/personal/orbit2/src/commands/mod.rs): dispatch Android backend
-- [`src/cli.rs`](/Users/ilyai/Developer/personal/orbit2/src/cli.rs): add Android platform and Android submit/signing flags
-- [`src/commands/init.rs`](/Users/ilyai/Developer/personal/orbit2/src/commands/init.rs): add Android ecosystem/template
+- [`src/manifest.rs`](/Users/ilyai/Developer/personal/orbi2/src/manifest.rs): add Android schema detection and loading
+- [`src/commands/mod.rs`](/Users/ilyai/Developer/personal/orbi2/src/commands/mod.rs): dispatch Android backend
+- [`src/cli.rs`](/Users/ilyai/Developer/personal/orbi2/src/cli.rs): add Android platform and Android submit/signing flags
+- [`src/commands/init.rs`](/Users/ilyai/Developer/personal/orbi2/src/commands/init.rs): add Android ecosystem/template
 
 ## Delivery Plan
 
@@ -950,7 +950,7 @@ Top-level plumbing changes:
 - staged rollout resume/halt helpers
 - BSP server
 - better debugger attach UX
-- imported Play credentials in Orbit state
+- imported Play credentials in Orbi state
 
 ### Phase 3: Expanded Android surface
 
@@ -985,7 +985,7 @@ Mitigation:
 
 ### 2. Compose compiler plugin wiring
 
-Orbit must invoke the Kotlin Compose compiler plugin outside Gradle.
+Orbi must invoke the Kotlin Compose compiler plugin outside Gradle.
 
 Mitigation:
 
@@ -1021,12 +1021,12 @@ Implement in this order:
 
 ## Sources
 
-- Local Orbit repo sources:
-  [`README.md`](/Users/ilyai/Developer/personal/orbit2/README.md),
-  [`src/cli.rs`](/Users/ilyai/Developer/personal/orbit2/src/cli.rs),
-  [`src/commands/mod.rs`](/Users/ilyai/Developer/personal/orbit2/src/commands/mod.rs),
-  [`src/manifest.rs`](/Users/ilyai/Developer/personal/orbit2/src/manifest.rs),
-  [`src/apple/`](/Users/ilyai/Developer/personal/orbit2/src/apple/)
+- Local Orbi repo sources:
+  [`README.md`](/Users/ilyai/Developer/personal/orbi2/README.md),
+  [`src/cli.rs`](/Users/ilyai/Developer/personal/orbi2/src/cli.rs),
+  [`src/commands/mod.rs`](/Users/ilyai/Developer/personal/orbi2/src/commands/mod.rs),
+  [`src/manifest.rs`](/Users/ilyai/Developer/personal/orbi2/src/manifest.rs),
+  [`src/apple/`](/Users/ilyai/Developer/personal/orbi2/src/apple/)
 - [sdkmanager](https://developer.android.com/tools/sdkmanager)
 - [avdmanager](https://developer.android.com/tools/avdmanager)
 - [Android Debug Bridge (adb)](https://developer.android.com/tools/adb)

@@ -1,6 +1,6 @@
 {
-  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
-  "appId": "dev.orbit.examples.macos",
+  "$schema": "../../../../schemas/orbi-ui-test.v1.json",
+  "appId": "dev.orbi.examples.macos",
   "name": "macos-shortcut",
   "steps": [
     "launchApp",

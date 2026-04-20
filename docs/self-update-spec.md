@@ -1,12 +1,12 @@
-# Orbit App Updater Spec
+# Orbi App Updater Spec
 
 Status: draft  
-Owner: Orbit Updater  
+Owner: Orbi Updater
 Last updated: 2026-04-02
 
 ## 1. Summary
 
-Orbit should ship its own desktop app updater as a shared Rust-first system.
+Orbi should ship its own desktop app updater as a shared Rust-first system.
 
 The updater must support:
 
@@ -25,7 +25,7 @@ Instead:
 - Swift and C# get thin integration kits that only wrap Rust calls and platform-specific host requirements
 - upgrades and downgrades share the same core release-install pipeline
 
-This spec replaces the earlier CLI-specific updater design. The new target is a reusable desktop app updater stack, not `orbit self-update` for a single binary.
+This spec replaces the earlier CLI-specific updater design. The new target is a reusable desktop app updater stack, not `orbi self-update` for a single binary.
 
 ## 2. Goals
 
@@ -46,7 +46,7 @@ This spec replaces the earlier CLI-specific updater design. The new target is a 
 - No cross-language business logic in Swift or C#.
 - No requirement that the app itself be written in Rust.
 
-Those platforms and package managers are externally managed and should stay externally managed. For Apple App Store, Microsoft Store, Flatpak, and Snap apps, Orbit provides companion integration features only, not custom package installation.
+Those platforms and package managers are externally managed and should stay externally managed. For Apple App Store, Microsoft Store, Flatpak, and Snap apps, Orbi provides companion integration features only, not custom package installation.
 
 ## 4. Supported Install Models
 
@@ -95,7 +95,7 @@ Platform-managed companion support:
 - Snap apps
 - pending-refresh awareness through `snapctl refresh --pending` when available in the snapped host environment
 - user handoff to system tools or Snap Store when configured
-- no Orbit-owned package apply path
+- no Orbi-owned package apply path
 
 Not supported in self-managed mode:
 
@@ -135,21 +135,21 @@ Not supported:
 - `trigger_managed_update()` when the platform exposes it
 - `open_managed_update_target()` when an external target is configured or derivable
 - no custom package apply
-- no Orbit-managed rollback
+- no Orbi-managed rollback
 
 ## 5. Product Shape
 
 The public integration surface is one Rust crate:
 
-- `orbit-updater`
+- `orbi-updater`
 
 Internal implementation is allowed to use a small workspace:
 
-- `orbit-updater-core`
-- `orbit-updater-platform`
-- `orbit-updater-ffi`
-- `orbit-updater-worker`
-- `orbit-updater-macos-xpc`
+- `orbi-updater-core`
+- `orbi-updater-platform`
+- `orbi-updater-ffi`
+- `orbi-updater-worker`
+- `orbi-updater-macos-xpc`
 
 But app developers should think of it as one updater product.
 
@@ -387,7 +387,7 @@ Channel rules:
 - `GitHubReleases`
   - supports only `release` and `prerelease`
 - `PlatformManaged`
-  - does not use Orbit update channels
+  - does not use Orbi update channels
 
 ### 7.3 Main Methods
 
@@ -528,7 +528,7 @@ The host app satisfies the requirement, updates config or install options, then 
 
 Ship a Swift package:
 
-- `OrbitUpdaterKit`
+- `OrbiUpdaterKit`
 
 Responsibilities:
 
@@ -549,7 +549,7 @@ Non-goals:
 
 Ship a .NET package:
 
-- `OrbitUpdaterKit.Windows`
+- `OrbiUpdaterKit.Windows`
 
 Responsibilities:
 
@@ -616,7 +616,7 @@ The updater supports exactly two catalog types:
 - `release`
 - `prerelease`
 
-Both catalog types still use Orbit-signed release manifests as the source of truth for:
+Both catalog types still use Orbi-signed release manifests as the source of truth for:
 
 - trust
 - artifact metadata
@@ -642,7 +642,7 @@ Both catalog types still use Orbit-signed release manifests as the source of tru
 
 - GitHub release list as the catalog index
 - channels `release` and `prerelease` only
-- signed per-release Orbit manifests attached as GitHub release assets
+- signed per-release Orbi manifests attached as GitHub release assets
 - full rollouts
 - mirrors
 - deltas
@@ -653,7 +653,7 @@ Both catalog types still use Orbit-signed release manifests as the source of tru
 - arbitrary custom channel names
 - a separate mutable channel pointer document
 
-Platform-managed apps do not use Orbit update catalogs for install delivery.
+Platform-managed apps do not use Orbi update catalogs for install delivery.
 
 Instead:
 
@@ -683,7 +683,7 @@ Example:
 ```json
 {
   "schema_version": 1,
-  "app_id": "dev.orbit.example",
+  "app_id": "dev.orbi.example",
   "channel": "stable",
   "release_id": "2026.04.02+1.8.0",
   "version": "1.8.0",
@@ -718,7 +718,7 @@ Example:
 ```json
 {
   "schema_version": 1,
-  "app_id": "dev.orbit.example",
+  "app_id": "dev.orbi.example",
   "channel": "stable",
   "releases": [
     {
@@ -757,10 +757,10 @@ Example:
 ```json
 {
   "schema_version": 1,
-  "app_id": "dev.orbit.example",
+  "app_id": "dev.orbi.example",
   "release_id": "2026.04.02+1.8.0",
   "version": "1.8.0",
-  "title": "Orbit 1.8",
+  "title": "Orbi 1.8",
   "published_at": "2026-04-02T09:00:00Z",
   "minimum_updater_version": "1.0.0",
   "notes": {
@@ -806,7 +806,7 @@ Example:
 
 ### 10.3 GitHub Releases Catalog
 
-The GitHub catalog uses the GitHub Releases API as the index, but it still requires Orbit-signed per-release metadata.
+The GitHub catalog uses the GitHub Releases API as the index, but it still requires Orbi-signed per-release metadata.
 
 Selection rules:
 
@@ -826,22 +826,22 @@ The updater must query releases newest-first and choose the newest eligible rele
 - platform artifact compatibility
 - rollback blocking rules when relevant
 
-Each GitHub release used by Orbit must contain:
+Each GitHub release used by Orbi must contain:
 
-- `orbit-release.json`
-- `orbit-release.sig`
+- `orbi-release.json`
+- `orbi-release.sig`
 
-`orbit-release.json` uses the same schema as the full-server release manifest in section 10.2.3.
+`orbi-release.json` uses the same schema as the full-server release manifest in section 10.2.3.
 
-The GitHub release body and title may be used as fallback release-note text only if `orbit-release.json` omits notes.
+The GitHub release body and title may be used as fallback release-note text only if `orbi-release.json` omits notes.
 
-Release history in GitHub mode is synthesized from the GitHub releases list filtered by channel and validated by parsing the attached Orbit release manifests.
+Release history in GitHub mode is synthesized from the GitHub releases list filtered by channel and validated by parsing the attached Orbi release manifests.
 
 GitHub API notes:
 
 - token authentication is optional but recommended
 - without a token, callers are subject to GitHub REST API unauthenticated rate limits
-- the updater must not trust GitHub API metadata alone; signed Orbit release manifests remain mandatory
+- the updater must not trust GitHub API metadata alone; signed Orbi release manifests remain mandatory
 
 ## 11. Signing And Trust Model
 
@@ -878,11 +878,11 @@ Reasons:
 
 ### 11.2 Platform Signer Verification
 
-In addition to Orbit manifest verification:
+In addition to Orbi manifest verification:
 
 - macOS: require expected Apple code-signing team id
 - Windows: require expected Authenticode signer thumbprint or subject match
-- Linux: no universal OS signer requirement in v1; rely on Orbit manifest signing plus package digest, with optional app-defined signer verification hook
+- Linux: no universal OS signer requirement in v1; rely on Orbi manifest signing plus package digest, with optional app-defined signer verification hook
 
 ### 11.3 Key Rotation
 
@@ -960,10 +960,10 @@ v1 delta kinds:
 
 Rules:
 
-- Orbit-owned delta is file-level, not binary-patch-level
+- Orbi-owned delta is file-level, not binary-patch-level
 - file-tree deltas may add, replace, and delete files
 - file-tree deltas reconstruct a complete staged target tree before platform verification
-- Windows does not use Orbit-owned file-tree deltas
+- Windows does not use Orbi-owned file-tree deltas
 - if delta apply fails for any reason, retry with full artifact or platform-native full package install
 
 Reason:
@@ -1121,7 +1121,7 @@ Flatpak mode:
 - treats Flatpak commit ids as the source of truth for installed and available revisions
 - may surface `appdata-version` only as a display version string when available
 - supports native trigger through `org.freedesktop.portal.Flatpak.UpdateMonitor.Update()` when the new update does not require broader permissions than the currently installed app
-- if the update requires broader permissions and Flatpak rejects the in-app update request, Orbit must report native trigger unavailable and fall back to `open_managed_update_target()` when configured, otherwise return a structured error so the host can instruct the user to use system tools
+- if the update requires broader permissions and Flatpak rejects the in-app update request, Orbi must report native trigger unavailable and fall back to `open_managed_update_target()` when configured, otherwise return a structured error so the host can instruct the user to use system tools
 
 Snap mode:
 
@@ -1341,8 +1341,8 @@ Additional requirements by catalog:
   - signed channel pointer
   - signed channel history index
 - `GitHubReleases`
-  - GitHub release with attached `orbit-release.json`
-  - attached `orbit-release.sig`
+  - GitHub release with attached `orbi-release.json`
+  - attached `orbi-release.sig`
 
 ### 25.1 macOS
 
@@ -1372,8 +1372,8 @@ Required:
 When using `GitHubReleases`, each GitHub release must:
 
 - be marked either release or prerelease
-- include `orbit-release.json`
-- include `orbit-release.sig`
+- include `orbi-release.json`
+- include `orbi-release.sig`
 - include all referenced artifacts or stable external URLs reachable from the manifest
 
 If the app uses GitHub catalog mode, publishing must fail if:
@@ -1401,14 +1401,14 @@ For Microsoft Store mode:
 For Flatpak mode:
 
 - detect whether the app is running as a Flatpak and whether the update-monitor APIs are available
-- configure an external target only when the host wants Orbit to open Software Center or another update surface
+- configure an external target only when the host wants Orbi to open Software Center or another update surface
 - treat commit ids as authoritative update identity
 - treat `appdata-version` as display-only metadata
 
 For Snap mode:
 
 - detect whether the app is running as a Snap and whether `snapctl refresh --pending` is available
-- configure an external target only when the host wants Orbit to open Snap Store or another update surface
+- configure an external target only when the host wants Orbi to open Snap Store or another update surface
 - treat `revision` as authoritative update identity
 - treat `version` as display-only metadata
 - do not advertise native trigger support unless the snap explicitly has the required refresh-control capability and the host opted in
@@ -1500,7 +1500,7 @@ Recommendation:
 
 Why:
 
-- keeps Orbit in control of the public API and progress model
+- keeps Orbi in control of the public API and progress model
 - avoids hard-binding the entire Windows story to one deployment entrypoint
 - still allows `App Installer` features like update URIs and downgrade policy
 
@@ -1576,7 +1576,7 @@ Why:
 
 Question:
 
-- does Orbit read installed version from platform metadata or trust a host-provided version
+- does Orbi read installed version from platform metadata or trust a host-provided version
 
 Recommendation:
 
@@ -1626,7 +1626,7 @@ Why:
 
 Question:
 
-- should Orbit require downgrade support to be enabled for all Windows releases
+- should Orbi require downgrade support to be enabled for all Windows releases
 
 Recommendation:
 
@@ -1647,7 +1647,7 @@ Question:
 Recommendation:
 
 - yes, but optional
-- default trust remains Orbit manifest signature + artifact digest
+- default trust remains Orbi manifest signature + artifact digest
 - add a hook for apps that want vendor-specific extra verification
 
 Why:
@@ -1706,7 +1706,7 @@ Why:
 
 ## 29. Decision
 
-Build Orbit’s updater as:
+Build Orbi’s updater as:
 
 - one small public Rust API
 - one shared signed JSON update protocol

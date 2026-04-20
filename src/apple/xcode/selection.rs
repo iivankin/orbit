@@ -186,7 +186,7 @@ pub(super) fn load_xcode_bundle(path: &Path) -> Result<Option<SelectedXcode>> {
 }
 
 fn installed_xcode_search_roots() -> Vec<PathBuf> {
-    if let Some(override_paths) = std::env::var_os("ORBIT_XCODE_SEARCH_ROOTS") {
+    if let Some(override_paths) = std::env::var_os("ORBI_XCODE_SEARCH_ROOTS") {
         let paths = std::env::split_paths(&override_paths).collect::<Vec<_>>();
         if !paths.is_empty() {
             return paths;
@@ -313,11 +313,11 @@ fn select_installed_xcode(prompt: &str, installed: &[SelectedXcode]) -> Result<S
 }
 
 fn missing_xcode_error(version: &str, installed: &[SelectedXcode]) -> anyhow::Error {
-    let install_hint = " Install the requested Xcode.app manually and rerun Orbit.";
+    let install_hint = " Install the requested Xcode.app manually and rerun Orbi.";
 
     if installed.is_empty() {
         return anyhow::anyhow!(
-            "manifest requests Xcode `{version}`, but Orbit could not find any installed Xcode.app bundles.{install_hint}"
+            "manifest requests Xcode `{version}`, but Orbi could not find any installed Xcode.app bundles.{install_hint}"
         );
     }
 

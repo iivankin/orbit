@@ -18,8 +18,8 @@ const DEFAULT_WATCH_APP_SOURCE_DIR: &str = "Sources/WatchApp";
 const DEFAULT_WATCH_EXTENSION_SOURCE_DIR: &str = "Sources/WatchExtension";
 const HOME_VIEW_NAME: &str = "HomeView";
 const HOME_VIEW_CONTROLLER_NAME: &str = "HomeViewController";
-const MANIFEST_DESCRIPTION: &str = "This file is documented by its `$schema`. Start with `orbit --help` for the common workflow and `orbit ui init --help` for scaffolding `tests.ui` flows.";
-const ASC_MANIFEST_DESCRIPTION: &str = "This embedded config is documented by its `$schema`. Start with `orbit asc --help` for the common workflow.";
+const MANIFEST_DESCRIPTION: &str = "This file is documented by its `$schema`. Start with `orbi --help` for the common workflow and `orbi ui init --help` for scaffolding `tests.ui` flows.";
+const ASC_MANIFEST_DESCRIPTION: &str = "This embedded config is documented by its `$schema`. Start with `orbi asc --help` for the common workflow.";
 const ASC_IOS_DEVICE_ID: &str = "local-ios-device";
 const ASC_TVOS_DEVICE_ID: &str = "local-apple-tv";
 const ASC_MAC_DEVICE_ID: &str = "local-mac";
@@ -126,42 +126,42 @@ const VISIONOS_PLATFORMS: [ManifestPlatform; 1] = [ManifestPlatform::new("vision
 
 const IOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &IOS_PLATFORMS,
-    "Orbit is ready for iOS",
+    "Orbi is ready for iOS",
     "Edit Sources/App/HomeView.swift, then launch the simulator again.",
-    &["orbit run --platform ios --simulator"],
+    &["orbi run --platform ios --simulator"],
 );
 const MACOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &MACOS_PLATFORMS,
-    "Orbit is ready for macOS",
-    "Edit Sources/App/HomeView.swift, then relaunch the app from Orbit.",
-    &["orbit run --platform macos"],
+    "Orbi is ready for macOS",
+    "Edit Sources/App/HomeView.swift, then relaunch the app from Orbi.",
+    &["orbi run --platform macos"],
 );
 const MACOS_APPKIT_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &MACOS_PLATFORMS,
-    "Orbit is ready for macOS",
-    "Edit Sources/App/HomeViewController.swift, then relaunch the app from Orbit.",
-    &["orbit run --platform macos"],
+    "Orbi is ready for macOS",
+    "Edit Sources/App/HomeViewController.swift, then relaunch the app from Orbi.",
+    &["orbi run --platform macos"],
 );
 const APPLE_MULTIPLATFORM_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &APPLE_MULTIPLATFORM_PLATFORMS,
-    "Orbit is ready for iOS and macOS",
-    "Edit one shared SwiftUI surface and run either platform from Orbit.",
+    "Orbi is ready for iOS and macOS",
+    "Edit one shared SwiftUI surface and run either platform from Orbi.",
     &[
-        "orbit run --platform ios --simulator",
-        "orbit run --platform macos",
+        "orbi run --platform ios --simulator",
+        "orbi run --platform macos",
     ],
 );
 const TVOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &TVOS_PLATFORMS,
-    "Orbit is ready for tvOS",
+    "Orbi is ready for tvOS",
     "Edit Sources/App/HomeView.swift, then relaunch the Apple TV simulator.",
-    &["orbit run --platform tvos --simulator"],
+    &["orbi run --platform tvos --simulator"],
 );
 const VISIONOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &VISIONOS_PLATFORMS,
-    "Orbit is ready for visionOS",
+    "Orbi is ready for visionOS",
     "Edit Sources/App/HomeView.swift, then relaunch the visionOS simulator.",
-    &["orbit run --platform visionos --simulator"],
+    &["orbi run --platform visionos --simulator"],
 );
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -411,7 +411,7 @@ pub(super) fn create_scaffold(
             .with_context(|| format!("failed to write {}", path.display()))?;
     }
     ensure_gitignore_entry(project_root, ".bsp/")?;
-    ensure_gitignore_entry(project_root, ".orbit/")?;
+    ensure_gitignore_entry(project_root, ".orbi/")?;
 
     Ok(())
 }
@@ -492,7 +492,7 @@ fn watch_companion_plan(answers: &InitAnswers, schema_reference: &str) -> Scaffo
                 "Sources/App/PhoneHomeView.swift",
                 home_view_file_contents(
                     "PhoneHomeView",
-                    "Orbit host app",
+                    "Orbi host app",
                     "Edit the host iOS app here, then run the iPhone simulator again.",
                 ),
             ),
@@ -504,8 +504,8 @@ fn watch_companion_plan(answers: &InitAnswers, schema_reference: &str) -> Scaffo
                 "Sources/WatchApp/WatchHomeView.swift",
                 home_view_file_contents(
                     "WatchHomeView",
-                    "Orbit watch companion",
-                    "Edit the watch UI here, then launch the watch simulator from Orbit.",
+                    "Orbi watch companion",
+                    "Edit the watch UI here, then launch the watch simulator from Orbi.",
                 ),
             ),
             generated_file(
@@ -514,8 +514,8 @@ fn watch_companion_plan(answers: &InitAnswers, schema_reference: &str) -> Scaffo
             ),
         ],
         next_commands: vec![
-            "orbit run --platform ios --simulator".to_owned(),
-            "orbit run --platform watchos --simulator".to_owned(),
+            "orbi run --platform ios --simulator".to_owned(),
+            "orbi run --platform watchos --simulator".to_owned(),
         ],
     }
 }
@@ -1007,12 +1007,12 @@ fn appkit_home_view_controller_file_contents(
     detail: &str,
 ) -> String {
     format!(
-        "import AppKit\n\nfinal class {controller_name}: NSViewController {{\n    override func loadView() {{\n        view = NSView()\n    }}\n\n    override func viewDidLoad() {{\n        super.viewDidLoad()\n\n        let eyebrowLabel = NSTextField(labelWithString: \"Orbit\")\n        eyebrowLabel.font = .systemFont(ofSize: 15, weight: .semibold)\n        eyebrowLabel.textColor = .controlAccentColor\n\n        let titleLabel = NSTextField(labelWithString: \"{title}\")\n        titleLabel.font = .systemFont(ofSize: 30, weight: .bold)\n\n        let detailLabel = NSTextField(wrappingLabelWithString: \"{detail}\")\n        detailLabel.alignment = .center\n        detailLabel.textColor = .secondaryLabelColor\n\n        let stack = NSStackView(views: [eyebrowLabel, titleLabel, detailLabel])\n        stack.orientation = .vertical\n        stack.alignment = .centerX\n        stack.spacing = 16\n        stack.translatesAutoresizingMaskIntoConstraints = false\n\n        view.addSubview(stack)\n        NSLayoutConstraint.activate([\n            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),\n            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),\n            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),\n            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32),\n            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),\n        ])\n    }}\n}}\n"
+        "import AppKit\n\nfinal class {controller_name}: NSViewController {{\n    override func loadView() {{\n        view = NSView()\n    }}\n\n    override func viewDidLoad() {{\n        super.viewDidLoad()\n\n        let eyebrowLabel = NSTextField(labelWithString: \"Orbi\")\n        eyebrowLabel.font = .systemFont(ofSize: 15, weight: .semibold)\n        eyebrowLabel.textColor = .controlAccentColor\n\n        let titleLabel = NSTextField(labelWithString: \"{title}\")\n        titleLabel.font = .systemFont(ofSize: 30, weight: .bold)\n\n        let detailLabel = NSTextField(wrappingLabelWithString: \"{detail}\")\n        detailLabel.alignment = .center\n        detailLabel.textColor = .secondaryLabelColor\n\n        let stack = NSStackView(views: [eyebrowLabel, titleLabel, detailLabel])\n        stack.orientation = .vertical\n        stack.alignment = .centerX\n        stack.spacing = 16\n        stack.translatesAutoresizingMaskIntoConstraints = false\n\n        view.addSubview(stack)\n        NSLayoutConstraint.activate([\n            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),\n            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),\n            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),\n            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32),\n            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),\n        ])\n    }}\n}}\n"
     )
 }
 
 fn watch_extension_file_contents() -> String {
-    "import Foundation\nimport WatchKit\n\n// Orbit uses this principal class from `watch.extension.entry.class`.\nfinal class WatchExtensionDelegate: NSObject, WKApplicationDelegate {}\n".to_owned()
+    "import Foundation\nimport WatchKit\n\n// Orbi uses this principal class from `watch.extension.entry.class`.\nfinal class WatchExtensionDelegate: NSObject, WKApplicationDelegate {}\n".to_owned()
 }
 
 #[cfg(test)]
@@ -1065,12 +1065,12 @@ mod tests {
 
     #[test]
     fn ios_template_uses_default_manifest_shape_and_files() {
-        let schema_path = "/tmp/.orbit/schemas/apple-app.v1.json";
+        let schema_path = "/tmp/.orbi/schemas/apple-app.v1.json";
         let plan = scaffold_plan(
             &InitAnswers {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
-                bundle_id: "dev.orbit.exampleapp".to_owned(),
+                bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::Ios,
                 asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
                 asc_devices: vec![test_init_device(
@@ -1089,7 +1089,7 @@ mod tests {
                 "$schema": schema_path,
                 "_description": MANIFEST_DESCRIPTION,
                 "name": "Example App",
-                "bundle_id": "dev.orbit.exampleapp",
+                "bundle_id": "dev.orbi.exampleapp",
                 "version": "1.0.0",
                 "build": 1,
                 "platforms": {
@@ -1103,7 +1103,7 @@ mod tests {
                     "team_id": TEST_ASC_TEAM_ID,
                     "bundle_ids": {
                         "app": {
-                            "bundle_id": "dev.orbit.exampleapp",
+                            "bundle_id": "dev.orbi.exampleapp",
                             "name": "Example App",
                             "platform": "ios"
                         }
@@ -1163,7 +1163,7 @@ mod tests {
         );
         assert_eq!(
             plan.next_commands,
-            vec!["orbit run --platform ios --simulator".to_owned()]
+            vec!["orbi run --platform ios --simulator".to_owned()]
         );
     }
 
@@ -1173,7 +1173,7 @@ mod tests {
             &InitAnswers {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example Mac".to_owned(),
-                bundle_id: "dev.orbit.examplemac".to_owned(),
+                bundle_id: "dev.orbi.examplemac".to_owned(),
                 template: InitTemplate::MacosAppKit,
                 asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
                 asc_devices: vec![test_init_device(
@@ -1183,7 +1183,7 @@ mod tests {
                     "This Mac",
                 )],
             },
-            "/tmp/.orbit/schemas/apple-app.v1.json",
+            "/tmp/.orbi/schemas/apple-app.v1.json",
         );
 
         assert_eq!(
@@ -1209,18 +1209,18 @@ mod tests {
         }));
         assert_eq!(
             plan.next_commands,
-            vec!["orbit run --platform macos".to_owned()]
+            vec!["orbi run --platform macos".to_owned()]
         );
     }
 
     #[test]
     fn watch_template_generates_watch_manifest_and_delegate_source() {
-        let schema_path = "/tmp/.orbit/schemas/apple-app.v1.json";
+        let schema_path = "/tmp/.orbi/schemas/apple-app.v1.json";
         let plan = scaffold_plan(
             &InitAnswers {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
-                bundle_id: "dev.orbit.exampleapp".to_owned(),
+                bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::IosWatchCompanion,
                 asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
                 asc_devices: vec![test_init_device(
@@ -1239,7 +1239,7 @@ mod tests {
                 "$schema": schema_path,
                 "_description": MANIFEST_DESCRIPTION,
                 "name": "Example App",
-                "bundle_id": "dev.orbit.exampleapp",
+                "bundle_id": "dev.orbi.exampleapp",
                 "version": "1.0.0",
                 "build": 1,
                 "platforms": {
@@ -1263,17 +1263,17 @@ mod tests {
                     "team_id": TEST_ASC_TEAM_ID,
                     "bundle_ids": {
                         "app": {
-                            "bundle_id": "dev.orbit.exampleapp",
+                            "bundle_id": "dev.orbi.exampleapp",
                             "name": "Example App",
                             "platform": "ios"
                         },
                         "watch-app": {
-                            "bundle_id": "dev.orbit.exampleapp.watchkitapp",
+                            "bundle_id": "dev.orbi.exampleapp.watchkitapp",
                             "name": "Example App Watch App",
                             "platform": "ios"
                         },
                         "watch-extension": {
-                            "bundle_id": "dev.orbit.exampleapp.watchkitapp.watchkitextension",
+                            "bundle_id": "dev.orbi.exampleapp.watchkitapp.watchkitextension",
                             "name": "Example App Watch Extension",
                             "platform": "ios"
                         }
@@ -1374,7 +1374,7 @@ mod tests {
             &InitAnswers {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
-                bundle_id: "dev.orbit.exampleapp".to_owned(),
+                bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::AppleMultiplatform,
                 asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
                 asc_devices: vec![
@@ -1392,7 +1392,7 @@ mod tests {
                     ),
                 ],
             },
-            "/tmp/.orbit/schemas/apple-app.v1.json",
+            "/tmp/.orbi/schemas/apple-app.v1.json",
         );
 
         assert_eq!(
@@ -1423,12 +1423,12 @@ mod tests {
             &InitAnswers {
                 ecosystem: InitEcosystem::Apple,
                 name: "Vision Example".to_owned(),
-                bundle_id: "dev.orbit.visionexample".to_owned(),
+                bundle_id: "dev.orbi.visionexample".to_owned(),
                 template: InitTemplate::Visionos,
                 asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
                 asc_devices: vec![],
             },
-            "/tmp/.orbit/schemas/apple-app.v1.json",
+            "/tmp/.orbi/schemas/apple-app.v1.json",
         );
 
         assert_eq!(plan.manifest["asc"]["bundle_ids"]["app"]["platform"], "ios");
@@ -1458,12 +1458,12 @@ mod tests {
     #[test]
     fn create_scaffold_writes_manifest_directories_and_sources() {
         let temp = tempfile::tempdir().unwrap();
-        let manifest_path = temp.path().join("nested/orbit.json");
+        let manifest_path = temp.path().join("nested/orbi.json");
         let plan = scaffold_plan(
             &InitAnswers {
                 ecosystem: InitEcosystem::Apple,
                 name: "Example App".to_owned(),
-                bundle_id: "dev.orbit.exampleapp".to_owned(),
+                bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::AppleMultiplatform,
                 asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
                 asc_devices: vec![
@@ -1481,7 +1481,7 @@ mod tests {
                     ),
                 ],
             },
-            "/tmp/.orbit/schemas/apple-app.v1.json",
+            "/tmp/.orbi/schemas/apple-app.v1.json",
         );
 
         create_scaffold(manifest_path.parent().unwrap(), &manifest_path, &plan).unwrap();
@@ -1506,6 +1506,6 @@ mod tests {
         );
         let gitignore =
             std::fs::read_to_string(manifest_path.parent().unwrap().join(".gitignore")).unwrap();
-        assert_eq!(gitignore, ".bsp/\n.orbit/\n");
+        assert_eq!(gitignore, ".bsp/\n.orbi/\n");
     }
 }

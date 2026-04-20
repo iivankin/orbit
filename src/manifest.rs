@@ -79,7 +79,7 @@ pub fn detect_schema_with_env(path: &Path, env: Option<&str>) -> Result<Manifest
         );
     }
     bail!(
-        "unsupported manifest schema `{}`; expected a local schema path ending with `{}` or a version-pinned published Orbit schema URL from `https://orbitstorage.dev/schemas/`",
+        "unsupported manifest schema `{}`; expected a local schema path ending with `{}` or a version-pinned published Orbi schema URL from `https://orbitstorage.dev/schemas/`",
         probe.schema,
         crate::apple::manifest::SCHEMA_FILENAME
     )
@@ -99,7 +99,7 @@ fn schema_matches_file_name(schema_name: &str, local_file_name: &str) -> bool {
     };
     let Some(version_suffix) = schema_name
         .strip_prefix(local_stem)
-        .and_then(|value| value.strip_prefix("-orbit-"))
+        .and_then(|value| value.strip_prefix("-orbi-"))
         .and_then(|value| value.strip_suffix(".json"))
     else {
         return false;
@@ -188,7 +188,7 @@ mod tests {
     #[test]
     fn reads_base_manifest_without_env_overlay() {
         let temp = tempdir().unwrap();
-        let manifest_path = temp.path().join("orbit.json");
+        let manifest_path = temp.path().join("orbi.json");
         fs::write(
             &manifest_path,
             serde_json::to_vec_pretty(&json!({
@@ -207,8 +207,8 @@ mod tests {
     #[test]
     fn merges_environment_manifest_recursively() {
         let temp = tempdir().unwrap();
-        let manifest_path = temp.path().join("orbit.json");
-        let overlay_path = temp.path().join("orbit.stage.json");
+        let manifest_path = temp.path().join("orbi.json");
+        let overlay_path = temp.path().join("orbi.stage.json");
         fs::write(
             &manifest_path,
             serde_json::to_vec_pretty(&json!({
@@ -268,23 +268,23 @@ mod tests {
 
     #[test]
     fn builds_overlay_path_from_manifest_name() {
-        let manifest_path = PathBuf::from("/tmp/project/orbit.json");
+        let manifest_path = PathBuf::from("/tmp/project/orbi.json");
         assert_eq!(
             overlay_manifest_path(&manifest_path, "prod").unwrap(),
-            PathBuf::from("/tmp/project/orbit.prod.json")
+            PathBuf::from("/tmp/project/orbi.prod.json")
         );
     }
 
     #[test]
     fn detects_version_pinned_published_schema_url() {
         let temp = tempdir().unwrap();
-        let manifest_path = temp.path().join("orbit.json");
+        let manifest_path = temp.path().join("orbi.json");
         fs::write(
             &manifest_path,
             serde_json::to_vec_pretty(&json!({
-                "$schema": "https://orbitstorage.dev/schemas/apple-app.v1-orbit-9.9.9.json",
+                "$schema": "https://orbitstorage.dev/schemas/apple-app.v1-orbi-9.9.9.json",
                 "name": "Example",
-                "bundle_id": "dev.orbit.examples.example",
+                "bundle_id": "dev.orbi.examples.example",
                 "version": "1.0.0",
                 "build": 1,
                 "platforms": {

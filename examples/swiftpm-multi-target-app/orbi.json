@@ -1,0 +1,18 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleSwiftPackageApp",
+  "bundle_id": "dev.orbi.examples.swiftpm",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "ios": "18.0"
+  },
+  "sources": [
+    "Sources/App"
+  ],
+  "dependencies": {
+    "OrbiFeature": {
+      "path": "Packages/OrbiFeature"
+    }
+  }
+}

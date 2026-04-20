@@ -829,7 +829,7 @@ mod tests {
     <info>
       <target>
         <device platform="macOS" name="Example Mac"/>
-        <process name="Orbit"/>
+        <process name="Orbi"/>
       </target>
       <summary>
         <duration>6.0</duration>
@@ -837,7 +837,7 @@ mod tests {
       </summary>
     </info>
     <processes>
-      <process name="Orbit" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+      <process name="Orbi" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
     </processes>
     <data>
       <table schema="time-profile"/>
@@ -854,7 +854,7 @@ mod tests {
       <tagged-backtrace id="2">
         <backtrace id="3">
           <frame id="4" name="heavyWork()" addr="0x102000100">
-            <binary id="5" name="Orbit" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+            <binary id="5" name="Orbi" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
           </frame>
           <frame id="6" name="main" addr="0x102000050">
             <binary ref="5"/>
@@ -892,7 +892,7 @@ mod tests {
     <info>
       <target>
         <device platform="macOS" name="Example Mac"/>
-        <process name="Orbit"/>
+        <process name="Orbi"/>
       </target>
       <summary>
         <duration>5.0</duration>
@@ -925,9 +925,9 @@ mod tests {
     const SAMPLE_ALLOCATIONS_LIST_XML: &str = r#"<?xml version="1.0"?>
 <trace-query-result>
   <node xpath='//trace-toc[1]/run[1]/tracks[1]/track[1]/details[1]/detail[2]'>
-    <row address="0x10133c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbit" size="262144"/>
-    <row address="0x10137c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbit" size="262144"/>
-    <row address="0x10139c000" category="Malloc 48 Bytes" live="true" responsible-caller="bootstrap()" responsible-library="Orbit" size="48"/>
+    <row address="0x10133c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbi" size="262144"/>
+    <row address="0x10137c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbi" size="262144"/>
+    <row address="0x10139c000" category="Malloc 48 Bytes" live="true" responsible-caller="bootstrap()" responsible-library="Orbi" size="48"/>
     <row address="0x10139c100" category="VM: Anonymous VM" live="false" responsible-caller="&lt;Call stack limit reached&gt;" responsible-library="" size="393216"/>
   </node>
 </trace-query-result>"#;
@@ -938,11 +938,11 @@ mod tests {
         let samples = parse_time_profile_samples(SAMPLE_TIME_PROFILE_XML, &metadata).unwrap();
         let summary = render_time_profile_diagnosis(&metadata, &samples);
 
-        assert!(summary.contains("Process: Orbit"));
+        assert!(summary.contains("Process: Orbi"));
         assert!(summary.contains("Template: Time Profiler"));
         assert!(summary.contains("Samples: 3"));
-        assert!(summary.contains("Orbit  heavyWork()"));
-        assert!(summary.contains("Orbit  main"));
+        assert!(summary.contains("Orbi  heavyWork()"));
+        assert!(summary.contains("Orbi  main"));
         assert!(summary.contains("main > heavyWork()"));
     }
 

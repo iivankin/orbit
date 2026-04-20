@@ -1,6 +1,6 @@
 {
-  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
-  "appId": "dev.orbit.examples.exampleiosapp",
+  "$schema": "../../../../schemas/orbi-ui-test.v1.json",
+  "appId": "dev.orbi.examples.exampleiosapp",
   "name": "Hidden Page Swipe Demo",
   "steps": [
     "launchApp",

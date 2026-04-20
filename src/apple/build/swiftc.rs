@@ -355,13 +355,13 @@ mod tests {
             &fixture_toolchain(),
             &ProfileManifest::new(BuildConfiguration::Release, DistributionKind::Development),
             SwiftPackageTargetCompilePlan {
-                module_name: "OrbitFeature",
-                product_path: "/tmp/libOrbitPackage_OrbitFeature.a".as_ref(),
-                module_output_path: "/tmp/modules/OrbitFeature.swiftmodule".as_ref(),
-                swift_sources: &["/tmp/Package/Sources/OrbitFeature.swift".into()],
+                module_name: "OrbiFeature",
+                product_path: "/tmp/libOrbiPackage_OrbiFeature.a".as_ref(),
+                module_output_path: "/tmp/modules/OrbiFeature.swiftmodule".as_ref(),
+                swift_sources: &["/tmp/Package/Sources/OrbiFeature.swift".into()],
                 module_search_paths: &["/tmp/modules".into()],
                 library_search_paths: &["/tmp/libs".into()],
-                link_libraries: &["OrbitPackage_OrbitCore".to_owned()],
+                link_libraries: &["OrbiPackage_OrbiCore".to_owned()],
                 index_store_path: Some(Path::new("/tmp/index-store")),
             },
         )
@@ -380,7 +380,7 @@ mod tests {
         );
         assert!(
             args.windows(2)
-                .any(|pair| pair == ["-emit-module-path", "/tmp/modules/OrbitFeature.swiftmodule"])
+                .any(|pair| pair == ["-emit-module-path", "/tmp/modules/OrbiFeature.swiftmodule"])
         );
         assert!(
             args.windows(2)
@@ -390,7 +390,7 @@ mod tests {
         assert!(args.windows(2).any(|pair| pair == ["-L", "/tmp/libs"]));
         assert!(
             args.windows(2)
-                .any(|pair| pair == ["-l", "OrbitPackage_OrbitCore"])
+                .any(|pair| pair == ["-l", "OrbiPackage_OrbiCore"])
         );
     }
 }

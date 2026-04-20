@@ -26,7 +26,7 @@ fn app_store_build_submit_and_clean_complete_full_lifecycle() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture",
+        "dev.orbi.fixture",
         "ExampleApp",
         false,
         true,
@@ -45,7 +45,7 @@ fn app_store_build_submit_and_clean_complete_full_lifecycle() {
     build.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "ios",
@@ -71,11 +71,11 @@ fn app_store_build_submit_and_clean_complete_full_lifecycle() {
     clear_log(&log_path);
 
     let mut submit = base_command(&workspace, &home, &mock_bin, &log_path);
-    submit.env("ORBIT_ASC_BASE_URL", &api_base_url);
+    submit.env("ORBI_ASC_BASE_URL", &api_base_url);
     submit.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "submit",
         "--receipt",
         receipt_path.to_str().unwrap(),
@@ -95,7 +95,7 @@ fn app_store_build_submit_and_clean_complete_full_lifecycle() {
     clean.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "clean",
         "--local",
     ]);
@@ -105,7 +105,7 @@ fn app_store_build_submit_and_clean_complete_full_lifecycle() {
         "{}",
         String::from_utf8_lossy(&clean_output.stderr)
     );
-    assert!(!workspace.join(".orbit").exists());
+    assert!(!workspace.join(".orbi").exists());
 
     let requests = server.requests();
     server.shutdown();

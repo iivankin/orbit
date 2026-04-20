@@ -41,7 +41,7 @@ pub fn prepare_distribution_artifact_signing(
     let embedded = crate::asc::config::materialize(project)?;
     let state = asc_sync::bundle::load_state(&embedded.bundle_path).with_context(|| {
         format!(
-            "missing ASC signing bundle at {}; run `orbit asc apply` first",
+            "missing ASC signing bundle at {}; run `orbi asc apply` first",
             embedded.bundle_path.display()
         )
     })?;
@@ -69,7 +69,7 @@ fn prepare_signing_with_embedded_asc(
     let embedded = crate::asc::config::materialize(project)?;
     let state = asc_sync::bundle::load_state(&embedded.bundle_path).with_context(|| {
         format!(
-            "missing ASC signing bundle at {}; run `orbit asc apply` first",
+            "missing ASC signing bundle at {}; run `orbi asc apply` first",
             embedded.bundle_path.display()
         )
     })?;
@@ -160,7 +160,7 @@ fn select_embedded_profile<'a>(
 
     match candidates.as_slice() {
         [] => bail!(
-            "no ASC-managed provisioning profile matched bundle `{bundle_identifier}` and kind `{expected_kind}`; run `orbit asc apply` and `orbit asc signing import`"
+            "no ASC-managed provisioning profile matched bundle `{bundle_identifier}` and kind `{expected_kind}`; run `orbi asc apply` and `orbi asc signing import`"
         ),
         [(_, profile)] => Ok(*profile),
         _ => bail!(
@@ -218,7 +218,7 @@ fn resolve_embedded_signing_identity(
     }
 
     bail!(
-        "no imported signing identity matched ASC profile certificates {}; run `orbit asc signing import`",
+        "no imported signing identity matched ASC profile certificates {}; run `orbi asc signing import`",
         profile.certs.join(", ")
     )
 }
@@ -228,7 +228,7 @@ fn installed_profile_path(uuid: &str) -> Result<PathBuf> {
     let path = profiles_dir.join(format!("{uuid}.mobileprovision"));
     anyhow::ensure!(
         path.exists(),
-        "missing provisioning profile {}; run `orbit asc signing import`",
+        "missing provisioning profile {}; run `orbi asc signing import`",
         path.display()
     );
     Ok(path)

@@ -23,10 +23,10 @@ fn test_project() -> (TempDir, ProjectContext) {
     let root = temp.path().join("project");
     let data_dir = temp.path().join("data");
     let cache_dir = temp.path().join("cache");
-    let orbit_dir = root.join(".orbit");
-    let build_dir = orbit_dir.join("build");
-    let artifacts_dir = orbit_dir.join("artifacts");
-    let receipts_dir = orbit_dir.join("receipts");
+    let orbi_dir = root.join(".orbi");
+    let build_dir = orbi_dir.join("build");
+    let artifacts_dir = orbi_dir.join("artifacts");
+    let receipts_dir = orbi_dir.join("receipts");
     std::fs::create_dir_all(&build_dir).unwrap();
     std::fs::create_dir_all(&artifacts_dir).unwrap();
     std::fs::create_dir_all(&receipts_dir).unwrap();
@@ -34,7 +34,7 @@ fn test_project() -> (TempDir, ProjectContext) {
     std::fs::create_dir_all(&cache_dir).unwrap();
 
     let manifest = ResolvedManifest {
-        name: "OrbitFixture".to_owned(),
+        name: "OrbiFixture".to_owned(),
         version: "0.1.0".to_owned(),
         xcode: None,
         hooks: HooksManifest::default(),
@@ -50,7 +50,7 @@ fn test_project() -> (TempDir, ProjectContext) {
         targets: vec![TargetManifest {
             name: "ExampleApp".to_owned(),
             kind: TargetKind::App,
-            bundle_id: "dev.orbit.fixture".to_owned(),
+            bundle_id: "dev.orbi.fixture".to_owned(),
             display_name: None,
             build_number: None,
             platforms: vec![ApplePlatform::Ios],
@@ -69,14 +69,14 @@ fn test_project() -> (TempDir, ProjectContext) {
             extension: None,
         }],
     };
-    let manifest_path = root.join("orbit.json");
+    let manifest_path = root.join("orbi.json");
     std::fs::create_dir_all(&root).unwrap();
     std::fs::write(
         &manifest_path,
         serde_json::to_vec_pretty(&json!({
             "$schema": crate::apple::manifest::SCHEMA_URL,
-            "name": "OrbitFixture",
-            "bundle_id": "dev.orbit.fixture",
+            "name": "OrbiFixture",
+            "bundle_id": "dev.orbi.fixture",
             "version": "0.1.0",
             "build": 1,
             "platforms": { "ios": "18.0" },
@@ -108,7 +108,7 @@ fn test_project() -> (TempDir, ProjectContext) {
         resolved_manifest: manifest,
         selected_xcode: None,
         project_paths: ProjectPaths {
-            orbit_dir,
+            orbi_dir,
             build_dir,
             artifacts_dir,
             receipts_dir,
@@ -128,8 +128,8 @@ fn configure_project_for_macos_local_signing(project: &mut ProjectContext) {
     project.resolved_manifest.targets[0].platforms = vec![ApplePlatform::Macos];
     let manifest = json!({
         "$schema": crate::apple::manifest::SCHEMA_URL,
-        "name": "OrbitFixture",
-        "bundle_id": "dev.orbit.fixture",
+        "name": "OrbiFixture",
+        "bundle_id": "dev.orbi.fixture",
         "version": "0.1.0",
         "build": 1,
         "platforms": { "macos": "15.0" },
@@ -145,8 +145,8 @@ fn configure_project_for_macos_local_signing(project: &mut ProjectContext) {
 #[test]
 fn identifier_name_normalizes_portal_identifiers() {
     assert_eq!(
-        identifier_name("App Group", "group.dev.orbit.demo"),
-        "App Group group dev orbit demo"
+        identifier_name("App Group", "group.dev.orbi.demo"),
+        "App Group group dev orbi demo"
     );
 }
 
@@ -212,7 +212,7 @@ fn local_cleanup_removes_only_current_project_profiles_and_unused_certs() {
             ManagedProfile {
                 id: "PROFILE-CURRENT".to_owned(),
                 profile_type: "limited".to_owned(),
-                bundle_id: "dev.orbit.fixture".to_owned(),
+                bundle_id: "dev.orbi.fixture".to_owned(),
                 path: current_profile_path.clone(),
                 uuid: None,
                 certificate_ids: vec!["CERT-CURRENT".to_owned()],
@@ -221,7 +221,7 @@ fn local_cleanup_removes_only_current_project_profiles_and_unused_certs() {
             ManagedProfile {
                 id: "PROFILE-OTHER".to_owned(),
                 profile_type: "limited".to_owned(),
-                bundle_id: "dev.orbit.other".to_owned(),
+                bundle_id: "dev.orbi.other".to_owned(),
                 path: other_profile_path.clone(),
                 uuid: None,
                 certificate_ids: vec!["CERT-OTHER".to_owned()],
@@ -252,8 +252,8 @@ fn local_team_resolution_ignores_global_auth_team_selection() {
     std::fs::write(
         &project.manifest_path,
         serde_json::to_vec_pretty(&json!({
-            "name": "OrbitFixture",
-            "bundle_id": "dev.orbit.fixture",
+            "name": "OrbiFixture",
+            "bundle_id": "dev.orbi.fixture",
             "version": "0.1.0",
             "build": 1,
             "platforms": { "ios": "18.0" },
@@ -287,8 +287,8 @@ fn local_team_resolution_observes_manifest_saved_after_project_load() {
     std::fs::write(
         &project.manifest_path,
         serde_json::to_vec_pretty(&json!({
-            "name": "OrbitFixture",
-            "bundle_id": "dev.orbit.fixture",
+            "name": "OrbiFixture",
+            "bundle_id": "dev.orbi.fixture",
             "version": "0.1.0",
             "build": 1,
             "platforms": { "ios": "18.0" },
@@ -316,7 +316,7 @@ fn materializes_app_clip_entitlements_for_clip_and_host_app() {
     Value::Dictionary(plist::Dictionary::from_iter([(
         "com.apple.developer.parent-application-identifiers".to_owned(),
         Value::Array(vec![Value::String(
-            "$(AppIdentifierPrefix)dev.orbit.fixture".to_owned(),
+            "$(AppIdentifierPrefix)dev.orbi.fixture".to_owned(),
         )]),
     )]))
     .to_file_xml(&clip_entitlements_path)
@@ -334,7 +334,7 @@ fn materializes_app_clip_entitlements_for_clip_and_host_app() {
     project.resolved_manifest.targets.push(TargetManifest {
         name: "ExampleClip".to_owned(),
         kind: TargetKind::App,
-        bundle_id: "dev.orbit.fixture.clip".to_owned(),
+        bundle_id: "dev.orbi.fixture.clip".to_owned(),
         display_name: None,
         build_number: None,
         platforms: vec![ApplePlatform::Ios],
@@ -372,7 +372,7 @@ fn materializes_app_clip_entitlements_for_clip_and_host_app() {
             .unwrap()[0]
             .as_string()
             .unwrap(),
-        "TEAM123456.dev.orbit.fixture"
+        "TEAM123456.dev.orbi.fixture"
     );
     assert_eq!(
         clip_dictionary
@@ -399,7 +399,7 @@ fn materializes_app_clip_entitlements_for_clip_and_host_app() {
             .unwrap()[0]
             .as_string()
             .unwrap(),
-        "TEAM123456.dev.orbit.fixture.clip"
+        "TEAM123456.dev.orbi.fixture.clip"
     );
 }
 
@@ -417,7 +417,7 @@ fn materializes_profile_entitlements_when_target_has_no_entitlements_file() {
             Value::Dictionary(plist::Dictionary::from_iter([
                 (
                     "application-identifier".to_owned(),
-                    Value::String("TEAM123456.dev.orbit.fixture".to_owned()),
+                    Value::String("TEAM123456.dev.orbi.fixture".to_owned()),
                 ),
                 (
                     "com.apple.developer.team-identifier".to_owned(),
@@ -453,7 +453,7 @@ fn materializes_profile_entitlements_when_target_has_no_entitlements_file() {
         dictionary
             .get("application-identifier")
             .and_then(plist::Value::as_string),
-        Some("TEAM123456.dev.orbit.fixture")
+        Some("TEAM123456.dev.orbi.fixture")
     );
     assert_eq!(
         dictionary
@@ -491,7 +491,7 @@ fn merges_managed_profile_entitlements_into_explicit_entitlements() {
             Value::Dictionary(plist::Dictionary::from_iter([
                 (
                     "application-identifier".to_owned(),
-                    Value::String("TEAM123456.dev.orbit.fixture".to_owned()),
+                    Value::String("TEAM123456.dev.orbi.fixture".to_owned()),
                 ),
                 (
                     "com.apple.developer.team-identifier".to_owned(),
@@ -530,7 +530,7 @@ fn merges_managed_profile_entitlements_into_explicit_entitlements() {
         dictionary
             .get("application-identifier")
             .and_then(plist::Value::as_string),
-        Some("TEAM123456.dev.orbit.fixture")
+        Some("TEAM123456.dev.orbi.fixture")
     );
     assert_eq!(
         dictionary

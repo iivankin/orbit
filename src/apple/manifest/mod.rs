@@ -10,7 +10,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value as JsonValue;
 
 pub const SCHEMA_URL: &str = concat!(
-    "https://orbitstorage.dev/schemas/apple-app.v1-orbit-",
+    "https://orbitstorage.dev/schemas/apple-app.v1-orbi-",
     env!("CARGO_PKG_VERSION"),
     ".json"
 );
@@ -338,12 +338,12 @@ impl ExtensionEntry {
 }
 
 impl ResolvedManifest {
-    pub fn load(path: &Path, orbit_dir: &Path) -> Result<Self> {
-        Self::load_with_env(path, orbit_dir, None)
+    pub fn load(path: &Path, orbi_dir: &Path) -> Result<Self> {
+        Self::load_with_env(path, orbi_dir, None)
     }
 
-    pub fn load_with_env(path: &Path, orbit_dir: &Path, env: Option<&str>) -> Result<Self> {
-        let mut manifest = normalize::load_manifest_with_env(path, orbit_dir, env)?;
+    pub fn load_with_env(path: &Path, orbi_dir: &Path, env: Option<&str>) -> Result<Self> {
+        let mut manifest = normalize::load_manifest_with_env(path, orbi_dir, env)?;
         crate::apple::lockfile::ensure_lockfile_with_env(path, &mut manifest, env)?;
         Ok(manifest)
     }

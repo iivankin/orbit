@@ -77,11 +77,11 @@ impl CliDownloadProgress {
         if !progress.interactive {
             match progress.total_bytes {
                 Some(total_bytes) => eprintln!(
-                    "orbit > download {} ({})",
+                    "orbi > download {} ({})",
                     progress.label,
                     human_bytes(total_bytes)
                 ),
-                None => eprintln!("orbit > download {}", progress.label),
+                None => eprintln!("orbi > download {}", progress.label),
             }
         }
 
@@ -107,7 +107,7 @@ impl CliDownloadProgress {
         if percent >= self.last_logged_percent + 10 {
             self.last_logged_percent = percent;
             eprintln!(
-                "orbit > download {} {} of {} ({}%)",
+                "orbi > download {} {} of {} ({}%)",
                 self.label,
                 human_bytes(downloaded_bytes),
                 human_bytes(total_bytes),
@@ -156,7 +156,7 @@ impl CliDownloadProgress {
             ),
         };
 
-        let line = format!("orbit > download {} {}", self.label, detail);
+        let line = format!("orbi > download {} {}", self.label, detail);
         let padding = " ".repeat(self.last_render_len.saturating_sub(line.len()));
         eprint!("\r{line}{padding}");
         let _ = io::stderr().flush();

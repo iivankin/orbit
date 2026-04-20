@@ -1,8 +1,8 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://orbitstorage.dev/schemas/apple-app.v1-orbit-0.1.0.json",
-  "title": "Orbit Apple App Manifest v1",
-  "description": "Authoring schema for app-centric Orbit Apple manifests.",
+  "$id": "https://orbitstorage.dev/schemas/apple-app.v1-orbi-0.1.0.json",
+  "title": "Orbi Apple App Manifest v1",
+  "description": "Authoring schema for app-centric Orbi Apple manifests.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -16,11 +16,11 @@
   "properties": {
     "$schema": {
       "type": "string",
-      "description": "Schema identifier used by Orbit backend dispatch and editor validation. This can be a version-pinned published URL from `https://orbitstorage.dev/schemas/` or a local path ending with `apple-app.v1.json`."
+      "description": "Schema identifier used by Orbi backend dispatch and editor validation. This can be a version-pinned published URL from `https://orbitstorage.dev/schemas/` or a local path ending with `apple-app.v1.json`."
     },
     "_description": {
       "type": "string",
-      "description": "Optional informational note for humans and agents. Orbit ignores this field at runtime. `orbit init` uses it to point readers at `orbit --help` and `orbit ui init --help`."
+      "description": "Optional informational note for humans and agents. Orbi ignores this field at runtime. `orbi init` uses it to point readers at `orbi --help` and `orbi ui init --help`."
     },
     "name": {
       "type": "string",
@@ -50,7 +50,7 @@
     "xcode": {
       "type": "string",
       "pattern": "^[0-9]+(\\.[0-9]+){0,2}$",
-      "description": "Optional Xcode version to use for Orbit's Xcode-backed commands, for example `26.4`. Orbit resolves the installed Xcode bundle, uses its developer directory, and can fetch the matching official simulator runtime when needed."
+      "description": "Optional Xcode version to use for Orbi's Xcode-backed commands, for example `26.4`. Orbi resolves the installed Xcode bundle, uses its developer directory, and can fetch the matching official simulator runtime when needed."
     },
     "platforms": {
       "$ref": "#/$defs/platformTargets"
@@ -73,7 +73,7 @@
     },
     "entitlements": {
       "$ref": "#/$defs/entitlementsManifest",
-      "description": "Inline Orbit entitlement DSL."
+      "description": "Inline Orbi entitlement DSL."
     },
     "pushBroadcastForLiveActivities": {
       "type": "boolean",
@@ -110,11 +110,11 @@
     },
     "quality": {
       "$ref": "#/$defs/qualityManifest",
-      "description": "Lint and format configuration owned by Orbit."
+      "description": "Lint and format configuration owned by Orbi."
     },
     "asc": {
       "$ref": "#/$defs/ascConfig",
-      "description": "Embedded ASC configuration used by `orbit asc ...` and Orbit-managed signing flows."
+      "description": "Embedded ASC configuration used by `orbi asc ...` and Orbi-managed signing flows."
     }
   },
   "$defs": {
@@ -475,11 +475,11 @@
       "properties": {
         "ignore": {
           "$ref": "#/$defs/globArray",
-          "description": "Glob patterns excluded from `orbit lint`."
+          "description": "Glob patterns excluded from `orbi lint`."
         },
         "rules": {
           "$ref": "#/$defs/lintRuleConfig",
-          "description": "SwiftLint rule configuration. Orbit accepts ESLint-style levels (`off`, `warn`, `error`) plus raw SwiftLint rule options."
+          "description": "SwiftLint rule configuration. Orbi accepts ESLint-style levels (`off`, `warn`, `error`) plus raw SwiftLint rule options."
         }
       }
     },
@@ -490,7 +490,7 @@
       "properties": {
         "ignore": {
           "$ref": "#/$defs/globArray",
-          "description": "Glob patterns excluded from `orbit format`."
+          "description": "Glob patterns excluded from `orbi format`."
         },
         "rules": {
           "$ref": "#/$defs/formatRuleConfig",
@@ -499,7 +499,7 @@
         "editorconfig": {
           "type": "boolean",
           "default": false,
-          "description": "When true, Orbit applies supported `.editorconfig` formatting keys (`indent_style`, `indent_size`, `tab_width`, `max_line_length`) before `quality.format.rules`."
+          "description": "When true, Orbi applies supported `.editorconfig` formatting keys (`indent_style`, `indent_size`, `tab_width`, `max_line_length`) before `quality.format.rules`."
         }
       }
     },
@@ -538,7 +538,7 @@
         "universal_binary": {
           "type": "boolean",
           "default": false,
-          "description": "When true, Orbit builds macOS app binaries for both arm64 and x86_64 and merges them into a Universal 2 executable."
+          "description": "When true, Orbi builds macOS app binaries for both arm64 and x86_64 and merges them into a Universal 2 executable."
         }
       }
     },
@@ -648,7 +648,7 @@
       ]
     },
     "plistValue": {
-      "description": "JSON value that Orbit can represent in an Apple plist.",
+      "description": "JSON value that Orbi can represent in an Apple plist.",
       "anyOf": [
         {
           "type": "string"
@@ -1356,7 +1356,7 @@
         "extra": {
           "type": "object",
           "default": {},
-          "description": "Raw entitlement keys not modeled directly by Orbit. Keys generated from first-class fields cannot be overridden here.",
+          "description": "Raw entitlement keys not modeled directly by Orbi. Keys generated from first-class fields cannot be overridden here.",
           "additionalProperties": {
             "$ref": "#/$defs/plistValue"
           }
@@ -1952,7 +1952,7 @@
       "properties": {
         "kind": {
           "type": "string",
-          "description": "Closed Orbit extension kind DSL aligned with Xcode application extension templates.",
+          "description": "Closed Orbi extension kind DSL aligned with Xcode application extension templates.",
           "enum": [
             "packet-tunnel",
             "app-proxy",
@@ -2212,7 +2212,7 @@
         },
         "ui": {
           "$ref": "#/$defs/pathArray",
-          "description": "Root directories for Orbit UI flow JSON files."
+          "description": "Root directories for Orbi UI flow JSON files."
         }
     },
     "qualitySeverity": {
@@ -2226,7 +2226,7 @@
       ]
     },
     "lintRuleSetting": {
-      "description": "Rule setting. Orbit accepts `off`, `warn`, `error`, `[level, options]`, or raw SwiftLint rule configuration.",
+      "description": "Rule setting. Orbi accepts `off`, `warn`, `error`, `[level, options]`, or raw SwiftLint rule configuration.",
       "anyOf": [
         {
           "type": "null"
@@ -2249,7 +2249,7 @@
       ]
     },
     "formatRuleSetting": {
-      "description": "Rule setting. Orbit accepts `off`, `warn`, `error`, `[level, options]`, or raw swift-format rule configuration.",
+      "description": "Rule setting. Orbi accepts `off`, `warn`, `error`, `[level, options]`, or raw swift-format rule configuration.",
       "anyOf": [
         {
           "type": "null"

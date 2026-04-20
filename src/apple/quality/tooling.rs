@@ -23,30 +23,30 @@ use crate::context::AppContext;
 use crate::util::{ensure_dir, write_json_file};
 
 #[derive(Debug, Serialize)]
-pub(crate) struct OrbitSwiftFormatRequest {
+pub(crate) struct OrbiSwiftFormatRequest {
     pub working_directory: PathBuf,
     pub configuration_json: Option<String>,
-    pub mode: OrbitSwiftFormatMode,
+    pub mode: OrbiSwiftFormatMode,
     pub files: Vec<PathBuf>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "snake_case")]
-pub(crate) enum OrbitSwiftFormatMode {
+pub(crate) enum OrbiSwiftFormatMode {
     Check,
     Write,
 }
 
 #[derive(Debug, Serialize)]
-pub(crate) struct OrbitSwiftLintRequest {
+pub(crate) struct OrbiSwiftLintRequest {
     pub working_directory: PathBuf,
     pub configuration_json: Option<String>,
     pub files: Vec<PathBuf>,
-    pub compiler_invocations: Vec<OrbitSwiftLintCompilerInvocation>,
+    pub compiler_invocations: Vec<OrbiSwiftLintCompilerInvocation>,
 }
 
 #[derive(Debug, Clone, Serialize)]
-pub(crate) struct OrbitSwiftLintCompilerInvocation {
+pub(crate) struct OrbiSwiftLintCompilerInvocation {
     pub arguments: Vec<String>,
     pub source_files: Vec<PathBuf>,
 }
@@ -70,69 +70,69 @@ struct EmbeddedSwiftToolSpec {
 }
 
 #[cfg(target_os = "macos")]
-const ORBIT_SWIFTLINT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
-    name: "orbit-swiftlint",
-    file_name: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_FILE_NAME,
-    bytes: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_BYTES,
-    symbol_name: b"orbit_swiftlint_run_request\0",
-    available: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_AVAILABLE,
-    unavailable_reason: embedded_swift_tools::ORBIT_SWIFTLINT_FFI_UNAVAILABLE_REASON,
+const ORBI_SWIFTLINT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
+    name: "orbi-swiftlint",
+    file_name: embedded_swift_tools::ORBI_SWIFTLINT_FFI_FILE_NAME,
+    bytes: embedded_swift_tools::ORBI_SWIFTLINT_FFI_BYTES,
+    symbol_name: b"orbi_swiftlint_run_request\0",
+    available: embedded_swift_tools::ORBI_SWIFTLINT_FFI_AVAILABLE,
+    unavailable_reason: embedded_swift_tools::ORBI_SWIFTLINT_FFI_UNAVAILABLE_REASON,
 };
 
 #[cfg(target_os = "macos")]
-const ORBIT_SWIFT_FORMAT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
-    name: "orbit-swift-format",
-    file_name: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_FILE_NAME,
-    bytes: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_BYTES,
-    symbol_name: b"orbit_swiftformat_run_request\0",
-    available: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_AVAILABLE,
-    unavailable_reason: embedded_swift_tools::ORBIT_SWIFTFORMAT_FFI_UNAVAILABLE_REASON,
+const ORBI_SWIFT_FORMAT_TOOL: EmbeddedSwiftToolSpec = EmbeddedSwiftToolSpec {
+    name: "orbi-swift-format",
+    file_name: embedded_swift_tools::ORBI_SWIFTFORMAT_FFI_FILE_NAME,
+    bytes: embedded_swift_tools::ORBI_SWIFTFORMAT_FFI_BYTES,
+    symbol_name: b"orbi_swiftformat_run_request\0",
+    available: embedded_swift_tools::ORBI_SWIFTFORMAT_FFI_AVAILABLE,
+    unavailable_reason: embedded_swift_tools::ORBI_SWIFTFORMAT_FFI_UNAVAILABLE_REASON,
 };
 
 #[cfg(target_os = "macos")]
-pub(crate) fn run_orbit_swift_format(
+pub(crate) fn run_orbi_swift_format(
     app: &AppContext,
     request_root: &Path,
-    request: &OrbitSwiftFormatRequest,
+    request: &OrbiSwiftFormatRequest,
 ) -> Result<()> {
-    ensure_embedded_swift_tool_available(&ORBIT_SWIFT_FORMAT_TOOL)?;
-    let request_path = request_root.join("orbit-swift-format-request.json");
+    ensure_embedded_swift_tool_available(&ORBI_SWIFT_FORMAT_TOOL)?;
+    let request_path = request_root.join("orbi-swift-format-request.json");
     write_json_file(&request_path, request)?;
-    run_embedded_swift_tool(app, &ORBIT_SWIFT_FORMAT_TOOL, &request_path)
-        .with_context(|| "failed to run the Orbit Swift formatter")
+    run_embedded_swift_tool(app, &ORBI_SWIFT_FORMAT_TOOL, &request_path)
+        .with_context(|| "failed to run the Orbi Swift formatter")
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn run_orbit_swift_format(
+pub(crate) fn run_orbi_swift_format(
     app: &AppContext,
     request_root: &Path,
-    request: &OrbitSwiftFormatRequest,
+    request: &OrbiSwiftFormatRequest,
 ) -> Result<()> {
     let _ = (app, request_root, request);
-    bail!("Orbit Swift formatting is supported only on macOS hosts")
+    bail!("Orbi Swift formatting is supported only on macOS hosts")
 }
 
 #[cfg(target_os = "macos")]
-pub(crate) fn run_orbit_swiftlint(
+pub(crate) fn run_orbi_swiftlint(
     app: &AppContext,
     request_root: &Path,
-    request: &OrbitSwiftLintRequest,
+    request: &OrbiSwiftLintRequest,
 ) -> Result<()> {
-    ensure_embedded_swift_tool_available(&ORBIT_SWIFTLINT_TOOL)?;
-    let request_path = request_root.join("orbit-swiftlint-request.json");
+    ensure_embedded_swift_tool_available(&ORBI_SWIFTLINT_TOOL)?;
+    let request_path = request_root.join("orbi-swiftlint-request.json");
     write_json_file(&request_path, request)?;
-    run_embedded_swift_tool(app, &ORBIT_SWIFTLINT_TOOL, &request_path)
-        .with_context(|| "failed to run the Orbit Swift linter")
+    run_embedded_swift_tool(app, &ORBI_SWIFTLINT_TOOL, &request_path)
+        .with_context(|| "failed to run the Orbi Swift linter")
 }
 
 #[cfg(not(target_os = "macos"))]
-pub(crate) fn run_orbit_swiftlint(
+pub(crate) fn run_orbi_swiftlint(
     app: &AppContext,
     request_root: &Path,
-    request: &OrbitSwiftLintRequest,
+    request: &OrbiSwiftLintRequest,
 ) -> Result<()> {
     let _ = (app, request_root, request);
-    bail!("Orbit Swift linting is supported only on macOS hosts")
+    bail!("Orbi Swift linting is supported only on macOS hosts")
 }
 
 #[cfg(target_os = "macos")]
@@ -156,7 +156,7 @@ fn run_embedded_swift_tool(
     };
     if status != 0 {
         bail!(
-            "embedded Orbit-managed tool `{}` failed with exit code {}",
+            "embedded Orbi-managed tool `{}` failed with exit code {}",
             spec.name,
             status
         );
@@ -232,7 +232,7 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     const DEBUG_SWIFT_TOOL_UNAVAILABLE_MESSAGE: &str =
-        "Orbit debug builds skip embedded Swift quality tooling";
+        "Orbi debug builds skip embedded Swift quality tooling";
 
     #[cfg(target_os = "macos")]
     fn env_lock() -> &'static Mutex<()> {
@@ -272,14 +272,14 @@ mod tests {
             std::env::set_var("MOCK_LOG", &log_path);
         }
 
-        let result = run_orbit_swiftlint(
+        let result = run_orbi_swiftlint(
             &app,
             temp.path(),
-            &OrbitSwiftLintRequest {
+            &OrbiSwiftLintRequest {
                 working_directory: temp.path().to_path_buf(),
                 configuration_json: None,
                 files: vec![temp.path().join("Example.swift")],
-                compiler_invocations: vec![OrbitSwiftLintCompilerInvocation {
+                compiler_invocations: vec![OrbiSwiftLintCompilerInvocation {
                     arguments: vec!["swiftc".to_owned(), "-sdk".to_owned()],
                     source_files: vec![temp.path().join("Example.swift")],
                 }],
@@ -298,7 +298,7 @@ mod tests {
 
         result.unwrap();
         let log = std::fs::read_to_string(&log_path).unwrap();
-        assert!(log.contains("orbit-swiftlint request:"));
+        assert!(log.contains("orbi-swiftlint request:"));
         assert!(log.contains("\"compiler_invocations\""));
         assert!(log.contains("\"swiftc\""));
     }
@@ -315,13 +315,13 @@ mod tests {
             std::env::set_var("MOCK_LOG", &log_path);
         }
 
-        let result = run_orbit_swift_format(
+        let result = run_orbi_swift_format(
             &app,
             temp.path(),
-            &OrbitSwiftFormatRequest {
+            &OrbiSwiftFormatRequest {
                 working_directory: temp.path().to_path_buf(),
                 configuration_json: None,
-                mode: OrbitSwiftFormatMode::Check,
+                mode: OrbiSwiftFormatMode::Check,
                 files: vec![temp.path().join("Example.swift")],
             },
         );
@@ -338,7 +338,7 @@ mod tests {
 
         result.unwrap();
         let log = std::fs::read_to_string(&log_path).unwrap();
-        assert!(log.contains("orbit-swift-format request:"));
+        assert!(log.contains("orbi-swift-format request:"));
         assert!(log.contains("\"mode\": \"check\""));
     }
 }

@@ -21,7 +21,7 @@ fn ide_dump_args_emits_semantic_swiftc_invocations() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "dump-args",
     ]);
@@ -63,7 +63,7 @@ fn ide_dump_args_filters_requested_file_and_platform() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "dump-args",
         "--platform",
@@ -108,7 +108,7 @@ fn ide_dump_args_includes_c_family_invocations_for_mixed_targets() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "dump-args",
         "--file",
@@ -149,7 +149,7 @@ fn ide_dump_args_reuses_cached_semantic_artifact_between_runs() {
     first.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "dump-args",
     ]);
@@ -172,7 +172,7 @@ fn ide_dump_args_reuses_cached_semantic_artifact_between_runs() {
     second.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "dump-args",
     ]);

@@ -3,8 +3,8 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 
-pub fn orbit_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_orbit")
+pub fn orbi_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_orbi")
 }
 
 pub fn write_executable(path: &Path, contents: &str) {
@@ -20,16 +20,16 @@ pub fn create_home(root: &Path) -> PathBuf {
     home
 }
 
-pub fn orbit_data_dir(home: &Path) -> PathBuf {
-    home.join(".orbit-data")
+pub fn orbi_data_dir(home: &Path) -> PathBuf {
+    home.join(".orbi-data")
 }
 
-pub fn orbit_cache_dir(home: &Path) -> PathBuf {
-    home.join(".orbit-cache")
+pub fn orbi_cache_dir(home: &Path) -> PathBuf {
+    home.join(".orbi-cache")
 }
 
 pub fn base_command(workspace: &Path, home: &Path, mock_bin: &Path, log_path: &Path) -> Command {
-    let mut command = Command::new(orbit_bin());
+    let mut command = Command::new(orbi_bin());
     apply_test_environment(&mut command, home, mock_bin, log_path);
     command.current_dir(workspace);
     command
@@ -60,7 +60,7 @@ pub fn clear_log(path: &Path) {
 }
 
 pub fn latest_receipt_path(workspace: &Path) -> PathBuf {
-    let receipt_dir = workspace.join(".orbit/receipts");
+    let receipt_dir = workspace.join(".orbi/receipts");
     let mut receipts = fs::read_dir(&receipt_dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -71,8 +71,8 @@ pub fn latest_receipt_path(workspace: &Path) -> PathBuf {
 
 fn apply_test_environment(command: &mut Command, home: &Path, mock_bin: &Path, log_path: &Path) {
     command.env("HOME", home);
-    command.env("ORBIT_DATA_DIR", orbit_data_dir(home));
-    command.env("ORBIT_CACHE_DIR", orbit_cache_dir(home));
+    command.env("ORBI_DATA_DIR", orbi_data_dir(home));
+    command.env("ORBI_CACHE_DIR", orbi_cache_dir(home));
     command.env(
         "PATH",
         format!(

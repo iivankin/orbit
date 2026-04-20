@@ -126,7 +126,7 @@ impl MacosBackend {
             return Ok(());
         }
         bail!(
-            "{action} currently supports only Orbit's built app `{}` on macOS",
+            "{action} currently supports only Orbi's built app `{}` on macOS",
             self.bundle_id
         )
     }
@@ -202,7 +202,7 @@ impl MacosBackend {
         let bridge_directory = launch_dir.path().join("ui-bridge");
         ensure_dir(&bridge_directory)?;
         let bridge_notification_name = format!(
-            "dev.orbit.ui.{}",
+            "dev.orbi.ui.{}",
             launch_dir
                 .path()
                 .file_name()
@@ -341,15 +341,15 @@ impl MacosBackend {
         let launch_id = timestamp_slug();
         let registration_path = bridge_directory.join(format!("trace-launch-{launch_id}.json"));
         launch_environment.push((
-            "ORBIT_MACOS_UI_TRACE_LAUNCH_ID".to_owned(),
+            "ORBI_MACOS_UI_TRACE_LAUNCH_ID".to_owned(),
             launch_id.clone(),
         ));
         launch_environment.push((
-            "ORBIT_MACOS_UI_TRACE_REGISTRATION_PATH".to_owned(),
+            "ORBI_MACOS_UI_TRACE_REGISTRATION_PATH".to_owned(),
             registration_path.display().to_string(),
         ));
         launch_environment.push((
-            "ORBIT_MACOS_UI_TRACE_EXPECTED_BUNDLE_ID".to_owned(),
+            "ORBI_MACOS_UI_TRACE_EXPECTED_BUNDLE_ID".to_owned(),
             self.bundle_id.clone(),
         ));
 
@@ -519,7 +519,7 @@ impl Drop for MacosBackend {
 
 impl UiBackend for MacosBackend {
     fn backend_name(&self) -> &'static str {
-        "orbit-ax-macos"
+        "orbi-ax-macos"
     }
 
     fn target_name(&self) -> &str {
@@ -635,7 +635,7 @@ impl UiBackend for MacosBackend {
         self.ensure_owned_bundle(bundle_id, "clearState")?;
         self.stop_app(bundle_id)?;
 
-        // Keep the cleanup scoped to bundle-specific storage roots so Orbit does not
+        // Keep the cleanup scoped to bundle-specific storage roots so Orbi does not
         // touch shared containers or unrelated app data on the host Mac.
         let home = std::env::var_os("HOME").context("HOME is not set")?;
         let home = PathBuf::from(home);
@@ -1410,7 +1410,7 @@ fn macos_modifier_flag_name(modifier: UiKeyModifier) -> &'static str {
 }
 
 fn macos_requirement_message() -> &'static str {
-    "Orbit macOS UI automation requires Accessibility access and the built-in Swift toolchain on this Mac"
+    "Orbi macOS UI automation requires Accessibility access and the built-in Swift toolchain on this Mac"
 }
 
 fn should_rebuild_macos_ui_artifact(source_path: &Path, binary_path: &Path) -> Result<bool> {
@@ -1480,15 +1480,15 @@ fn macos_ui_bridge_launch_environment(
             format!("{}:{bridge_dylib_path}", log_redirect_dylib.display()),
         ),
         (
-            "ORBIT_MACOS_UI_BRIDGE_DIR".to_owned(),
+            "ORBI_MACOS_UI_BRIDGE_DIR".to_owned(),
             bridge_directory.to_owned(),
         ),
         (
-            "ORBIT_MACOS_UI_BRIDGE_NOTIFICATION".to_owned(),
+            "ORBI_MACOS_UI_BRIDGE_NOTIFICATION".to_owned(),
             bridge_notification_name.to_owned(),
         ),
         (
-            "ORBIT_MACOS_UI_LOG_PIPE".to_owned(),
+            "ORBI_MACOS_UI_LOG_PIPE".to_owned(),
             log_pipe_path.to_owned(),
         ),
     ])
@@ -1503,9 +1503,9 @@ pub(crate) fn macos_doctor(project: &ProjectContext) -> Result<MacosDoctorStatus
 }
 
 fn ensure_macos_driver_binary(project: &ProjectContext) -> Result<PathBuf> {
-    let tools_dir = project.project_paths.orbit_dir.join("tools");
+    let tools_dir = project.project_paths.orbi_dir.join("tools");
     ensure_dir(&tools_dir)?;
-    let binary_path = tools_dir.join("orbit-macos-ui-driver");
+    let binary_path = tools_dir.join("orbi-macos-ui-driver");
     let source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("src")
         .join("apple")
@@ -1528,9 +1528,9 @@ fn ensure_macos_driver_binary(project: &ProjectContext) -> Result<PathBuf> {
 }
 
 fn ensure_macos_bridge_dylib(project: &ProjectContext) -> Result<PathBuf> {
-    let tools_dir = project.project_paths.orbit_dir.join("tools");
+    let tools_dir = project.project_paths.orbi_dir.join("tools");
     ensure_dir(&tools_dir)?;
-    let binary_path = tools_dir.join("orbit-macos-ui-bridge.dylib");
+    let binary_path = tools_dir.join("orbi-macos-ui-bridge.dylib");
     let source_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("src")
         .join("apple")
@@ -1609,7 +1609,7 @@ mod tests {
             app_path: PathBuf::from("/Applications/Xcode-26.4.app"),
             developer_dir,
         };
-        let bridge_dylib = temp.path().join("orbit-macos-ui-bridge.dylib");
+        let bridge_dylib = temp.path().join("orbi-macos-ui-bridge.dylib");
         let bridge_directory = temp.path().join("ui-bridge");
         let log_pipe_path = temp.path().join("inferior-stdio.pipe");
 
@@ -1617,7 +1617,7 @@ mod tests {
             Some(&selected_xcode),
             &bridge_dylib,
             &bridge_directory,
-            "dev.orbit.ui.test",
+            "dev.orbi.ui.test",
             &log_pipe_path,
         )
         .unwrap();
@@ -1628,15 +1628,15 @@ mod tests {
             format!("{}:{}", log_redirect.display(), bridge_dylib.display()),
         )));
         assert!(environment.contains(&(
-            "ORBIT_MACOS_UI_BRIDGE_DIR".to_owned(),
+            "ORBI_MACOS_UI_BRIDGE_DIR".to_owned(),
             bridge_directory.display().to_string(),
         )));
         assert!(environment.contains(&(
-            "ORBIT_MACOS_UI_BRIDGE_NOTIFICATION".to_owned(),
-            "dev.orbit.ui.test".to_owned(),
+            "ORBI_MACOS_UI_BRIDGE_NOTIFICATION".to_owned(),
+            "dev.orbi.ui.test".to_owned(),
         )));
         assert!(environment.contains(&(
-            "ORBIT_MACOS_UI_LOG_PIPE".to_owned(),
+            "ORBI_MACOS_UI_LOG_PIPE".to_owned(),
             log_pipe_path.display().to_string(),
         )));
     }
@@ -1647,7 +1647,7 @@ mod tests {
         let registration_path = temp.path().join("trace-launch.json");
         fs::write(
             &registration_path,
-            r#"{"pid":4242,"launchId":"launch-1","bundleId":"sh.orbit.desktop"}"#,
+            r#"{"pid":4242,"launchId":"launch-1","bundleId":"sh.orbi.desktop"}"#,
         )
         .unwrap();
 
@@ -1656,7 +1656,7 @@ mod tests {
             .expect("registration should be present");
         assert_eq!(registration.pid, 4242);
         assert_eq!(registration.launch_id, "launch-1");
-        assert_eq!(registration.bundle_id, "sh.orbit.desktop");
+        assert_eq!(registration.bundle_id, "sh.orbi.desktop");
     }
 
     #[test]
@@ -1681,7 +1681,7 @@ mod tests {
         let backend = MacosBackend {
             helper_path,
             bridge_dylib_path: temp.path().join("bridge.dylib"),
-            bundle_id: "sh.orbit.desktop".to_owned(),
+            bundle_id: "sh.orbi.desktop".to_owned(),
             bundle_path: Path::new("/tmp/Accord.app").to_path_buf(),
             executable_path: Path::new("/tmp/Accord.app/Contents/MacOS/Accord").to_path_buf(),
             selected_xcode: None,
@@ -1701,7 +1701,7 @@ mod tests {
             vec![
                 "screenshot-window",
                 "--bundle-id",
-                "sh.orbit.desktop",
+                "sh.orbi.desktop",
                 "--output",
                 screenshot_path.to_str().unwrap(),
             ]
@@ -1729,7 +1729,7 @@ mod tests {
         let backend = MacosBackend {
             helper_path,
             bridge_dylib_path: temp.path().join("bridge.dylib"),
-            bundle_id: "sh.orbit.desktop".to_owned(),
+            bundle_id: "sh.orbi.desktop".to_owned(),
             bundle_path: Path::new("/tmp/Accord.app").to_path_buf(),
             executable_path: Path::new("/tmp/Accord.app/Contents/MacOS/Accord").to_path_buf(),
             selected_xcode: None,
@@ -1771,7 +1771,7 @@ mod tests {
         let backend = MacosBackend {
             helper_path,
             bridge_dylib_path: temp.path().join("bridge.dylib"),
-            bundle_id: "sh.orbit.desktop".to_owned(),
+            bundle_id: "sh.orbi.desktop".to_owned(),
             bundle_path: Path::new("/tmp/Accord.app").to_path_buf(),
             executable_path: Path::new("/tmp/Accord.app/Contents/MacOS/Accord").to_path_buf(),
             selected_xcode: None,
@@ -1795,7 +1795,7 @@ mod tests {
                 "--y",
                 "120",
                 "--bundle-id",
-                "sh.orbit.desktop",
+                "sh.orbi.desktop",
             ]
         );
     }

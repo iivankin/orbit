@@ -2,7 +2,7 @@
 
 ## Decision
 
-For Linux v1, Orbit should target:
+For Linux v1, Orbi should target:
 
 - distribution: `Flatpak` first
 - store/release channel: `Flathub`
@@ -38,7 +38,7 @@ Why not `AppImage` first:
 Why not `deb`/`rpm` first:
 
 - distro-fragmented
-- pushes Orbit toward distro packaging rules immediately
+- pushes Orbi toward distro packaging rules immediately
 - worse fit for a local-first, one-manifest, cross-distro developer workflow
 
 ### Why `GTK4 + libadwaita` first
@@ -56,15 +56,15 @@ Why not `Qt6 + Kirigami` first:
 
 - it is a valid second target and the official KDE docs make clear it supports convergent, adaptive apps
 - Flatpak also has an official KDE runtime for Qt/KDE apps
-- but if Orbit must pick one first-class Linux UI stack, GTK4/libadwaita is the cleaner “modern native desktop UI” default
+- but if Orbi must pick one first-class Linux UI stack, GTK4/libadwaita is the cleaner “modern native desktop UI” default
 
 Qt/Kirigami should be a later parallel backend, not a compromised v1 abstraction.
 
 ### Why `Rust` first
 
-Orbit already lives in a Rust codebase, and Rust is a practical first-class language choice for:
+Orbi already lives in a Rust codebase, and Rust is a practical first-class language choice for:
 
-- a generated, Orbit-owned build pipeline
+- a generated, Orbi-owned build pipeline
 - strong local tooling
 - a clean dependency model
 - good GTK4/libadwaita bindings
@@ -73,7 +73,7 @@ Most importantly, supporting arbitrary Linux build systems in v1 would make the 
 
 ## Scope
 
-This spec is for a Linux equivalent of Orbit’s app platform:
+This spec is for a Linux equivalent of Orbi’s app platform:
 
 - app manifest
 - scaffolding
@@ -84,25 +84,25 @@ This spec is for a Linux equivalent of Orbit’s app platform:
 - metadata generation
 - release submission workflow
 
-This is not only about UI automation. Linux UI automation is a separate subsystem and should be treated as a later companion feature. The earlier draft in [linux-ui-automation-spec.md](/Users/ilyai/Developer/personal/orbit2/docs/linux-ui-automation-spec.md) remains relevant, but it is not the primary Linux app-platform spec.
+This is not only about UI automation. Linux UI automation is a separate subsystem and should be treated as a later companion feature. The earlier draft in [linux-ui-automation-spec.md](/Users/ilyai/Developer/personal/orbi2/docs/linux-ui-automation-spec.md) remains relevant, but it is not the primary Linux app-platform spec.
 
 ## Product Goals
 
-Orbit on Linux should feel structurally similar to Orbit on Apple:
+Orbi on Linux should feel structurally similar to Orbi on Apple:
 
 - one manifest describes one product
-- Orbit owns the app build graph
-- Orbit hides the packaging boilerplate
-- Orbit emits installable release artifacts
-- Orbit can prepare a store/repository submission path
+- Orbi owns the app build graph
+- Orbi hides the packaging boilerplate
+- Orbi emits installable release artifacts
+- Orbi can prepare a store/repository submission path
 
 For Linux, the exact analogue is:
 
-- one Orbit Linux manifest
-- Orbit-generated Cargo workspace
-- Orbit-generated Flatpak manifest
-- Orbit-generated desktop metadata
-- Orbit-generated Flathub-ready packaging repo contents
+- one Orbi Linux manifest
+- Orbi-generated Cargo workspace
+- Orbi-generated Flatpak manifest
+- Orbi-generated desktop metadata
+- Orbi-generated Flathub-ready packaging repo contents
 
 ## Non-Goals
 
@@ -120,10 +120,10 @@ Linux v1 does not include:
 
 ## Linux Mental Model
 
-- one `orbit.json` describes one Linux desktop application
+- one `orbi.json` describes one Linux desktop application
 - the root object is the app, not a distro package graph
-- Orbit owns app metadata, launcher metadata, and sandbox metadata
-- Orbit synthesizes the Flatpak manifest instead of asking the user to author it manually
+- Orbi owns app metadata, launcher metadata, and sandbox metadata
+- Orbi synthesizes the Flatpak manifest instead of asking the user to author it manually
 
 Flatpak/Flathub files are build artifacts, not the primary source of truth.
 
@@ -136,13 +136,13 @@ Flatpak/Flathub files are build artifacts, not the primary source of truth.
 - adaptive/design system layer: libadwaita
 - Rust bindings: `gtk4`, `glib`, `gio`, `libadwaita`
 - packaging/runtime: `org.gnome.Platform` + `org.gnome.Sdk`
-- Rust SDK extension/toolchain: Orbit-managed as part of Linux toolchain setup
+- Rust SDK extension/toolchain: Orbi-managed as part of Linux toolchain setup
 
 ### GTK authoring conventions
 
 Linux v1 must not stop at "some Rust app that links GTK".
 
-Orbit should generate and standardize on the current GNOME-native Rust shape:
+Orbi should generate and standardize on the current GNOME-native Rust shape:
 
 - application root type: `adw::Application`
 - primary top-level window type: `adw::ApplicationWindow`
@@ -153,16 +153,16 @@ Orbit should generate and standardize on the current GNOME-native Rust shape:
 Rules:
 
 - `adw::Application` is required for the generated template and first-class examples
-- Orbit must set a deterministic resource base path derived from `app_id`, using slash-separated path segments
+- Orbi must set a deterministic resource base path derived from `app_id`, using slash-separated path segments
 - `style.css` lives at the application resource base path so `AdwApplication` loads it automatically
 - if the app defines a shortcuts dialog, it should live at `shortcuts-dialog.ui` under the application resource base path
 - non-trivial windows, pages, and reusable widgets should be implemented as Rust types backed by composite templates
 - direct imperative widget construction is allowed for small dynamic fragments, but it is not the default authoring model
-- Blueprint is deferred; Builder XML is the canonical Orbit v1 UI format
+- Blueprint is deferred; Builder XML is the canonical Orbi v1 UI format
 
 Example resource base path:
 
-- `dev.orbit.notes` -> `/dev/orbit/notes/`
+- `dev.orbi.notes` -> `/dev/orbi/notes/`
 
 ### Architectures
 
@@ -181,7 +181,7 @@ Reason:
 Introduce a new schema:
 
 - `schemas/linux-app.v1.json`
-- schema URL: `https://orbit.dev/schemas/linux-app.v1.json`
+- schema URL: `https://orbi.dev/schemas/linux-app.v1.json`
 
 Do not overload `apple-app.v1.json`.
 
@@ -214,10 +214,10 @@ Optional:
 
 ```json
 {
-  "$schema": "/Users/your-user/.orbit/schemas/linux-app.v1.json",
-  "name": "Orbit Notes",
-  "display_name": "Orbit Notes",
-  "app_id": "dev.orbit.notes",
+  "$schema": "/Users/your-user/.orbi/schemas/linux-app.v1.json",
+  "name": "Orbi Notes",
+  "display_name": "Orbi Notes",
+  "app_id": "dev.orbi.notes",
   "version": "1.0.0",
   "build": 1,
   "runtime": {
@@ -240,22 +240,22 @@ Optional:
         "version": "0.0.0"
       }
     },
-    "OrbitCore": {
+    "OrbiCore": {
       "crate": {
-        "path": "Packages/OrbitCore"
+        "path": "Packages/OrbiCore"
       }
     }
   },
   "metadata": {
     "summary": "Local-first notes for Linux",
-    "description": "Orbit Notes is a local-first notes app for Linux desktops.",
+    "description": "Orbi Notes is a local-first notes app for Linux desktops.",
     "license": "MIT",
-    "homepage": "https://orbit.dev",
+    "homepage": "https://orbi.dev",
     "categories": ["Office", "Utility"],
     "keywords": ["notes", "markdown", "offline"],
     "icon": "Resources/AppIcon.svg",
     "screenshots": [
-      "https://orbit.dev/screenshots/notes-main.png"
+      "https://orbi.dev/screenshots/notes-main.png"
     ]
   },
   "sandbox": {
@@ -284,7 +284,7 @@ Optional:
   },
   "submit": {
     "channel": "flathub",
-    "verified_domain": "orbit.dev"
+    "verified_domain": "orbi.dev"
   }
 }
 ```
@@ -305,7 +305,7 @@ Rules:
   - sandbox identity
   - runtime state directory name
 
-Orbit must validate `app_id` up front against Flathub-compatible rules, not only generic reverse-DNS formatting.
+Orbi must validate `app_id` up front against Flathub-compatible rules, not only generic reverse-DNS formatting.
 
 ### Runtime
 
@@ -324,7 +324,7 @@ Linux v1 supports only:
 
 `version` is the exact Flatpak runtime branch.
 
-Orbit must pin it exactly and never silently float it.
+Orbi must pin it exactly and never silently float it.
 
 ### Sources
 
@@ -336,11 +336,11 @@ Conventions for the first-class stack:
 - `Sources/App/app.rs` defines the application bootstrap around `adw::Application`
 - additional modules may live alongside it or under submodules
 - the main window should use the Rust subclass pattern around `adw::ApplicationWindow`
-- Orbit collects `*.rs` files from declared source roots
+- Orbi collects `*.rs` files from declared source roots
 
 Do not require users to author a top-level `Cargo.toml` in v1.
 
-Orbit synthesizes the Cargo workspace.
+Orbi synthesizes the Cargo workspace.
 
 ### Resources
 
@@ -354,7 +354,7 @@ Orbit synthesizes the Cargo workspace.
 - translation files
 - static assets
 
-Orbit behavior:
+Orbi behavior:
 
 - compile declared resources into a GResource bundle
 - install exportable assets needed for desktop integration
@@ -364,13 +364,13 @@ Orbit behavior:
 V1 rule:
 
 - users do not author `.gresource.xml` directly
-- Orbit generates it
+- Orbi generates it
 - Builder XML is the canonical v1 resource format
-- Orbit templates should load `.ui` files from compiled resources, not from loose filesystem paths at runtime
+- Orbi templates should load `.ui` files from compiled resources, not from loose filesystem paths at runtime
 
 ### Dependencies
 
-Keep the existing Orbit dictionary model.
+Keep the existing Orbi dictionary model.
 
 Linux dependency types:
 
@@ -388,9 +388,9 @@ Example shapes:
       "version": "1.0.0"
     }
   },
-  "OrbitCore": {
+  "OrbiCore": {
     "crate": {
-      "path": "Packages/OrbitCore"
+      "path": "Packages/OrbiCore"
     }
   },
   "sqlcipher": {
@@ -403,7 +403,7 @@ Rules:
 
 - crate dependencies must resolve to exact locked revisions in generated lockfiles
 - if a dependency exists in the GNOME runtime or SDK, prefer that over bundling
-- if a dependency is not in the runtime, Orbit may bundle it as a Flatpak module
+- if a dependency is not in the runtime, Orbi may bundle it as a Flatpak module
 
 This follows Flatpak guidance that runtime dependencies should be reused when available and bundled modules should be minimized.
 
@@ -437,13 +437,13 @@ Rules:
 - generated metainfo file name must be `<app_id>.metainfo.xml`
 - metainfo ID must exactly equal `app_id`
 
-Orbit must lint this metadata against Flathub expectations before submit.
+Orbi must lint this metadata against Flathub expectations before submit.
 
 ### Sandbox
 
 `sandbox` is Linux’s equivalent of a high-level entitlement DSL.
 
-Orbit should map it to Flatpak `finish-args`, but the manifest stays high-level.
+Orbi should map it to Flatpak `finish-args`, but the manifest stays high-level.
 
 Allowed v1 fields:
 
@@ -476,9 +476,9 @@ This follows Flatpak and Flathub guidance:
 
 ## Generated Artifacts
 
-Orbit must generate the following during Linux builds:
+Orbi must generate the following during Linux builds:
 
-- generated Cargo workspace under `.orbit/build/linux/generated/`
+- generated Cargo workspace under `.orbi/build/linux/generated/`
 - generated GResource XML
 - generated desktop file
 - generated metainfo file
@@ -492,7 +492,7 @@ Orbit must generate the following during Linux builds:
 
 Flathub forbids network access during build and requires dependencies to be present in the manifest or submission.
 
-Therefore Orbit must generate Cargo dependency source manifests automatically.
+Therefore Orbi must generate Cargo dependency source manifests automatically.
 
 Required behavior:
 
@@ -504,7 +504,7 @@ This is not optional. Rust support is incomplete without it.
 
 ## Build Pipeline
 
-### `orbit build --platform linux`
+### `orbi build --platform linux`
 
 Build algorithm:
 
@@ -521,7 +521,7 @@ Build algorithm:
 
 Flatpak is not user-authored input here. It is a backend artifact.
 
-### `orbit run --platform linux`
+### `orbi run --platform linux`
 
 Run semantics:
 
@@ -529,11 +529,11 @@ Run semantics:
 - install/update the local user Flatpak ref from the generated local repo
 - launch with `flatpak run <app_id>`
 
-Orbit should run the app in its real sandbox by default.
+Orbi should run the app in its real sandbox by default.
 
 Do not default to host-native unsandboxed execution in v1. That breaks parity with the shipped product.
 
-### `orbit test --platform linux`
+### `orbi test --platform linux`
 
 Linux v1 test support:
 
@@ -548,7 +548,7 @@ Behavior:
 
 ## Submit Pipeline
 
-### `orbit submit --platform linux`
+### `orbi submit --platform linux`
 
 For Linux, `submit` does not mean "upload a signed binary to a store API".
 
@@ -582,13 +582,13 @@ For an existing app:
 
 ### Verification
 
-Orbit should support Flathub verification preparation:
+Orbi should support Flathub verification preparation:
 
 - derive the verification domain from `submit.verified_domain` or the `app_id`
 - verify that the declared domain matches the app identity
 - emit exact verification instructions for the `.well-known` token flow
 
-Orbit should not try to automate the full domain verification flow in v1.
+Orbi should not try to automate the full domain verification flow in v1.
 
 ### Required tooling for submit
 
@@ -647,7 +647,7 @@ Rules:
 - `build` defaults to `Flatpak`
 - `submit` requires `Flathub`
 
-## `orbit init`
+## `orbi init`
 
 Add a first-class Linux template:
 
@@ -657,7 +657,7 @@ Add a first-class Linux template:
 Generated layout:
 
 ```text
-orbit.json
+orbi.json
 Sources/
   App/
     main.rs
@@ -689,7 +689,7 @@ It should include:
 
 ## Quality Commands
 
-### `orbit lint --platform linux`
+### `orbi lint --platform linux`
 
 Linux v1 quality stack:
 
@@ -697,17 +697,17 @@ Linux v1 quality stack:
 - metadata validation
 - Flatpak manifest lint
 
-### `orbit format --platform linux`
+### `orbi format --platform linux`
 
 Linux v1 formatting stack:
 
 - `rustfmt`
 
-Keep the existing Orbit-owned `quality` section but map it to Rust tooling.
+Keep the existing Orbi-owned `quality` section but map it to Rust tooling.
 
 ## Tooling Requirements
 
-`orbit ui doctor` is not the right analogue for full Linux apps.
+`orbi ui doctor` is not the right analogue for full Linux apps.
 
 Add a Linux application doctor/preflight command in the build path, or reuse general preflight output from `build`.
 
@@ -759,7 +759,7 @@ Receipt fields should include:
 
 ## Hard Rules
 
-- Orbit is the source of truth, not a hand-authored Flatpak manifest
+- Orbi is the source of truth, not a hand-authored Flatpak manifest
 - Flatpak metadata is generated
 - Rust + GTK4 + libadwaita is the only first-class Linux app stack in v1
 - portals are preferred over blanket permissions
@@ -782,7 +782,7 @@ Receipt fields should include:
 ### Deferred indefinitely unless needed
 
 - generic “run any existing Cargo project” mode
-- packaging arbitrary non-GTK desktop apps with Orbit-native UX
+- packaging arbitrary non-GTK desktop apps with Orbi-native UX
 
 ## Implementation Phases
 
@@ -790,7 +790,7 @@ Receipt fields should include:
 
 - add `linux-app.v1.json`
 - add Linux manifest loader/normalizer
-- add `orbit init` Linux GTK template
+- add `orbi init` Linux GTK template
 
 ### Phase 2
 
@@ -823,10 +823,10 @@ Receipt fields should include:
 
 ## Sources
 
-- Orbit repo:
-  - current app-centric model in [README.md](/Users/ilyai/Developer/personal/orbit2/README.md)
-  - current Apple schema in [schemas/apple-app.v1.json](/Users/ilyai/Developer/personal/orbit2/schemas/apple-app.v1.json)
-  - current resolved manifest model in [src/apple/manifest/mod.rs](/Users/ilyai/Developer/personal/orbit2/src/apple/manifest/mod.rs)
+- Orbi repo:
+  - current app-centric model in [README.md](/Users/ilyai/Developer/personal/orbi2/README.md)
+  - current Apple schema in [schemas/apple-app.v1.json](/Users/ilyai/Developer/personal/orbi2/schemas/apple-app.v1.json)
+  - current resolved manifest model in [src/apple/manifest/mod.rs](/Users/ilyai/Developer/personal/orbi2/src/apple/manifest/mod.rs)
 - Flatpak:
   - [Flatpak documentation](https://docs.flatpak.org/)
   - [Building your first Flatpak](https://docs.flatpak.org/en/latest/first-build.html)

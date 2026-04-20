@@ -1,6 +1,6 @@
 {
-  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
-  "appId": "dev.orbit.examples.exampleiosapp",
+  "$schema": "../../../../schemas/orbi-ui-test.v1.json",
+  "appId": "dev.orbi.examples.exampleiosapp",
   "name": "Advanced Commands Demo",
   "steps": [
     {
@@ -8,7 +8,7 @@
         "clearState": true,
         "clearKeychain": true,
         "arguments": {
-          "orbitAutomation": true,
+          "orbiAutomation": true,
           "seededEmail": "copied@example.com"
         },
         "permissions": {
@@ -19,10 +19,10 @@
       }
     },
     {
-      "assertVisible": "Orbit UI Demo"
+      "assertVisible": "Orbi UI Demo"
     },
     {
-      "copyTextFrom": "Orbit UI Demo"
+      "copyTextFrom": "Orbi UI Demo"
     },
     {
       "startRecording": "advanced-demo"

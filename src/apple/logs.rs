@@ -588,16 +588,16 @@ mod tests {
     #[test]
     fn macos_inferior_filter_keeps_print_lines() {
         assert_eq!(
-            filter_macos_inferior_line("FixtureView print appeared\n", "dev.orbit.examples.macos"),
+            filter_macos_inferior_line("FixtureView print appeared\n", "dev.orbi.examples.macos"),
             Some("FixtureView print appeared")
         );
     }
 
     #[test]
     fn macos_inferior_filter_keeps_bundle_logger_lines() {
-        let line = "libLogRedirect: 7 80 L 0 {subsystem:\"dev.orbit.examples.macos\",category:\"app\"}\tExampleMacApp launched\n";
+        let line = "libLogRedirect: 7 80 L 0 {subsystem:\"dev.orbi.examples.macos\",category:\"app\"}\tExampleMacApp launched\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             Some("ExampleMacApp launched")
         );
     }
@@ -606,7 +606,7 @@ mod tests {
     fn macos_inferior_filter_keeps_followup_logger_lines_without_subsystem() {
         let line = "libLogRedirect: 7 80 L 1 {category:\"fixture\",offset:0x114f4}\tFixtureView appeared\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             Some("FixtureView appeared")
         );
     }
@@ -615,7 +615,7 @@ mod tests {
     fn macos_inferior_filter_drops_other_subsystems() {
         let line = "libLogRedirect: 7 80 L 2 {subsystem:\"com.apple.BaseBoard\",category:\"Common\"}\tUnable to obtain a task name port right\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             None
         );
     }
@@ -624,7 +624,7 @@ mod tests {
     fn macos_inferior_filter_drops_detached_signature_noise_from_log_redirect() {
         let line = "libLogRedirect: 7 80 L 3 {t:1775597903.760651}\tos_unix.c:51044: (2) open(/private/var/db/DetachedSignatures) - No such file or directory\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             None
         );
     }
@@ -633,25 +633,25 @@ mod tests {
     fn macos_inferior_filter_drops_performance_diagnostics_noise_without_subsystem() {
         let line = "libLogRedirect: 7 80 L 5 {t:1775597903.762038}\t__delegate_identifier__:Performance Diagnostics__:::____message__:This method should not be called on the main thread as it may lead to UI unresponsiveness.\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             None
         );
     }
 
     #[test]
     fn macos_inferior_filter_extracts_message_from_unified_log_lines() {
-        let line = "2026-04-18 22:24:06.938478+0300 OrbitTrace1776540245_ExampleMacApp[31337:6482071] [app] ExampleMacApp launched\n";
+        let line = "2026-04-18 22:24:06.938478+0300 OrbiRunTrace1776540245_ExampleMacApp[31337:6482071] [app] ExampleMacApp launched\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             None
         );
     }
 
     #[test]
     fn macos_inferior_filter_drops_known_unified_log_noise() {
-        let line = "2026-04-18 22:24:07.112670+0300 OrbitTrace1776540245_ExampleMacApp[31337:6482460] [Common] Unable to obtain a task name port right for pid 395: (os/kern) failure (0x5)\n";
+        let line = "2026-04-18 22:24:07.112670+0300 OrbiRunTrace1776540245_ExampleMacApp[31337:6482460] [Common] Unable to obtain a task name port right for pid 395: (os/kern) failure (0x5)\n";
         assert_eq!(
-            filter_macos_inferior_line(line, "dev.orbit.examples.macos"),
+            filter_macos_inferior_line(line, "dev.orbi.examples.macos"),
             None
         );
     }
@@ -717,9 +717,9 @@ mod tests {
 
     #[test]
     fn simulator_log_filter_keeps_bundle_logger_lines() {
-        let line = "2026-04-01 22:50:58.211904+0300 0x1cc1509  Default     0x0                  87108  0    ExampleIOSApp: [dev.orbit.examples.exampleiosapp:App] ExampleIOSApp launched\n";
+        let line = "2026-04-01 22:50:58.211904+0300 0x1cc1509  Default     0x0                  87108  0    ExampleIOSApp: [dev.orbi.examples.exampleiosapp:App] ExampleIOSApp launched\n";
         assert_eq!(
-            filter_simulator_log_line(line, "ExampleIOSApp", "dev.orbit.examples.exampleiosapp"),
+            filter_simulator_log_line(line, "ExampleIOSApp", "dev.orbi.examples.exampleiosapp"),
             Some("ExampleIOSApp launched")
         );
     }
@@ -728,7 +728,7 @@ mod tests {
     fn simulator_log_filter_drops_other_subsystems() {
         let line = "2026-04-01 22:50:58.223142+0300 0x1cc1515  Default     0x0                  87108  0    ExampleIOSApp: (UIKitCore) [com.apple.UIKit:BackgroundTask] Creating new assertion\n";
         assert_eq!(
-            filter_simulator_log_line(line, "ExampleIOSApp", "dev.orbit.examples.exampleiosapp"),
+            filter_simulator_log_line(line, "ExampleIOSApp", "dev.orbi.examples.exampleiosapp"),
             None
         );
     }
@@ -737,7 +737,7 @@ mod tests {
     fn simulator_log_filter_keeps_plain_print_lines() {
         let line = "ExampleIOSApp: ExampleIOSApp print launched\n";
         assert_eq!(
-            filter_simulator_log_line(line, "ExampleIOSApp", "dev.orbit.examples.exampleiosapp"),
+            filter_simulator_log_line(line, "ExampleIOSApp", "dev.orbi.examples.exampleiosapp"),
             Some("ExampleIOSApp print launched")
         );
     }
@@ -748,7 +748,7 @@ mod tests {
             filter_simulator_log_line(
                 "Filtering the log data using \"process BEGINSWITH[cd] \\\"ExampleIOSApp\\\"\"\n",
                 "ExampleIOSApp",
-                "dev.orbit.examples.exampleiosapp"
+                "dev.orbi.examples.exampleiosapp"
             ),
             None
         );
@@ -756,7 +756,7 @@ mod tests {
             filter_simulator_log_line(
                 "Traceback (most recent call last):\n",
                 "ExampleIOSApp",
-                "dev.orbit.examples.exampleiosapp"
+                "dev.orbi.examples.exampleiosapp"
             ),
             None
         );

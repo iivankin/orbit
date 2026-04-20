@@ -33,7 +33,7 @@ fn signed_build_runs_before_build_and_after_sign_hooks() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture",
+        "dev.orbi.fixture",
         "ExampleApp",
         false,
         false,
@@ -53,19 +53,19 @@ fn signed_build_runs_before_build_and_after_sign_hooks() {
     write_executable(
         &workspace.join("scripts/before-build.sh"),
         &format!(
-            "#!/bin/sh\nset -eu\nprintf 'before_build:%s:%s:%s\\n' \"$ORBIT_HOOK\" \"$ORBIT_TARGET_NAME\" \"$ORBIT_PLATFORM\" >> \"{}\"\n",
+            "#!/bin/sh\nset -eu\nprintf 'before_build:%s:%s:%s\\n' \"$ORBI_HOOK\" \"$ORBI_TARGET_NAME\" \"$ORBI_PLATFORM\" >> \"{}\"\n",
             hook_trace.display()
         ),
     );
     write_executable(
         &workspace.join("scripts/after-sign.sh"),
         &format!(
-            "#!/bin/sh\nset -eu\nprintf 'after_sign:%s:%s:%s:%s\\n' \"$ORBIT_HOOK\" \"$ORBIT_TARGET_NAME\" \"$ORBIT_ARTIFACT_PATH\" \"$ORBIT_RECEIPT_PATH\" >> \"{}\"\n",
+            "#!/bin/sh\nset -eu\nprintf 'after_sign:%s:%s:%s:%s\\n' \"$ORBI_HOOK\" \"$ORBI_TARGET_NAME\" \"$ORBI_ARTIFACT_PATH\" \"$ORBI_RECEIPT_PATH\" >> \"{}\"\n",
             hook_trace.display()
         ),
     );
     set_manifest_hooks(
-        &workspace.join("orbit.json"),
+        &workspace.join("orbi.json"),
         serde_json::json!({
             "before_build": ["./scripts/before-build.sh"],
             "after_sign": ["./scripts/after-sign.sh"]
@@ -76,7 +76,7 @@ fn signed_build_runs_before_build_and_after_sign_hooks() {
     build.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "ios",
@@ -96,7 +96,7 @@ fn signed_build_runs_before_build_and_after_sign_hooks() {
     assert_eq!(lines[0], "before_build:before_build:ExampleApp:ios");
     assert!(lines[1].starts_with("after_sign:after_sign:ExampleApp:"));
     assert!(lines[1].contains(".ipa:"));
-    assert!(lines[1].contains(".orbit/receipts/"));
+    assert!(lines[1].contains(".orbi/receipts/"));
 }
 
 #[test]
@@ -121,19 +121,19 @@ fn run_executes_before_run_hook_after_build_context_is_available() {
     write_executable(
         &workspace.join("scripts/before-build.sh"),
         &format!(
-            "#!/bin/sh\nset -eu\nprintf 'before_build:%s:%s\\n' \"$ORBIT_HOOK\" \"$ORBIT_PLATFORM\" >> \"{}\"\n",
+            "#!/bin/sh\nset -eu\nprintf 'before_build:%s:%s\\n' \"$ORBI_HOOK\" \"$ORBI_PLATFORM\" >> \"{}\"\n",
             hook_trace.display()
         ),
     );
     write_executable(
         &workspace.join("scripts/before-run.sh"),
         &format!(
-            "#!/bin/sh\nset -eu\nprintf 'before_run:%s:%s:%s:%s\\n' \"$ORBIT_HOOK\" \"$ORBIT_TARGET_NAME\" \"$ORBIT_DESTINATION\" \"$ORBIT_ARTIFACT_PATH\" >> \"{}\"\n",
+            "#!/bin/sh\nset -eu\nprintf 'before_run:%s:%s:%s:%s\\n' \"$ORBI_HOOK\" \"$ORBI_TARGET_NAME\" \"$ORBI_DESTINATION\" \"$ORBI_ARTIFACT_PATH\" >> \"{}\"\n",
             hook_trace.display()
         ),
     );
     set_manifest_hooks(
-        &workspace.join("orbit.json"),
+        &workspace.join("orbi.json"),
         serde_json::json!({
             "before_build": ["./scripts/before-build.sh"],
             "before_run": ["./scripts/before-run.sh"]
@@ -145,7 +145,7 @@ fn run_executes_before_run_hook_after_build_context_is_available() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "run",
         "--platform",
         "watchos",

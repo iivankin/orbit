@@ -1,5 +1,6 @@
 target/
-**/.orbit/
+**/.orbi/
+**/.[o]rbit/
 .DS_Store
 
 tools/*/.build/

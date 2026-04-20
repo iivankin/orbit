@@ -1,11 +1,11 @@
 import SwiftUI
-import OrbitFeature
+import OrbiFeature
 
 @main
 struct ExampleSwiftPackageApp: App {
     var body: some Scene {
         WindowGroup {
-            Text(OrbitFeature.headline)
+            Text(OrbiFeature.headline)
         }
     }
 }

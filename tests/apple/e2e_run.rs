@@ -27,7 +27,7 @@ fn watchos_run_debug_uses_simctl_and_lldb() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "run",
         "--platform",
         "watchos",
@@ -44,7 +44,7 @@ fn watchos_run_debug_uses_simctl_and_lldb() {
     let log = read_log(&log_path);
     assert!(log.contains("xcrun simctl install WATCH-UDID"));
     assert!(log.contains(
-        "xcrun simctl launch --wait-for-debugger --terminate-running-process WATCH-UDID dev.orbit.fixture.watch.watchkitapp"
+        "xcrun simctl launch --wait-for-debugger --terminate-running-process WATCH-UDID dev.orbi.fixture.watch.watchkitapp"
     ));
     assert!(log.lines().any(|line| line.starts_with("lldb ")));
     assert!(log.contains("process attach -i -w -n WatchApp"));
@@ -69,7 +69,7 @@ fn run_rejects_trace_with_debug() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "run",
         "--platform",
         "watchos",
@@ -81,7 +81,7 @@ fn run_rejects_trace_with_debug() {
     assert!(!output.status.success());
 
     let stderr = String::from_utf8_lossy(&output.stderr);
-    assert!(stderr.contains("`orbit run --trace` does not support `--debug`"));
+    assert!(stderr.contains("`orbi run --trace` does not support `--debug`"));
 }
 
 #[test]
@@ -102,7 +102,7 @@ fn run_rejects_trace_on_simulator() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "run",
         "--platform",
         "watchos",

@@ -417,13 +417,13 @@ mod tests {
     #[test]
     fn clang_invocation_captures_include_paths_and_index_store() {
         let depfile_path =
-            object_depfile_path(Path::new(".orbit/build/App/intermediates/Bridge.m.o"));
+            object_depfile_path(Path::new(".orbi/build/App/intermediates/Bridge.m.o"));
         let invocation = target_clang_invocation(
             &fixture_toolchain(),
             &ProfileManifest::new(BuildConfiguration::Debug, DistributionKind::Development),
             ClangCompilePlan {
                 source_file: Path::new("Sources/App/Bridge.m"),
-                output_path: Path::new(".orbit/build/App/intermediates/Bridge.m.o"),
+                output_path: Path::new(".orbi/build/App/intermediates/Bridge.m.o"),
                 depfile_path: Some(depfile_path.as_path()),
                 language: ClangSourceLanguage::ObjectiveC,
                 external_link_inputs: &ExternalLinkInputs {
@@ -431,7 +431,7 @@ mod tests {
                     framework_search_paths: vec![PathBuf::from("/tmp/frameworks")],
                     ..ExternalLinkInputs::default()
                 },
-                index_store_path: Some(Path::new(".orbit/ide/index/store")),
+                index_store_path: Some(Path::new(".orbi/ide/index/store")),
             },
         )
         .unwrap();
@@ -447,16 +447,16 @@ mod tests {
         );
         assert!(
             args.windows(2)
-                .any(|pair| pair == ["-index-store-path", ".orbit/ide/index/store"])
+                .any(|pair| pair == ["-index-store-path", ".orbi/ide/index/store"])
         );
         assert!(args.iter().any(|arg| arg == "-MMD"));
         assert!(
             args.windows(2)
-                .any(|pair| { pair == ["-MF", ".orbit/build/App/intermediates/Bridge.m.o.d",] })
+                .any(|pair| { pair == ["-MF", ".orbi/build/App/intermediates/Bridge.m.o.d",] })
         );
         assert!(
             args.windows(2)
-                .any(|pair| pair == ["-o", ".orbit/build/App/intermediates/Bridge.m.o"])
+                .any(|pair| pair == ["-o", ".orbi/build/App/intermediates/Bridge.m.o"])
         );
     }
 
@@ -494,10 +494,10 @@ mod tests {
         let depfile_path = object_depfile_path(&output_path);
         fs::write(
             &source,
-            "#import \"Bridge.h\"\nint orbit_add(int a, int b) { return a + b; }\n",
+            "#import \"Bridge.h\"\nint orbi_add(int a, int b) { return a + b; }\n",
         )
         .unwrap();
-        fs::write(&header, "int orbit_add(int a, int b);\n").unwrap();
+        fs::write(&header, "int orbi_add(int a, int b);\n").unwrap();
         fs::write(&output_path, "object").unwrap();
         fs::write(
             &depfile_path,
@@ -530,7 +530,7 @@ mod tests {
         thread::sleep(Duration::from_millis(10));
         fs::write(
             &header,
-            "int orbit_add(int a, int b);\nint orbit_subtract(int a, int b);\n",
+            "int orbi_add(int a, int b);\nint orbi_subtract(int a, int b);\n",
         )
         .unwrap();
 

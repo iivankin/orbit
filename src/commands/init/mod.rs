@@ -40,7 +40,7 @@ struct EcosystemChoice {
 
 pub fn execute(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()> {
     if !app.interactive {
-        bail!("`orbit init` requires an interactive terminal");
+        bail!("`orbi init` requires an interactive terminal");
     }
 
     let manifest_path = init_manifest_path(app, requested_manifest);
@@ -70,7 +70,7 @@ pub fn execute(app: &AppContext, requested_manifest: Option<&Path>) -> Result<()
 
 fn init_manifest_path(app: &AppContext, requested_manifest: Option<&Path>) -> PathBuf {
     requested_manifest.map_or_else(
-        || app.cwd.join("orbit.json"),
+        || app.cwd.join("orbi.json"),
         |path| resolve_path(&app.cwd, path),
     )
 }
@@ -79,12 +79,12 @@ fn collect_init_answers(_app: &AppContext, project_root: &Path) -> Result<InitAn
     let ecosystem = prompt_ecosystem()?;
     let default_name = suggested_product_name(project_root);
     let name = prompt_non_empty("Product name", Some(default_name.as_str()))?;
-    let default_bundle_id = format!("dev.orbit.{}", bundle_id_suffix(&name));
+    let default_bundle_id = format!("dev.orbi.{}", bundle_id_suffix(&name));
     let bundle_id = prompt_validated(
         "Bundle ID",
         Some(default_bundle_id.as_str()),
         looks_like_bundle_id,
-        "Enter a reverse-DNS bundle ID like `dev.orbit.exampleapp`.",
+        "Enter a reverse-DNS bundle ID like `dev.orbi.exampleapp`.",
     )?;
     let template = prompt_template(ecosystem)?;
     let asc_team_id = prompt_asc_team_id()?;
@@ -297,7 +297,7 @@ fn prompt_device_family(slot: InitDeviceSlot) -> Result<DeviceFamily> {
 }
 
 fn init_asc_config(team_id: &str) -> AscConfig {
-    // `orbit init` can reuse asc-sync's interactive device flows before `orbit.json` exists.
+    // `orbi init` can reuse asc-sync's interactive device flows before `orbi.json` exists.
     AscConfig {
         schema: None,
         description: None,

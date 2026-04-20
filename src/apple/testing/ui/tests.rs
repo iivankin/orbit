@@ -343,7 +343,7 @@ fn ui_runner_prefers_backend_selector_activation_for_tap_on() {
     let mut runner = UiFlowRunner::new(
         Box::new(backend),
         temp.path().join("artifacts"),
-        "dev.orbit.fixture".to_owned(),
+        "dev.orbi.fixture".to_owned(),
         false,
         None,
     );
@@ -373,7 +373,7 @@ fn ui_runner_best_effort_focuses_after_launch_when_requested() {
     let mut runner = UiFlowRunner::new(
         Box::new(backend),
         temp.path().join("artifacts"),
-        "dev.orbit.fixture".to_owned(),
+        "dev.orbi.fixture".to_owned(),
         true,
         None,
     );
@@ -427,14 +427,14 @@ fn flow_selector_matches_configured_name_and_file_stem() {
     let named = write_flow(
         temp.path(),
         "onboarding-profile.json",
-        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"name\": \"onboarding-provider-setup-profile\",\n  \"steps\": [\"launchApp\"]\n}\n",
+        "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"name\": \"onboarding-provider-setup-profile\",\n  \"steps\": [\"launchApp\"]\n}\n",
     )
     .canonicalize()
     .unwrap();
     let plain = write_flow(
         temp.path(),
         "relaunch.json",
-        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\"launchApp\"]\n}\n",
+        "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\"launchApp\"]\n}\n",
     )
         .canonicalize()
         .unwrap();
@@ -458,7 +458,7 @@ fn flow_selector_reports_available_flows_when_no_match_exists() {
     let named = write_flow(
         temp.path(),
         "onboarding-profile.json",
-        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"name\": \"onboarding-provider-setup-profile\",\n  \"steps\": [\"launchApp\"]\n}\n",
+        "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"name\": \"onboarding-provider-setup-profile\",\n  \"steps\": [\"launchApp\"]\n}\n",
     )
     .canonicalize()
     .unwrap();

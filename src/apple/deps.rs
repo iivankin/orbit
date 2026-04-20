@@ -107,7 +107,7 @@ pub fn update_dependencies(
     match lock_summary.change {
         LockfileChange::Written => {
             print_success(format!(
-                "Wrote .orbit/orbit.lock for {} versioned git dependenc{}.",
+                "Wrote .orbi/orbi.lock for {} versioned git dependenc{}.",
                 lock_summary.versioned_dependency_count,
                 if lock_summary.versioned_dependency_count == 1 {
                     "y"
@@ -118,7 +118,7 @@ pub fn update_dependencies(
         }
         LockfileChange::Removed => {
             print_success(
-                "Removed stale .orbit/orbit.lock because the manifest no longer contains versioned git dependencies.",
+                "Removed stale .orbi/orbi.lock because the manifest no longer contains versioned git dependencies.",
             );
         }
         LockfileChange::Unchanged => {}

@@ -18,8 +18,8 @@ use crate::context::{AppContext, ProjectContext};
 use crate::util::{command_output_allow_failure, print_success};
 use config::{format_configuration_json, format_ignore_matcher, lint_quality_config};
 use tooling::{
-    OrbitSwiftFormatMode, OrbitSwiftFormatRequest, OrbitSwiftLintCompilerInvocation,
-    OrbitSwiftLintRequest, run_orbit_swift_format, run_orbit_swiftlint,
+    OrbiSwiftFormatMode, OrbiSwiftFormatRequest, OrbiSwiftLintCompilerInvocation,
+    OrbiSwiftLintRequest, run_orbi_swift_format, run_orbi_swiftlint,
 };
 
 pub fn lint_project(
@@ -46,7 +46,7 @@ pub fn lint_project(
         .invocations
         .iter()
         .filter(|invocation| invocation.language == "swift")
-        .map(|invocation| OrbitSwiftLintCompilerInvocation {
+        .map(|invocation| OrbiSwiftLintCompilerInvocation {
             arguments: invocation.arguments.clone(),
             source_files: invocation.source_files.clone(),
         })
@@ -61,10 +61,10 @@ pub fn lint_project(
         return Ok(());
     }
     if !swift_files.is_empty() {
-        run_orbit_swiftlint(
+        run_orbi_swiftlint(
             app,
-            project.project_paths.orbit_dir.as_path(),
-            &OrbitSwiftLintRequest {
+            project.project_paths.orbi_dir.as_path(),
+            &OrbiSwiftLintRequest {
                 working_directory: project.root.clone(),
                 configuration_json: lint_quality.configuration_json,
                 files: swift_files.clone(),
@@ -132,15 +132,15 @@ fn run_swift_format(
         return Ok(());
     }
 
-    run_orbit_swift_format(
+    run_orbi_swift_format(
         app,
-        project.project_paths.orbit_dir.as_path(),
-        &OrbitSwiftFormatRequest {
+        project.project_paths.orbi_dir.as_path(),
+        &OrbiSwiftFormatRequest {
             working_directory: project.root.clone(),
             configuration_json,
             mode: match mode {
-                SwiftFormatMode::FormatCheck => OrbitSwiftFormatMode::Check,
-                SwiftFormatMode::FormatWrite => OrbitSwiftFormatMode::Write,
+                SwiftFormatMode::FormatCheck => OrbiSwiftFormatMode::Check,
+                SwiftFormatMode::FormatWrite => OrbiSwiftFormatMode::Write,
             },
             files: swift_files.to_vec(),
         },

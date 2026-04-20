@@ -6,7 +6,7 @@ use crate::support::{
 use tempfile::tempdir;
 
 #[test]
-fn orbit_inspect_trace_prints_time_profile_diagnosis() {
+fn orbi_inspect_trace_prints_time_profile_diagnosis() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
     let workspace = temp.path().join("workspace");
@@ -30,7 +30,7 @@ fn orbit_inspect_trace_prints_time_profile_diagnosis() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Process: Orbit"));
+    assert!(stdout.contains("Process: Orbi"));
     assert!(stdout.contains("Template: Time Profiler"));
     assert!(stdout.contains("SELF TIME"));
     assert!(stdout.contains("heavyWork()"));
@@ -43,7 +43,7 @@ fn orbit_inspect_trace_prints_time_profile_diagnosis() {
 }
 
 #[test]
-fn orbit_inspect_trace_retries_until_trace_is_exportable() {
+fn orbi_inspect_trace_retries_until_trace_is_exportable() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
     let workspace = temp.path().join("workspace");
@@ -70,7 +70,7 @@ fn orbit_inspect_trace_retries_until_trace_is_exportable() {
     );
 
     let stdout = String::from_utf8_lossy(&output.stdout);
-    assert!(stdout.contains("Process: Orbit"));
+    assert!(stdout.contains("Process: Orbi"));
     assert_eq!(fs::read_to_string(&fail_count_path).unwrap(), "0\n");
 
     let log = read_log(&log_path);
@@ -78,7 +78,7 @@ fn orbit_inspect_trace_retries_until_trace_is_exportable() {
 }
 
 #[test]
-fn orbit_inspect_trace_prints_allocations_diagnosis() {
+fn orbi_inspect_trace_prints_allocations_diagnosis() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
     let workspace = temp.path().join("workspace");

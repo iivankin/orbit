@@ -50,30 +50,26 @@ enum DefaultExtensionEntry {
 }
 
 #[cfg_attr(not(test), allow(dead_code))]
-pub fn load_manifest(path: &Path, orbit_dir: &Path) -> Result<ResolvedManifest> {
-    load_manifest_with_env(path, orbit_dir, None)
+pub fn load_manifest(path: &Path, orbi_dir: &Path) -> Result<ResolvedManifest> {
+    load_manifest_with_env(path, orbi_dir, None)
 }
 
 pub fn load_manifest_with_env(
     path: &Path,
-    orbit_dir: &Path,
+    orbi_dir: &Path,
     env: Option<&str>,
 ) -> Result<ResolvedManifest> {
     let manifest_value = crate::manifest::read_manifest_value(path, env)?;
     let manifest: AppManifest = serde_json::from_value(manifest_value)
         .with_context(|| format!("failed to parse {}", path.display()))?;
-    normalize_manifest(path, orbit_dir, manifest)
+    normalize_manifest(path, orbi_dir, manifest)
 }
 
-fn normalize_manifest(
-    _path: &Path,
-    orbit_dir: &Path,
-    app: AppManifest,
-) -> Result<ResolvedManifest> {
+fn normalize_manifest(_path: &Path, orbi_dir: &Path, app: AppManifest) -> Result<ResolvedManifest> {
     validate_semver_version(&app.version)?;
     validate_root_manifest(&app)?;
 
-    let generated_entitlements_dir = orbit_dir.join("manifest").join("entitlements");
+    let generated_entitlements_dir = orbi_dir.join("manifest").join("entitlements");
     ensure_dir(&generated_entitlements_dir)?;
 
     let non_watch_platforms = app
@@ -1689,7 +1685,7 @@ fn normalize_external_dependencies(
                 }
                 (Some(_), Some(_)) => {
                     bail!(
-                        "dependency `{name}` cannot declare both `version` and `revision`; use `version` with .orbit/orbit.lock or `revision` directly"
+                        "dependency `{name}` cannot declare both `version` and `revision`; use `version` with .orbi/orbi.lock or `revision` directly"
                     );
                 }
                 _ => {}
@@ -1850,7 +1846,7 @@ mod tests {
 
     fn write_manifest(manifest: serde_json::Value) -> (tempfile::TempDir, std::path::PathBuf) {
         let temp = tempdir().unwrap();
-        let manifest_path = temp.path().join("orbit.json");
+        let manifest_path = temp.path().join("orbi.json");
         fs::write(
             &manifest_path,
             serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -1862,9 +1858,9 @@ mod tests {
     #[test]
     fn share_kind_defaults_to_maininterface_storyboard() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "ShareExample",
-            "bundle_id": "dev.orbit.examples.share",
+            "bundle_id": "dev.orbi.examples.share",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -1879,7 +1875,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
 
         let share = manifest
             .targets
@@ -1911,9 +1907,9 @@ mod tests {
     #[test]
     fn packet_tunnel_kind_requires_class_entry() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "Example",
-            "bundle_id": "dev.orbit.examples.tunnel",
+            "bundle_id": "dev.orbi.examples.tunnel",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -1928,7 +1924,7 @@ mod tests {
             }
         }));
 
-        let error = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap_err();
+        let error = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap_err();
         assert!(
             error
                 .to_string()
@@ -1940,9 +1936,9 @@ mod tests {
     #[test]
     fn widget_kind_uses_widget_target_and_no_entry() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "WidgetExample",
-            "bundle_id": "dev.orbit.examples.widget",
+            "bundle_id": "dev.orbi.examples.widget",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -1957,7 +1953,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let widget = manifest
             .targets
             .iter()
@@ -1978,9 +1974,9 @@ mod tests {
     #[test]
     fn app_intents_kind_uses_extensionkit_runtime_and_no_entry() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "AppIntentsExample",
-            "bundle_id": "dev.orbit.examples.app-intents",
+            "bundle_id": "dev.orbi.examples.app-intents",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -1995,7 +1991,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let extension = manifest
             .targets
             .iter()
@@ -2025,9 +2021,9 @@ mod tests {
     #[test]
     fn account_authentication_modification_defaults_to_maininterface_storyboard() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "AuthenticationExample",
-            "bundle_id": "dev.orbit.examples.account-auth",
+            "bundle_id": "dev.orbi.examples.account-auth",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2042,7 +2038,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let extension = manifest
             .targets
             .iter()
@@ -2067,9 +2063,9 @@ mod tests {
     #[test]
     fn intents_extension_dsl_populates_supported_and_restricted_intents() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "IntentsExample",
-            "bundle_id": "dev.orbit.examples.intents",
+            "bundle_id": "dev.orbi.examples.intents",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2091,7 +2087,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let intents = manifest
             .targets
             .iter()
@@ -2114,9 +2110,9 @@ mod tests {
     #[test]
     fn custom_keyboard_defaults_match_template_shape() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "KeyboardExample",
-            "bundle_id": "dev.orbit.examples.keyboard",
+            "bundle_id": "dev.orbi.examples.keyboard",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2134,7 +2130,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let keyboard = manifest
             .targets
             .iter()
@@ -2159,9 +2155,9 @@ mod tests {
     #[test]
     fn spotlight_import_dsl_populates_label_and_content_types() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "SpotlightExample",
-            "bundle_id": "dev.orbit.examples.spotlight",
+            "bundle_id": "dev.orbi.examples.spotlight",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2176,14 +2172,14 @@ mod tests {
                         "class": "ImportExtension"
                     },
                     "spotlight_import": {
-                        "label": "OrbitImporter",
+                        "label": "OrbiImporter",
                         "content_types": ["com.example.plain-text"]
                     }
                 }
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let importer = manifest
             .targets
             .iter()
@@ -2192,7 +2188,7 @@ mod tests {
         let extension = importer.extension.as_ref().unwrap();
         assert_eq!(
             extension.info_plist_extra.get("CSExtensionLabel"),
-            Some(&json!("OrbitImporter"))
+            Some(&json!("OrbiImporter"))
         );
         assert_eq!(
             extension.extra.get("NSExtensionAttributes"),
@@ -2205,9 +2201,9 @@ mod tests {
     #[test]
     fn persistent_token_requires_persistent_token_block_and_uses_no_entry() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "TokenExample",
-            "bundle_id": "dev.orbit.examples.token",
+            "bundle_id": "dev.orbi.examples.token",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2225,7 +2221,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let token = manifest
             .targets
             .iter()
@@ -2243,7 +2239,7 @@ mod tests {
                 .extra
                 .get("NSExtensionAttributes"),
             Some(&json!({
-                "com.apple.ctk.class-id": "dev.orbit.examples.token.token",
+                "com.apple.ctk.class-id": "dev.orbi.examples.token.token",
                 "com.apple.ctk.driver-class": "TokenDriver"
             }))
         );
@@ -2252,9 +2248,9 @@ mod tests {
     #[test]
     fn background_resource_upload_requires_url_base() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "BackgroundUploadExample",
-            "bundle_id": "dev.orbit.examples.background-upload",
+            "bundle_id": "dev.orbi.examples.background-upload",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2269,7 +2265,7 @@ mod tests {
             }
         }));
 
-        let error = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap_err();
+        let error = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap_err();
         assert!(
             error.to_string().contains(
                 "`extensions.upload.background_resource_upload` is required for `background-resource-upload` extensions"
@@ -2281,9 +2277,9 @@ mod tests {
     #[test]
     fn file_provider_extension_dsl_populates_provider_keys() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "FileProviderExample",
-            "bundle_id": "dev.orbit.examples.file-provider",
+            "bundle_id": "dev.orbi.examples.file-provider",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2298,10 +2294,10 @@ mod tests {
                         "class": "FileProviderExtension"
                     },
                     "file_provider": {
-                        "document_group": "group.dev.orbit.examples.file-provider",
+                        "document_group": "group.dev.orbi.examples.file-provider",
                         "supports_enumeration": false,
                         "actions": [{
-                            "identifier": "dev.orbit.examples.file-provider.reindex",
+                            "identifier": "dev.orbi.examples.file-provider.reindex",
                             "name": "Reindex",
                             "activation_rule": "TRUEPREDICATE"
                         }]
@@ -2310,7 +2306,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let provider = manifest
             .targets
             .iter()
@@ -2320,7 +2316,7 @@ mod tests {
 
         assert_eq!(
             extra.get("NSExtensionFileProviderDocumentGroup"),
-            Some(&json!("group.dev.orbit.examples.file-provider"))
+            Some(&json!("group.dev.orbi.examples.file-provider"))
         );
         assert_eq!(
             extra.get("NSExtensionFileProviderSupportsEnumeration"),
@@ -2329,7 +2325,7 @@ mod tests {
         assert_eq!(
             extra.get("NSExtensionFileProviderActions"),
             Some(&json!([{
-                "NSExtensionFileProviderActionIdentifier": "dev.orbit.examples.file-provider.reindex",
+                "NSExtensionFileProviderActionIdentifier": "dev.orbi.examples.file-provider.reindex",
                 "NSExtensionFileProviderActionName": "Reindex",
                 "NSExtensionFileProviderActionActivationRule": "TRUEPREDICATE"
             }]))
@@ -2339,9 +2335,9 @@ mod tests {
     #[test]
     fn action_service_dsl_populates_activation_rule_and_javascript_file() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "ActionServiceExample",
-            "bundle_id": "dev.orbit.examples.action-service",
+            "bundle_id": "dev.orbi.examples.action-service",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2365,7 +2361,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let action = manifest
             .targets
             .iter()
@@ -2391,9 +2387,9 @@ mod tests {
     #[test]
     fn account_authentication_modification_dsl_populates_feature_flags() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "AuthenticationFlagsExample",
-            "bundle_id": "dev.orbit.examples.account-auth-flags",
+            "bundle_id": "dev.orbi.examples.account-auth-flags",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2412,7 +2408,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let auth = manifest
             .targets
             .iter()
@@ -2435,9 +2431,9 @@ mod tests {
     #[test]
     fn broadcast_upload_defaults_to_sample_buffer_process_mode() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "BroadcastUploadExample",
-            "bundle_id": "dev.orbit.examples.broadcast-upload",
+            "bundle_id": "dev.orbi.examples.broadcast-upload",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2455,7 +2451,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let broadcast = manifest
             .targets
             .iter()
@@ -2476,9 +2472,9 @@ mod tests {
     #[test]
     fn notification_content_extension_dsl_populates_categories() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "NotificationContentExample",
-            "bundle_id": "dev.orbit.examples.notification-content",
+            "bundle_id": "dev.orbi.examples.notification-content",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2497,7 +2493,7 @@ mod tests {
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let notification = manifest
             .targets
             .iter()
@@ -2523,9 +2519,9 @@ mod tests {
     #[test]
     fn photo_project_extension_dsl_populates_document_types() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "PhotoProjectExample",
-            "bundle_id": "dev.orbit.examples.photo-project",
+            "bundle_id": "dev.orbi.examples.photo-project",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2542,13 +2538,13 @@ mod tests {
                     "photo_project": {
                         "defines_project_types": true,
                         "categories": ["book", "prints"],
-                        "document_type_identifier": "dev.orbit.examples.photo-project.book-document"
+                        "document_type_identifier": "dev.orbi.examples.photo-project.book-document"
                     }
                 }
             }
         }));
 
-        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap();
+        let manifest = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap();
         let project = manifest
             .targets
             .iter()
@@ -2567,7 +2563,7 @@ mod tests {
             extension.info_plist_extra.get("CFBundleDocumentTypes"),
             Some(&json!([{
                 "CFBundleTypeRole": "Editor",
-                "LSItemContentTypes": ["dev.orbit.examples.photo-project.book-document"]
+                "LSItemContentTypes": ["dev.orbi.examples.photo-project.book-document"]
             }]))
         );
     }
@@ -2575,9 +2571,9 @@ mod tests {
     #[test]
     fn rejects_file_provider_block_on_wrong_kind() {
         let (temp, manifest_path) = write_manifest(json!({
-            "$schema": "https://orbit.dev/schemas/apple-app.v1.json",
+            "$schema": "https://orbi.dev/schemas/apple-app.v1.json",
             "name": "InvalidExtensionDsl",
-            "bundle_id": "dev.orbit.examples.invalid-dsl",
+            "bundle_id": "dev.orbi.examples.invalid-dsl",
             "version": "1.0.0",
             "build": 1,
             "platforms": {
@@ -2589,13 +2585,13 @@ mod tests {
                     "kind": "share",
                     "sources": ["Sources/ShareExtension"],
                     "file_provider": {
-                        "document_group": "group.dev.orbit.examples.invalid-dsl"
+                        "document_group": "group.dev.orbi.examples.invalid-dsl"
                     }
                 }
             }
         }));
 
-        let error = load_manifest(&manifest_path, &temp.path().join(".orbit")).unwrap_err();
+        let error = load_manifest(&manifest_path, &temp.path().join(".orbi")).unwrap_err();
         assert!(
             error.to_string().contains(
                 "`extensions.share.file_provider` is only supported for `file-provider` extensions"

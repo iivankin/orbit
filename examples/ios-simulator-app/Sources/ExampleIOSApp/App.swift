@@ -4,7 +4,7 @@ import SwiftUI
 @main
 struct ExampleIOSApp: App {
     private let logger = Logger(
-        subsystem: "dev.orbit.examples.exampleiosapp",
+        subsystem: "dev.orbi.examples.exampleiosapp",
         category: "App"
     )
 

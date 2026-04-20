@@ -46,16 +46,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Resolve Orbit version
-        id: orbit-version
+      - name: Resolve Orbi version
+        id: orbi-version
         run: |
-          orbit_version="$(python3 - <<'PY'
+          orbi_version="$(python3 - <<'PY'
           import tomllib
           with open("Cargo.toml", "rb") as fh:
               print(tomllib.load(fh)["package"]["version"])
           PY
           )"
-          echo "value=$orbit_version" >> "$GITHUB_OUTPUT"
+          echo "value=$orbi_version" >> "$GITHUB_OUTPUT"
 
       - name: Validate R2 configuration
         env:
@@ -76,12 +76,12 @@ jobs:
           AWS_EC2_METADATA_DISABLED: "true"
           CLOUDFLARE_R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET }}
           CLOUDFLARE_R2_ENDPOINT: ${{ secrets.CLOUDFLARE_R2_ENDPOINT }}
-          ORBIT_VERSION: ${{ steps.orbit-version.outputs.value }}
+          ORBI_VERSION: ${{ steps.orbi-version.outputs.value }}
         run: |
           shopt -s nullglob
           for schema in schemas/*.json; do
             name="$(basename "$schema" .json)"
-            versioned_name="${name}-orbit-${ORBIT_VERSION}.json"
+            versioned_name="${name}-orbi-${ORBI_VERSION}.json"
             temp_schema="$(mktemp)"
             python3 - "$schema" "$temp_schema" "$versioned_name" <<'PY'
           import json

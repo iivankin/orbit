@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleVisionApp",
+  "bundle_id": "dev.orbi.examples.visionos",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "visionos": "2.0"
+  },
+  "sources": [
+    "Sources/App"
+  ]
+}

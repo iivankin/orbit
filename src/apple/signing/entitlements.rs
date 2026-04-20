@@ -140,7 +140,7 @@ pub(super) fn materialize_signing_entitlements(
 
     let generated_dir = project
         .project_paths
-        .orbit_dir
+        .orbi_dir
         .join("signing")
         .join("entitlements");
     ensure_dir(&generated_dir)?;
@@ -174,7 +174,7 @@ pub(super) fn materialize_local_macos_development_entitlements(
 
     let generated_dir = project
         .project_paths
-        .orbit_dir
+        .orbi_dir
         .join("signing")
         .join("entitlements");
     ensure_dir(&generated_dir)?;
@@ -200,7 +200,7 @@ pub(super) fn materialize_macos_debug_trace_entitlements(
 
     let generated_dir = project
         .project_paths
-        .orbit_dir
+        .orbi_dir
         .join("signing")
         .join("entitlements");
     ensure_dir(&generated_dir)?;
@@ -327,7 +327,7 @@ fn ensure_local_macos_entitlements_supported(
 ) -> Result<()> {
     if contains_entitlement_placeholders(entitlements) {
         bail!(
-            "target `{}` uses entitlement placeholders like `$(AppIdentifierPrefix)` without an embedded `asc` section; add `asc` and run `orbit asc apply`, or replace the placeholder-based entitlements with literal macOS values",
+            "target `{}` uses entitlement placeholders like `$(AppIdentifierPrefix)` without an embedded `asc` section; add `asc` and run `orbi asc apply`, or replace the placeholder-based entitlements with literal macOS values",
             target.name
         );
     }
@@ -342,7 +342,7 @@ fn ensure_local_macos_entitlements_supported(
     }
 
     bail!(
-        "target `{}` claims provisioning-backed macOS entitlements without an embedded `asc` section: {}; local macOS development fallback only supports unrestricted `com.apple.security.*` entitlements. Add `asc` and run `orbit asc apply`, or remove the restricted entitlements",
+        "target `{}` claims provisioning-backed macOS entitlements without an embedded `asc` section: {}; local macOS development fallback only supports unrestricted `com.apple.security.*` entitlements. Add `asc` and run `orbi asc apply`, or remove the restricted entitlements",
         target.name,
         unsupported.join(", ")
     )

@@ -32,7 +32,7 @@ pub fn parse_ui_flow(path: &Path) -> Result<UiFlow> {
         .context("`$schema` must be a string")?;
     if !supports_flow_schema(schema) {
         bail!(
-            "unsupported UI flow schema `{schema}`; expected a local schema path ending with `{}` or a version-pinned published Orbit schema URL from `https://orbitstorage.dev/schemas/`",
+            "unsupported UI flow schema `{schema}`; expected a local schema path ending with `{}` or a version-pinned published Orbi schema URL from `https://orbitstorage.dev/schemas/`",
             FLOW_SCHEMA_FILENAME
         );
     }
@@ -991,12 +991,12 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"appId\": \"dev.orbit.fixture\",\n  \"name\": \"Login\",\n  \"steps\": [\n    \"launchApp\",\n    {\n      \"tapOn\": \"Continue\"\n    },\n    {\n      \"retry\": {\n        \"times\": 2,\n        \"commands\": [\n          {\n            \"assertVisible\": \"Welcome\"\n          }\n        ]\n      }\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"appId\": \"dev.orbi.fixture\",\n  \"name\": \"Login\",\n  \"steps\": [\n    \"launchApp\",\n    {\n      \"tapOn\": \"Continue\"\n    },\n    {\n      \"retry\": {\n        \"times\": 2,\n        \"commands\": [\n          {\n            \"assertVisible\": \"Welcome\"\n          }\n        ]\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
         let flow = parse_ui_flow(&path).unwrap();
-        assert_eq!(flow.config.app_id.as_deref(), Some("dev.orbit.fixture"));
+        assert_eq!(flow.config.app_id.as_deref(), Some("dev.orbi.fixture"));
         assert_eq!(flow.config.name.as_deref(), Some("Login"));
         assert!(matches!(
             flow.commands[0],
@@ -1021,7 +1021,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"env\": {\n    \"A\": \"B\"\n  },\n  \"steps\": [\"launchApp\"]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"env\": {\n    \"A\": \"B\"\n  },\n  \"steps\": [\"launchApp\"]\n}\n",
         )
         .unwrap();
 
@@ -1049,7 +1049,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"swipe\": \"LEFT\"\n    },\n    {\n      \"swipe\": {\n        \"start\": \"90%, 50%\",\n        \"end\": \"10%, 50%\",\n        \"duration\": \"800ms\",\n        \"delta\": 5\n      }\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"swipe\": \"LEFT\"\n    },\n    {\n      \"swipe\": {\n        \"start\": \"90%, 50%\",\n        \"end\": \"10%, 50%\",\n        \"duration\": \"800ms\",\n        \"delta\": 5\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1071,7 +1071,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"scrollUntilVisible\": {\n        \"element\": {\n          \"text\": \"Ready\"\n        },\n        \"direction\": \"DOWN\",\n        \"timeout\": \"3s\"\n      }\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"scrollUntilVisible\": {\n        \"element\": {\n          \"text\": \"Ready\"\n        },\n        \"direction\": \"DOWN\",\n        \"timeout\": \"3s\"\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1092,7 +1092,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"hoverOn\": {\n        \"id\": \"hover-target\"\n      }\n    },\n    {\n      \"rightClickOn\": {\n        \"id\": \"context-target\"\n      }\n    },\n    {\n      \"doubleTapOn\": \"Continue\"\n    },\n    {\n      \"longPressOn\": {\n        \"element\": \"Continue\",\n        \"duration\": \"1200ms\"\n      }\n    },\n    {\n      \"swipeOn\": {\n        \"element\": {\n          \"id\": \"pager\"\n        },\n        \"direction\": \"LEFT\",\n        \"duration\": \"650ms\",\n        \"delta\": 4\n      }\n    },\n    {\n      \"dragAndDrop\": {\n        \"from\": {\n          \"id\": \"drag-source\"\n        },\n        \"to\": {\n          \"id\": \"drop-target\"\n        },\n        \"duration\": \"800ms\",\n        \"delta\": 3\n      }\n    },\n    {\n      \"scroll\": \"DOWN\"\n    },\n    {\n      \"scrollOn\": {\n        \"element\": {\n          \"id\": \"feed\"\n        },\n        \"direction\": \"UP\"\n      }\n    },\n    {\n      \"selectMenuItem\": \"Automation > Trigger Shortcut\"\n    },\n    \"killApp\"\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"hoverOn\": {\n        \"id\": \"hover-target\"\n      }\n    },\n    {\n      \"rightClickOn\": {\n        \"id\": \"context-target\"\n      }\n    },\n    {\n      \"doubleTapOn\": \"Continue\"\n    },\n    {\n      \"longPressOn\": {\n        \"element\": \"Continue\",\n        \"duration\": \"1200ms\"\n      }\n    },\n    {\n      \"swipeOn\": {\n        \"element\": {\n          \"id\": \"pager\"\n        },\n        \"direction\": \"LEFT\",\n        \"duration\": \"650ms\",\n        \"delta\": 4\n      }\n    },\n    {\n      \"dragAndDrop\": {\n        \"from\": {\n          \"id\": \"drag-source\"\n        },\n        \"to\": {\n          \"id\": \"drop-target\"\n        },\n        \"duration\": \"800ms\",\n        \"delta\": 3\n      }\n    },\n    {\n      \"scroll\": \"DOWN\"\n    },\n    {\n      \"scrollOn\": {\n        \"element\": {\n          \"id\": \"feed\"\n        },\n        \"direction\": \"UP\"\n      }\n    },\n    {\n      \"selectMenuItem\": \"Automation > Trigger Shortcut\"\n    },\n    \"killApp\"\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1169,7 +1169,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"scrollOn\": {\n        \"direction\": \"DOWN\"\n      }\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"scrollOn\": {\n        \"direction\": \"DOWN\"\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1183,7 +1183,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"swipeOn\": \"LEFT\"\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"swipeOn\": \"LEFT\"\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1197,7 +1197,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"dragAndDrop\": {\n        \"from\": {\n          \"id\": \"drag-source\"\n        }\n      }\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"dragAndDrop\": {\n        \"from\": {\n          \"id\": \"drag-source\"\n        }\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1211,7 +1211,7 @@ mod tests {
         let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"launchApp\": {\n        \"appId\": \"dev.orbit.fixture\",\n        \"stopApp\": false,\n        \"clearState\": true,\n        \"clearKeychain\": true,\n        \"arguments\": {\n          \"onboardingComplete\": true,\n          \"seedUser\": \"qa@example.com\"\n        },\n        \"permissions\": {\n          \"location\": \"allow\",\n          \"photos\": \"deny\"\n        }\n      }\n    },\n    {\n      \"tapOnPoint\": \"140, 142\"\n    },\n    {\n      \"pressButton\": {\n        \"button\": \"SIRI\",\n        \"duration\": \"500ms\"\n      }\n    },\n    {\n      \"setClipboard\": \"copied value\"\n    },\n    {\n      \"copyTextFrom\": {\n        \"id\": \"email-value\"\n      }\n    },\n    {\n      \"pasteText\": {}\n    },\n    {\n      \"eraseText\": 6\n    },\n    {\n      \"pressKey\": {\n        \"key\": \"K\",\n        \"modifiers\": [\"COMMAND\", \"SHIFT\"]\n      }\n    },\n    {\n      \"pressKeyCode\": {\n        \"keyCode\": 41,\n        \"duration\": \"200ms\",\n        \"modifiers\": \"CONTROL\"\n      }\n    },\n    {\n      \"keySequence\": [4, 5, 6]\n    },\n    \"hideKeyboard\",\n    {\n      \"extendedWaitUntil\": {\n        \"visible\": {\n          \"text\": \"Ready\"\n        },\n        \"timeout\": \"2s\"\n      }\n    },\n    {\n      \"waitForAnimationToEnd\": {\n        \"timeout\": \"750ms\"\n      }\n    },\n    {\n      \"addMedia\": [\"../Fixtures/cat.jpg\"]\n    },\n    {\n      \"startRecording\": \"login-clip\"\n    },\n    \"stopRecording\",\n    {\n      \"travel\": {\n        \"points\": [\"55.7558,37.6173\", \"55.7568,37.6183\"],\n        \"speed\": 42\n      }\n    }\n  ]\n}\n",
+            "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"launchApp\": {\n        \"appId\": \"dev.orbi.fixture\",\n        \"stopApp\": false,\n        \"clearState\": true,\n        \"clearKeychain\": true,\n        \"arguments\": {\n          \"onboardingComplete\": true,\n          \"seedUser\": \"qa@example.com\"\n        },\n        \"permissions\": {\n          \"location\": \"allow\",\n          \"photos\": \"deny\"\n        }\n      }\n    },\n    {\n      \"tapOnPoint\": \"140, 142\"\n    },\n    {\n      \"pressButton\": {\n        \"button\": \"SIRI\",\n        \"duration\": \"500ms\"\n      }\n    },\n    {\n      \"setClipboard\": \"copied value\"\n    },\n    {\n      \"copyTextFrom\": {\n        \"id\": \"email-value\"\n      }\n    },\n    {\n      \"pasteText\": {}\n    },\n    {\n      \"eraseText\": 6\n    },\n    {\n      \"pressKey\": {\n        \"key\": \"K\",\n        \"modifiers\": [\"COMMAND\", \"SHIFT\"]\n      }\n    },\n    {\n      \"pressKeyCode\": {\n        \"keyCode\": 41,\n        \"duration\": \"200ms\",\n        \"modifiers\": \"CONTROL\"\n      }\n    },\n    {\n      \"keySequence\": [4, 5, 6]\n    },\n    \"hideKeyboard\",\n    {\n      \"extendedWaitUntil\": {\n        \"visible\": {\n          \"text\": \"Ready\"\n        },\n        \"timeout\": \"2s\"\n      }\n    },\n    {\n      \"waitForAnimationToEnd\": {\n        \"timeout\": \"750ms\"\n      }\n    },\n    {\n      \"addMedia\": [\"../Fixtures/cat.jpg\"]\n    },\n    {\n      \"startRecording\": \"login-clip\"\n    },\n    \"stopRecording\",\n    {\n      \"travel\": {\n        \"points\": [\"55.7558,37.6173\", \"55.7568,37.6183\"],\n        \"speed\": 42\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1225,7 +1225,7 @@ mod tests {
                 stop_app: false,
                 permissions: Some(_),
                 arguments,
-            }) if app_id == "dev.orbit.fixture" && arguments.len() == 2
+            }) if app_id == "dev.orbi.fixture" && arguments.len() == 2
         ));
         assert!(matches!(&flow.commands[1], UiCommand::TapOnPoint(_)));
         assert!(matches!(

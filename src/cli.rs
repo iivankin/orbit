@@ -15,41 +15,41 @@ pub const CLAP_STYLING: Styles = Styles::styled()
     .context_value(AnsiColor::Yellow.on_default().italic());
 
 const PLATFORM_ARG_HELP: &str =
-    "Select a platform when Orbit cannot infer one from the manifest or current command.";
-const PLATFORM_ARG_LONG_HELP: &str = "Select a platform when Orbit cannot infer one from the manifest or current command.\n\nCommon values:\n  ios: iPhone and iPad app workflows\n  macos: Mac app workflows\n  tvos: Apple TV workflows\n  visionos: visionOS workflows\n  watchos: watch app and watch extension workflows";
+    "Select a platform when Orbi cannot infer one from the manifest or current command.";
+const PLATFORM_ARG_LONG_HELP: &str = "Select a platform when Orbi cannot infer one from the manifest or current command.\n\nCommon values:\n  ios: iPhone and iPad app workflows\n  macos: Mac app workflows\n  tvos: Apple TV workflows\n  visionos: visionOS workflows\n  watchos: watch app and watch extension workflows";
 const DISTRIBUTION_ARG_HELP: &str =
     "Select the packaging and signing mode for the build or submission.";
 const DISTRIBUTION_ARG_LONG_HELP: &str = "Select the packaging and signing mode for the build or submission.\n\nValues:\n  development: local development and debugging\n  ad-hoc: signed device distribution outside the App Store\n  app-store: App Store and TestFlight upload artifacts\n  developer-id: signed `.dmg` for notarized macOS distribution outside the Mac App Store\n  mac-app-store: signed `.app` bundle for Mac App Store upload";
 const TRACE_ARG_HELP: &str = "Collect a CPU or memory trace while the command runs.";
 
 #[derive(Debug, Parser)]
-#[command(name = "orbit")]
+#[command(name = "orbi")]
 #[command(about = "Manifest-first Apple app build, run, test, and signing CLI")]
 #[command(arg_required_else_help = true)]
 #[command(styles = CLAP_STYLING)]
 #[command(
-    long_about = "Orbit reads app intent from `orbit.json`.\n\nUse the JSON schema to understand manifest fields. Use CLI help for workflows and command behavior. `orbit init` also writes an informational `_description` field that points back here.\n\nEvery command supports `--help` for detailed flags, arguments, and examples. For example: `orbit build --help`, `orbit test --help`, `orbit ui init --help`.\n\nUI test flows are JSON files with `$schema`; use `orbit ui init` to scaffold them.",
-    after_help = "Scenarios:\n  Recommended UI Workflow:\n    Write Swift and optional backend unit tests:\n      orbit test\n\n    Check that the interface looks right with a SwiftUI preview screenshot:\n      orbit preview list --platform ios\n      orbit preview shot Basic --platform ios\n\n    Write UI test flows:\n      orbit ui init Tests/UI/login.json\n\n    Run UI tests normally:\n      orbit test --ui --platform ios\n      orbit test --ui --platform macos\n      orbit test --ui --platform macos --flow onboarding-provider-setup\n\n    Run a final trace pass:\n      orbit test --ui --platform ios --trace\n      orbit test --ui --platform macos --trace\n      orbit test --ui --platform macos --trace --flow onboarding-provider-setup\n\n    Inspect recorded traces:\n      orbit inspect-trace .orbit/artifacts/profiles/run.trace\n\n  Development:\n    Create a new project:\n      orbit init\n\n    Run the app in common modes:\n      orbit run --platform ios --simulator\n      orbit run --platform ios --device --debug\n      orbit run --platform macos\n\n    Check formatting and project semantics:\n      orbit format\n      orbit format --write\n      orbit lint\n\n  Build And Submit:\n    Build local development artifacts:\n      orbit build --platform ios --distribution development\n\n    Build release artifacts:\n      orbit build --platform ios --distribution app-store --release\n      orbit build --platform macos --distribution developer-id --release\n      orbit build --platform macos --distribution mac-app-store --release\n\n    Submit a built artifact:\n      orbit submit --platform ios --wait\n      orbit submit --receipt .orbit/receipts/<receipt>.json --wait"
+    long_about = "Orbi reads app intent from `orbi.json`.\n\nUse the JSON schema to understand manifest fields. Use CLI help for workflows and command behavior. `orbi init` also writes an informational `_description` field that points back here.\n\nEvery command supports `--help` for detailed flags, arguments, and examples. For example: `orbi build --help`, `orbi test --help`, `orbi ui init --help`.\n\nUI test flows are JSON files with `$schema`; use `orbi ui init` to scaffold them.",
+    after_help = "Scenarios:\n  Recommended UI Workflow:\n    Write Swift and optional backend unit tests:\n      orbi test\n\n    Check that the interface looks right with a SwiftUI preview screenshot:\n      orbi preview list --platform ios\n      orbi preview shot Basic --platform ios\n\n    Write UI test flows:\n      orbi ui init Tests/UI/login.json\n\n    Run UI tests normally:\n      orbi test --ui --platform ios\n      orbi test --ui --platform macos\n      orbi test --ui --platform macos --flow onboarding-provider-setup\n\n    Run a final trace pass:\n      orbi test --ui --platform ios --trace\n      orbi test --ui --platform macos --trace\n      orbi test --ui --platform macos --trace --flow onboarding-provider-setup\n\n    Inspect recorded traces:\n      orbi inspect-trace .orbi/artifacts/profiles/run.trace\n\n  Development:\n    Create a new project:\n      orbi init\n\n    Run the app in common modes:\n      orbi run --platform ios --simulator\n      orbi run --platform ios --device --debug\n      orbi run --platform macos\n\n    Check formatting and project semantics:\n      orbi format\n      orbi format --write\n      orbi lint\n\n  Build And Submit:\n    Build local development artifacts:\n      orbi build --platform ios --distribution development\n\n    Build release artifacts:\n      orbi build --platform ios --distribution app-store --release\n      orbi build --platform macos --distribution developer-id --release\n      orbi build --platform macos --distribution mac-app-store --release\n\n    Submit a built artifact:\n      orbi submit --platform ios --wait\n      orbi submit --receipt .orbi/receipts/<receipt>.json --wait"
 )]
 pub struct Cli {
     #[arg(
         long,
         global = true,
-        help = "Use a specific `orbit.json` instead of auto-discovery."
+        help = "Use a specific `orbi.json` instead of auto-discovery."
     )]
     pub manifest: Option<PathBuf>,
 
     #[arg(
         long,
         global = true,
-        help = "Deep-merge `orbit.<env>.json` on top of the base manifest."
+        help = "Deep-merge `orbi.<env>.json` on top of the base manifest."
     )]
     pub env: Option<String>,
 
     #[arg(
         long,
         global = true,
-        help = "Fail instead of prompting when Orbit needs an explicit choice."
+        help = "Fail instead of prompting when Orbi needs an explicit choice."
     )]
     pub non_interactive: bool,
 
@@ -66,11 +66,11 @@ pub struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub enum Command {
-    /// Create a new Orbit scaffold and starter `orbit.json`.
+    /// Create a new Orbi scaffold and starter `orbi.json`.
     Init(InitArgs),
     /// Validate manifest structure, sources, dependencies, and project semantics.
     Lint(LintArgs),
-    /// Check or rewrite formatting using Orbit-owned style settings.
+    /// Check or rewrite formatting using Orbi-owned style settings.
     Format(FormatArgs),
     /// Run unit tests, UI flows, or profiling sessions declared in the manifest.
     Test(TestArgs),
@@ -92,20 +92,20 @@ pub enum Command {
     Build(BuildArgs),
     /// Upload a previously built artifact to Apple services.
     Submit(SubmitArgs),
-    /// Remove local and/or remote Orbit-managed state.
+    /// Remove local and/or remote Orbi-managed state.
     Clean(CleanArgs),
     /// App Store Connect auth, device, signing, and submission workflows backed by embedded `asc` config.
     Asc(Box<AscArgs>),
 }
 
 #[derive(Debug, Args)]
-#[command(about = "Create a new Orbit project scaffold.")]
+#[command(about = "Create a new Orbi project scaffold.")]
 pub struct InitArgs {}
 
 #[derive(Debug, Args)]
 #[command(
     about = "Validate manifest structure, dependency state, and project semantics.",
-    after_help = "Examples:\n  orbit lint\n  orbit lint --platform ios"
+    after_help = "Examples:\n  orbi lint\n  orbi lint --platform ios"
 )]
 pub struct LintArgs {
     #[arg(long, value_enum, help = "Validate one platform explicitly.")]
@@ -114,8 +114,8 @@ pub struct LintArgs {
 
 #[derive(Debug, Args)]
 #[command(
-    about = "Check or rewrite formatting using Orbit-owned style settings.",
-    after_help = "Examples:\n  orbit format\n  orbit format --write"
+    about = "Check or rewrite formatting using Orbi-owned style settings.",
+    after_help = "Examples:\n  orbi format\n  orbi format --write"
 )]
 pub struct FormatArgs {
     #[arg(long, help = "Rewrite files in place instead of reporting diffs.")]
@@ -125,8 +125,8 @@ pub struct FormatArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Run unit tests, UI flows, or profiling sessions declared in the manifest.",
-    long_about = "By default `orbit test` runs the manifest's `tests.unit` suite.\n\nUse `--ui` to run `tests.ui`. UI test flows are JSON files with `$schema`; use `orbit ui init` when you need a starter flow file.",
-    after_help = "Examples:\n  orbit test\n  orbit test --ui --platform ios\n  orbit test --ui --platform macos --flow onboarding-provider-setup\n  orbit test --ui --platform macos --focus\n  orbit test --trace\n  orbit ui init Tests/UI/login.json"
+    long_about = "By default `orbi test` runs the manifest's `tests.unit` suite.\n\nUse `--ui` to run `tests.ui`. UI test flows are JSON files with `$schema`; use `orbi ui init` when you need a starter flow file.",
+    after_help = "Examples:\n  orbi test\n  orbi test --ui --platform ios\n  orbi test --ui --platform macos --flow onboarding-provider-setup\n  orbi test --ui --platform macos --focus\n  orbi test --trace\n  orbi ui init Tests/UI/login.json"
 )]
 pub struct TestArgs {
     #[arg(long, help = "Run `tests.ui` instead of the unit-test suite.")]
@@ -206,7 +206,7 @@ pub struct PreviewShotArgs {
 
     #[arg(
         long,
-        help = "Write the rendered PNG to this path instead of Orbit's default artifacts directory."
+        help = "Write the rendered PNG to this path instead of Orbi's default artifacts directory."
     )]
     pub output: Option<PathBuf>,
 
@@ -222,8 +222,8 @@ pub struct PreviewShotArgs {
 #[command(arg_required_else_help = true)]
 #[command(
     about = "Inspect automation targets and run direct UI actions.",
-    long_about = "Use `orbit ui init` to scaffold a `tests.ui` flow file.\n\nUse `orbit ui clean-trace-temp` when you want to reclaim disk space from stale Instruments temp traces left by previous runs.\n\nUse the other subcommands when you need to inspect a running automation target, debug selectors, or mutate simulator state.",
-    after_help = "Common commands:\n  orbit ui init Tests/UI/login.json\n  orbit ui clean-trace-temp\n  orbit ui tap --platform ios --text Continue\n  orbit ui swipe --platform ios --direction left\n  orbit ui dump-tree --platform ios\n  orbit ui describe-point --platform ios --x 140 --y 142\n  orbit ui doctor --platform macos"
+    long_about = "Use `orbi ui init` to scaffold a `tests.ui` flow file.\n\nUse `orbi ui clean-trace-temp` when you want to reclaim disk space from stale Instruments temp traces left by previous runs.\n\nUse the other subcommands when you need to inspect a running automation target, debug selectors, or mutate simulator state.",
+    after_help = "Common commands:\n  orbi ui init Tests/UI/login.json\n  orbi ui clean-trace-temp\n  orbi ui tap --platform ios --text Continue\n  orbi ui swipe --platform ios --direction left\n  orbi ui dump-tree --platform ios\n  orbi ui describe-point --platform ios --x 140 --y 142\n  orbi ui doctor --platform macos"
 )]
 pub struct UiArgs {
     #[command(subcommand)]
@@ -310,7 +310,7 @@ pub enum UiCommand {
     WaitUntil(UiWaitUntilArgs),
     /// Wait for animations to settle.
     WaitForAnimationToEnd(UiWaitForAnimationToEndArgs),
-    /// Capture a screenshot into Orbit's artifacts directory.
+    /// Capture a screenshot into Orbi's artifacts directory.
     TakeScreenshot(UiTakeScreenshotArgs),
     /// Stream simulator or automation logs.
     Logs(UiLogsArgs),
@@ -443,7 +443,7 @@ pub struct UiSwipeArgs {
     #[arg(
         long,
         value_enum,
-        help = "Swipe in one direction using Orbit's default path."
+        help = "Swipe in one direction using Orbi's default path."
     )]
     pub direction: Option<UiSwipeDirectionArg>,
 
@@ -728,8 +728,8 @@ pub struct UiTravelArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Write a starter JSON UI flow file.",
-    long_about = "Write a starter `tests.ui` flow as JSON with the required `$schema` and `steps` keys.\n\nBy default Orbit infers `appId` from the manifest bundle identifier and `name` from the file stem.",
-    after_help = "Examples:\n  orbit ui init Tests/UI/login.json\n  orbit ui init Tests/UI/login.json --name Login\n  orbit ui init Tests/UI/login.json --app-id dev.orbit.example.app"
+    long_about = "Write a starter `tests.ui` flow as JSON with the required `$schema` and `steps` keys.\n\nBy default Orbi infers `appId` from the manifest bundle identifier and `name` from the file stem.",
+    after_help = "Examples:\n  orbi ui init Tests/UI/login.json\n  orbi ui init Tests/UI/login.json --name Login\n  orbi ui init Tests/UI/login.json --app-id dev.orbi.example.app"
 )]
 pub struct UiInitArgs {
     #[arg(help = "Path to the JSON flow file to create, relative to the project root.")]
@@ -765,8 +765,8 @@ pub struct UiDoctorArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Remove stale `xctrace` / Instruments `.ktrace` temp files from the current user's temp directory.",
-    long_about = "Orbit's macOS trace runs use `xctrace`, which can leave large `instruments*.ktrace` files behind in the current user's temp directory after interrupted sessions.\n\nThis command removes those temp files from `std::env::temp_dir()`. By default it only removes files older than one hour. Pass `--all` to remove every matching temp trace in that directory.",
-    after_help = "Examples:\n  orbit ui clean-trace-temp\n  orbit ui clean-trace-temp --stale-minutes 15\n  orbit ui clean-trace-temp --all"
+    long_about = "Orbi's macOS trace runs use `xctrace`, which can leave large `instruments*.ktrace` files behind in the current user's temp directory after interrupted sessions.\n\nThis command removes those temp files from `std::env::temp_dir()`. By default it only removes files older than one hour. Pass `--all` to remove every matching temp trace in that directory.",
+    after_help = "Examples:\n  orbi ui clean-trace-temp\n  orbi ui clean-trace-temp --stale-minutes 15\n  orbi ui clean-trace-temp --all"
 )]
 pub struct UiCleanTraceTempArgs {
     #[arg(
@@ -835,7 +835,7 @@ pub struct UiLogsArgs {
 
     #[arg(
         allow_hyphen_values = true,
-        help = "Extra log-tool arguments forwarded after Orbit attaches to the selected target."
+        help = "Extra log-tool arguments forwarded after Orbi attaches to the selected target."
     )]
     pub log_args: Vec<String>,
 }
@@ -901,7 +901,7 @@ pub struct UiInstrumentsArgs {
 
     #[arg(
         allow_hyphen_values = true,
-        help = "Extra arguments forwarded to Instruments after Orbit sets up the run."
+        help = "Extra arguments forwarded to Instruments after Orbi sets up the run."
     )]
     pub instrument_args: Vec<String>,
 }
@@ -1073,7 +1073,7 @@ pub struct IdeDumpArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Launch the app on a simulator or device for runtime verification.",
-    after_help = "Examples:\n  orbit run --platform ios --simulator\n  orbit run --platform ios --device --debug\n  orbit run --platform ios --simulator --trace"
+    after_help = "Examples:\n  orbi run --platform ios --simulator\n  orbi run --platform ios --device --debug\n  orbi run --platform ios --simulator --trace"
 )]
 pub struct RunArgs {
     #[arg(
@@ -1120,7 +1120,7 @@ pub struct RunArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Produce signed or unsigned build artifacts.",
-    after_help = "Examples:\n  orbit build --platform ios --distribution development\n  orbit build --platform ios --distribution app-store --release\n  orbit build --platform macos --distribution developer-id --release\n  orbit build --platform macos --distribution mac-app-store --release"
+    after_help = "Examples:\n  orbi build --platform ios --distribution development\n  orbi build --platform ios --distribution app-store --release\n  orbi build --platform macos --distribution developer-id --release\n  orbi build --platform macos --distribution mac-app-store --release"
 )]
 pub struct BuildArgs {
     #[arg(
@@ -1158,7 +1158,7 @@ pub struct BuildArgs {
 
     #[arg(
         long,
-        help = "Write the produced artifact to this path instead of Orbit's default receipt location."
+        help = "Write the produced artifact to this path instead of Orbi's default receipt location."
     )]
     pub output: Option<PathBuf>,
 }
@@ -1166,8 +1166,8 @@ pub struct BuildArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Upload a previously built artifact to Apple services.",
-    long_about = "Use `submit` only when the user explicitly wants a real remote submission. Orbit can derive the latest matching receipt, or you can pass one explicitly with `--receipt`.",
-    after_help = "Examples:\n  orbit submit --platform ios --wait\n  orbit submit --receipt .orbit/receipts/<receipt>.json --wait"
+    long_about = "Use `submit` only when the user explicitly wants a real remote submission. Orbi can derive the latest matching receipt, or you can pass one explicitly with `--receipt`.",
+    after_help = "Examples:\n  orbi submit --platform ios --wait\n  orbi submit --receipt .orbi/receipts/<receipt>.json --wait"
 )]
 pub struct SubmitArgs {
     #[arg(
@@ -1188,7 +1188,7 @@ pub struct SubmitArgs {
 
     #[arg(
         long,
-        help = "Submit this explicit receipt instead of picking the latest matching one from `.orbit/receipts`."
+        help = "Submit this explicit receipt instead of picking the latest matching one from `.orbi/receipts`."
     )]
     pub receipt: Option<PathBuf>,
 
@@ -1201,36 +1201,36 @@ pub struct SubmitArgs {
 
 #[derive(Debug, Args)]
 #[command(
-    about = "Remove local and/or remote Orbit-managed state.",
-    long_about = "`orbit clean` is intentionally destructive. Use `--all` only when you mean to remove both local Orbit state and Orbit-managed remote Apple state."
+    about = "Remove local and/or remote Orbi-managed state.",
+    long_about = "`orbi clean` is intentionally destructive. Use `--all` only when you mean to remove both local Orbi state and Orbi-managed remote Apple state."
 )]
 pub struct CleanArgs {
     #[arg(
         long,
         conflicts_with_all = ["apple", "all"],
-        help = "Remove only local Orbit state such as `.orbit/` artifacts and caches."
+        help = "Remove only local Orbi state such as `.orbi/` artifacts and caches."
     )]
     pub local: bool,
 
     #[arg(
         long,
         conflicts_with_all = ["local", "all"],
-        help = "Remove only Orbit-managed remote Apple state."
+        help = "Remove only Orbi-managed remote Apple state."
     )]
     pub apple: bool,
 
     #[arg(
         long,
         conflicts_with_all = ["local", "apple"],
-        help = "Remove both local Orbit state and Orbit-managed remote Apple state."
+        help = "Remove both local Orbi state and Orbi-managed remote Apple state."
     )]
     pub all: bool,
 }
 
 #[derive(Debug, Args)]
 #[command(
-    about = "App Store Connect auth, device, signing, and submission workflows backed by the embedded `asc` section in `orbit.json`.",
-    after_help = "More help:\n  Use `orbit asc <command> --help` for flags, arguments, and command-specific examples.\n  For example:\n    orbit asc device add --help\n    orbit asc submit --help\n    orbit asc signing merge --help\n\nCommon workflows:\n  Check the embedded ASC config:\n    orbit asc validate\n    orbit asc plan\n\n  Apply ASC-managed signing state:\n    orbit asc apply\n\n  Add the current Mac as a development device and refresh profiles:\n    orbit asc device add-local --current-mac --apply\n\n  Register an iPhone and refresh profiles:\n    orbit asc device add --name \"My iPhone\" --apply\n\n  Print Xcode-style build settings from installed profiles:\n    orbit asc signing print-build-settings\n\n  Submit an artifact directly through ASC:\n    orbit asc submit --file build/MyApp.ipa\n\n  Notarize a Developer ID artifact:\n    orbit asc notarize --file build/MyApp.dmg"
+    about = "App Store Connect auth, device, signing, and submission workflows backed by the embedded `asc` section in `orbi.json`.",
+    after_help = "More help:\n  Use `orbi asc <command> --help` for flags, arguments, and command-specific examples.\n  For example:\n    orbi asc device add --help\n    orbi asc submit --help\n    orbi asc signing merge --help\n\nCommon workflows:\n  Check the embedded ASC config:\n    orbi asc validate\n    orbi asc plan\n\n  Apply ASC-managed signing state:\n    orbi asc apply\n\n  Add the current Mac as a development device and refresh profiles:\n    orbi asc device add-local --current-mac --apply\n\n  Register an iPhone and refresh profiles:\n    orbi asc device add --name \"My iPhone\" --apply\n\n  Print Xcode-style build settings from installed profiles:\n    orbi asc signing print-build-settings\n\n  Submit an artifact directly through ASC:\n    orbi asc submit --file build/MyApp.ipa\n\n  Notarize a Developer ID artifact:\n    orbi asc notarize --file build/MyApp.dmg"
 )]
 #[command(arg_required_else_help = true)]
 pub struct AscArgs {
@@ -1438,15 +1438,15 @@ mod tests {
         let mut command = Cli::command();
         let help = command.render_long_help().to_string();
 
-        assert!(help.contains("orbit ui init Tests/UI/login.json"));
-        assert!(help.contains("orbit preview shot Basic --platform ios"));
-        assert!(help.contains("orbit test --ui --platform macos --flow onboarding-provider-setup"));
+        assert!(help.contains("orbi ui init Tests/UI/login.json"));
+        assert!(help.contains("orbi preview shot Basic --platform ios"));
+        assert!(help.contains("orbi test --ui --platform macos --flow onboarding-provider-setup"));
         assert!(
             help.contains(
-                "orbit test --ui --platform macos --trace --flow onboarding-provider-setup"
+                "orbi test --ui --platform macos --trace --flow onboarding-provider-setup"
             )
         );
-        assert!(help.contains("orbit submit --platform ios --wait"));
+        assert!(help.contains("orbi submit --platform ios --wait"));
         assert!(help.contains("Every command supports `--help`"));
         assert!(help.contains("Recommended UI Workflow:"));
         assert!(help.contains("Write Swift and optional backend unit tests"));
@@ -1454,7 +1454,7 @@ mod tests {
             help.contains("Check that the interface looks right with a SwiftUI preview screenshot")
         );
         assert!(help.contains("Run a final trace pass"));
-        assert!(help.contains("orbit inspect-trace .orbit/artifacts/profiles/run.trace"));
+        assert!(help.contains("orbi inspect-trace .orbi/artifacts/profiles/run.trace"));
         assert!(!help.contains("Common commands:"));
         assert!(!help.contains("query the UI test dialect"));
         assert!(!help.contains("\n  bsp"));
@@ -1492,11 +1492,11 @@ mod tests {
         assert!(help.contains("App Store Connect auth, device, signing, and submission workflows"));
         assert!(help.contains("More help:"));
         assert!(help.contains("Common workflows:"));
-        assert!(help.contains("orbit asc validate"));
-        assert!(help.contains("orbit asc apply"));
-        assert!(help.contains("orbit asc device add --name \"My iPhone\" --apply"));
-        assert!(help.contains("Use `orbit asc <command> --help`"));
-        assert!(help.contains("orbit asc submit --help"));
+        assert!(help.contains("orbi asc validate"));
+        assert!(help.contains("orbi asc apply"));
+        assert!(help.contains("orbi asc device add --name \"My iPhone\" --apply"));
+        assert!(help.contains("Use `orbi asc <command> --help`"));
+        assert!(help.contains("orbi asc submit --help"));
     }
 
     #[test]
@@ -1507,6 +1507,6 @@ mod tests {
         let help = open.render_long_help().to_string();
 
         assert!(help.contains("URL or deep link to open"));
-        assert!(help.contains("Select a platform when Orbit cannot infer one"));
+        assert!(help.contains("Select a platform when Orbi cannot infer one"));
     }
 }

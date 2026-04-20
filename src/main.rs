@@ -1,6 +1,6 @@
 fn main() {
-    if let Err(error) = orbit::run() {
-        eprintln!("orbit: {error:#}");
+    if let Err(error) = orbi::run() {
+        eprintln!("orbi: {error:#}");
         std::process::exit(1);
     }
 }

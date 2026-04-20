@@ -70,32 +70,32 @@ fn run_hook_command(
     command.arg("-lc");
     command.arg(command_text);
     command.current_dir(&project.root);
-    command.env("ORBIT_HOOK", kind.key());
-    command.env("ORBIT_PROJECT_ROOT", &project.root);
-    command.env("ORBIT_MANIFEST_PATH", &project.manifest_path);
+    command.env("ORBI_HOOK", kind.key());
+    command.env("ORBI_PROJECT_ROOT", &project.root);
+    command.env("ORBI_MANIFEST_PATH", &project.manifest_path);
     if let Some(target_name) = context.target_name {
-        command.env("ORBIT_TARGET_NAME", target_name);
+        command.env("ORBI_TARGET_NAME", target_name);
     }
     if let Some(platform) = context.platform {
-        command.env("ORBIT_PLATFORM", platform.to_string());
+        command.env("ORBI_PLATFORM", platform.to_string());
     }
     if let Some(distribution) = context.distribution {
-        command.env("ORBIT_DISTRIBUTION", distribution.as_str());
+        command.env("ORBI_DISTRIBUTION", distribution.as_str());
     }
     if let Some(configuration) = context.configuration {
-        command.env("ORBIT_CONFIGURATION", configuration.as_str());
+        command.env("ORBI_CONFIGURATION", configuration.as_str());
     }
     if let Some(destination) = context.destination {
-        command.env("ORBIT_DESTINATION", destination);
+        command.env("ORBI_DESTINATION", destination);
     }
     if let Some(bundle_path) = context.bundle_path {
-        command.env("ORBIT_BUNDLE_PATH", bundle_path);
+        command.env("ORBI_BUNDLE_PATH", bundle_path);
     }
     if let Some(artifact_path) = context.artifact_path {
-        command.env("ORBIT_ARTIFACT_PATH", artifact_path);
+        command.env("ORBI_ARTIFACT_PATH", artifact_path);
     }
     if let Some(receipt_path) = context.receipt_path {
-        command.env("ORBIT_RECEIPT_PATH", receipt_path);
+        command.env("ORBI_RECEIPT_PATH", receipt_path);
     }
 
     let output = command

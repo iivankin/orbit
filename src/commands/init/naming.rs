@@ -4,8 +4,8 @@ pub(super) fn suggested_product_name(project_root: &Path) -> String {
     let raw_name = project_root
         .file_name()
         .and_then(|value| value.to_str())
-        .unwrap_or("OrbitApp");
-    pascal_case_words(raw_name, "OrbitApp")
+        .unwrap_or("OrbiApp");
+    pascal_case_words(raw_name, "OrbiApp")
 }
 
 pub(super) fn bundle_id_suffix(name: &str) -> String {
@@ -22,13 +22,13 @@ pub(super) fn bundle_id_suffix(name: &str) -> String {
 }
 
 pub(super) fn swift_type_name(name: &str) -> String {
-    let mut type_name = pascal_case_words(name, "Orbit");
+    let mut type_name = pascal_case_words(name, "Orbi");
     if type_name
         .chars()
         .next()
         .is_some_and(|character| character.is_ascii_digit())
     {
-        type_name.insert_str(0, "Orbit");
+        type_name.insert_str(0, "Orbi");
     }
     type_name
 }

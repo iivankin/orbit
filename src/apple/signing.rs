@@ -26,7 +26,7 @@ use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, TargetManifest};
 use crate::util::{CliSpinner, ensure_parent_dir};
 
-const P12_PASSWORD_SERVICE: &str = "dev.orbit.cli.codesign-p12";
+const P12_PASSWORD_SERVICE: &str = "dev.orbi.cli.codesign-p12";
 
 #[derive(Debug, Clone)]
 pub struct SigningMaterial {

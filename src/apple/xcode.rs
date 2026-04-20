@@ -142,7 +142,7 @@ fn required_developer_dir_entry(
         path.push(component);
     }
     if !path.exists() {
-        bail!("Orbit could not find {description} at {}", path.display());
+        bail!("Orbi could not find {description} at {}", path.display());
     }
     Ok(path)
 }

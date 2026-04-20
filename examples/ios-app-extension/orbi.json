@@ -1,0 +1,35 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleExtensionApp",
+  "bundle_id": "dev.orbi.examples.extensionapp",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "ios": "18.0"
+  },
+  "sources": [
+    "Sources/App",
+    "Sources/Shared"
+  ],
+  "extensions": {
+    "tunnel": {
+      "kind": "packet-tunnel",
+      "sources": [
+        "Sources/TunnelExtension"
+      ],
+      "dependencies": {
+        "NetworkExtension": {
+          "framework": true
+        }
+      },
+      "entry": {
+        "class": "PacketTunnelProvider"
+      },
+      "entitlements": {
+        "network_extensions": [
+          "packet-tunnel-provider"
+        ]
+      }
+    }
+  }
+}

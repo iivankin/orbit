@@ -1,11 +1,11 @@
 {
-  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
-  "appId": "dev.orbit.examples.exampleiosapp",
+  "$schema": "../../../../schemas/orbi-ui-test.v1.json",
+  "appId": "dev.orbi.examples.exampleiosapp",
   "name": "Login Demo",
   "steps": [
     "launchApp",
     {
-      "assertVisible": "Orbit UI Demo"
+      "assertVisible": "Orbi UI Demo"
     },
     {
       "tapOn": "Open Form"
@@ -17,7 +17,7 @@
       "tapOn": "Email"
     },
     {
-      "inputText": "ilya@orbit.dev"
+      "inputText": "ilya@orbi.dev"
     },
     {
       "tapOn": "Password"

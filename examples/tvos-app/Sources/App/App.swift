@@ -4,7 +4,7 @@ import SwiftUI
 struct ExampleTVApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Orbit tvOS fixture")
+            Text("Orbi tvOS fixture")
         }
     }
 }

@@ -38,7 +38,7 @@ pub fn dump_args(
         explicit_platform,
     )?;
     eprintln!(
-        "orbit > {}",
+        "orbi > {}",
         cached_artifact.cache_status.message(explicit_platform)
     );
     let mut artifact = cached_artifact.artifact;

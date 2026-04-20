@@ -1,0 +1,24 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleMacApp",
+  "bundle_id": "dev.orbi.examples.macos",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "macos": "14.0"
+  },
+  "macos": {
+    "universal_binary": true
+  },
+  "sources": [
+    "Sources/App"
+  ],
+  "resources": [
+    "Resources"
+  ],
+  "tests": {
+    "ui": [
+      "Tests/UI"
+    ]
+  }
+}

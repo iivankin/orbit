@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://orbitstorage.dev/schemas/orbi-ui-test.v1-orbi-0.1.0.json",
+  "title": "Orbi UI Test Flow v1",
+  "description": "Authoring schema for Orbi UI test flow JSON files.",
+  "type": "object",
+  "required": [
+    "$schema",
+    "steps"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Schema identifier used for editor validation. This can be a version-pinned published URL from `https://orbitstorage.dev/schemas/` or a local path ending with `orbi-ui-test.v1.json`."
+    },
+    "appId": {
+      "type": "string",
+      "description": "Optional bundle identifier override for launch and permission commands."
+    },
+    "name": {
+      "type": "string",
+      "description": "Optional human-readable name used for flow selection."
+    },
+    "steps": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "$ref": "#/$defs/command"
+      }
+    }
+  },
+  "$defs": {
+    "bareCommand": {
+      "type": "string",
+      "enum": [
+        "launchApp",
+        "stopApp",
+        "killApp",
+        "clearState",
+        "clearKeychain",
+        "pasteText",
+        "hideKeyboard",
+        "stopRecording",
+        "waitForAnimationToEnd"
+      ]
+    },
+    "command": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/bareCommand"
+        },
+        {
+          "type": "object",
+          "minProperties": 1,
+          "maxProperties": 1,
+          "propertyNames": {
+            "enum": [
+              "launchApp",
+              "stopApp",
+              "killApp",
+              "clearState",
+              "tapOn",
+              "hoverOn",
+              "rightClickOn",
+              "tapOnPoint",
+              "doubleTapOn",
+              "longPressOn",
+              "swipe",
+              "swipeOn",
+              "dragAndDrop",
+              "scroll",
+              "scrollOn",
+              "scrollUntilVisible",
+              "inputText",
+              "pasteText",
+              "setClipboard",
+              "copyTextFrom",
+              "eraseText",
+              "pressKey",
+              "pressKeyCode",
+              "keySequence",
+              "pressButton",
+              "selectMenuItem",
+              "hideKeyboard",
+              "assertVisible",
+              "assertNotVisible",
+              "extendedWaitUntil",
+              "waitForAnimationToEnd",
+              "takeScreenshot",
+              "startRecording",
+              "stopRecording",
+              "openLink",
+              "setLocation",
+              "setPermissions",
+              "travel",
+              "addMedia",
+              "runFlow",
+              "repeat",
+              "retry"
+            ]
+          },
+          "additionalProperties": true
+        }
+      ]
+    }
+  }
+}

@@ -57,7 +57,7 @@ pub(super) fn run_on_macos(
         )?;
         let launch_target = prepare_macos_trace_launch_executable(&project.project_paths, receipt)?;
         println!(
-            "Launching {} under xctrace on the local Mac. Orbit will wait for the recording to finish; press Ctrl-C to stop.",
+            "Launching {} under xctrace on the local Mac. Orbi will wait for the recording to finish; press Ctrl-C to stop.",
             receipt.bundle_id
         );
         let trace = crate::apple::profile::start_optional_launched_process_trace(
@@ -73,7 +73,7 @@ pub(super) fn run_on_macos(
     }
 
     println!(
-        "Launching {} on the local Mac. Orbit will hand control to the app until it exits; press Ctrl-C to stop.",
+        "Launching {} on the local Mac. Orbi will hand control to the app until it exits; press Ctrl-C to stop.",
         receipt.bundle_id
     );
     run_macos_application(project, receipt)
@@ -185,10 +185,10 @@ fn run_macos_application(project: &ProjectContext, receipt: &BuildReceipt) -> Re
         lldb_expect_macos_run_script(project.selected_xcode.as_ref())?.as_bytes(),
     )
     .with_context(|| format!("failed to write {}", lldb_script.display()))?;
-    // Drive the local macOS app through a small wrapper so Orbit can:
+    // Drive the local macOS app through a small wrapper so Orbi can:
     // - launch the app through an LLDB/debugserver path that matches Xcode more closely,
     // - stream stdout/stderr and translated os_log records through a named pipe,
-    // - and quit the app when Orbit receives INT/TERM/HUP.
+    // - and quit the app when Orbi receives INT/TERM/HUP.
     let script_contents = format!(
         r#"#!/bin/zsh
 set -uo pipefail
@@ -259,7 +259,7 @@ pub(super) fn debug_on_macos(project: &ProjectContext, receipt: &BuildReceipt) -
     )
     .with_context(|| format!("failed to write {}", lldb_script.display()))?;
     println!(
-        "Launching LLDB for {} on the local Mac. Orbit will launch the app and keep LLDB attached while it runs. Use `quit` to end the session; Ctrl-C exits LLDB and stops the app.",
+        "Launching LLDB for {} on the local Mac. Orbi will launch the app and keep LLDB attached while it runs. Use `quit` to end the session; Ctrl-C exits LLDB and stops the app.",
         receipt.bundle_id
     );
 
@@ -277,7 +277,7 @@ pub(super) fn run_on_simulator(
     let _app_logs = start_simulator_app_logs(project, &device, receipt);
 
     println!(
-        "Launching {} on {}. Orbit will stay attached to the simulator console; press Ctrl-C to stop.",
+        "Launching {} on {}. Orbi will stay attached to the simulator console; press Ctrl-C to stop.",
         receipt.bundle_id, device.name
     );
 
@@ -301,7 +301,7 @@ pub(super) fn debug_on_simulator(project: &ProjectContext, receipt: &BuildReceip
     let _app_logs = start_simulator_app_logs(project, &device, receipt);
 
     println!(
-        "Launching {} on {} in debug mode. Orbit will open LLDB, attach, and continue the app. Use `quit` to end the session; Ctrl-C exits LLDB and stops the app.",
+        "Launching {} on {} in debug mode. Orbi will open LLDB, attach, and continue the app. Use `quit` to end the session; Ctrl-C exits LLDB and stops the app.",
         receipt.bundle_id, device.name
     );
 
@@ -332,7 +332,7 @@ pub(super) fn run_on_device(
     let installed = install_on_device(project.selected_xcode.as_ref(), device, receipt)?;
     if let Some(kind) = trace {
         println!(
-            "Launching {} under xctrace on {}. Orbit will wait for the recording to finish; press Ctrl-C to stop.",
+            "Launching {} under xctrace on {}. Orbi will wait for the recording to finish; press Ctrl-C to stop.",
             receipt.bundle_id,
             device.name()
         );
@@ -340,7 +340,7 @@ pub(super) fn run_on_device(
     }
 
     println!(
-        "Launching {} on {}. Orbit will stay attached to the device console; press Ctrl-C to stop.",
+        "Launching {} on {}. Orbi will stay attached to the device console; press Ctrl-C to stop.",
         receipt.bundle_id,
         device.name()
     );
@@ -379,7 +379,7 @@ pub(super) fn debug_on_device(
     )?;
 
     println!(
-        "Launching {} on {} in debug mode. Orbit will open LLDB, attach, and continue the app. Use `quit` to end the session; Ctrl-C interrupts the target.",
+        "Launching {} on {} in debug mode. Orbi will open LLDB, attach, and continue the app. Use `quit` to end the session; Ctrl-C interrupts the target.",
         receipt.bundle_id,
         device.name()
     );
@@ -618,7 +618,7 @@ fn debug_on_ios_device(
     )?;
 
     println!(
-        "Launching {} on {} in debug mode. Orbit will open LLDB and attach to the launched app. Use `quit` to end the session; Ctrl-C exits LLDB and stops the app.",
+        "Launching {} on {} in debug mode. Orbi will open LLDB and attach to the launched app. Use `quit` to end the session; Ctrl-C exits LLDB and stops the app.",
         receipt.bundle_id,
         device.name()
     );
@@ -696,7 +696,7 @@ pub(crate) fn prepare_macos_trace_launch_executable(
     })?;
     // `xctrace --launch -- <bundle.app>` spawns an extra Dock-visible app instance on macOS.
     // Launching a uniquely named executable inside a copied bundle avoids that duplicate process,
-    // but still gives Orbit a stable, unambiguous target for tracing.
+    // but still gives Orbi a stable, unambiguous target for tracing.
     let launch_executable_name = macos_trace_launch_executable_name(
         launch_alias
             .file_stem()
@@ -832,9 +832,9 @@ fn macos_trace_launch_executable_name(value: &str) -> String {
         .collect::<String>();
     let trimmed = sanitized.trim_matches('_');
     if trimmed.is_empty() {
-        "OrbitTraceLaunch".to_owned()
+        "OrbiRunTraceLaunch".to_owned()
     } else {
-        format!("OrbitTrace{trimmed}")
+        format!("OrbiRunTrace{trimmed}")
     }
 }
 
@@ -1092,11 +1092,11 @@ fn wait_for_device_process_for_installation(
         {
             if let Some(signal) = status.signal() {
                 bail!(
-                    "`devicectl device process launch --console --start-stopped` exited from signal {signal} before Orbit could attach LLDB"
+                    "`devicectl device process launch --console --start-stopped` exited from signal {signal} before Orbi could attach LLDB"
                 );
             }
             bail!(
-                "`devicectl device process launch --console --start-stopped` exited with {status} before Orbit could attach LLDB"
+                "`devicectl device process launch --console --start-stopped` exited with {status} before Orbi could attach LLDB"
             );
         }
 
@@ -1297,7 +1297,7 @@ fn macos_debug_wrapper_script(
     log_pipe: &str,
     bundle_id: &str,
 ) -> Result<String> {
-    let orbit_pid = std::process::id();
+    let orbi_pid = std::process::id();
     Ok(format!(
         r#"#!/bin/zsh
 set -uo pipefail
@@ -1337,7 +1337,7 @@ done
 /usr/bin/pkill -TERM -f "$executable" >/dev/null 2>&1 || true
 sleep 0.5
 /usr/bin/pkill -KILL -f "$executable" >/dev/null 2>&1 || true
-' _ {orbit_pid} {executable} {quit_script} >/dev/null 2>&1 &
+' _ {orbi_pid} {executable} {quit_script} >/dev/null 2>&1 &
 guardian_pid=$!
 
 /usr/bin/expect -f {lldb_script} {executable} {log_pipe}
@@ -1347,7 +1347,7 @@ cleanup "${{launcher_status}}"
         executable = shell_quote_arg(executable),
         lldb_script = shell_quote_arg(lldb_script),
         log_pipe = shell_quote_arg(log_pipe),
-        orbit_pid = orbit_pid,
+        orbi_pid = orbi_pid,
         quit_script = shell_quote_arg(&macos_quit_applescript(bundle_id)),
     ))
 }
@@ -1818,7 +1818,7 @@ fn ensure_device_symbols_available(
                 Ok(Some(symbol_root))
             } else {
                 spinner.finish_warning(format!(
-                    "Orbit prepared device support for {platform}, but no usable symbol root was found. LLDB will fall back to reading symbols from the device."
+                    "Orbi prepared device support for {platform}, but no usable symbol root was found. LLDB will fall back to reading symbols from the device."
                 ));
                 Ok(None)
             }
@@ -1829,7 +1829,7 @@ fn ensure_device_symbols_available(
                 return Err(error);
             }
             spinner.finish_warning(format!(
-                "Orbit could not cache device symbols for {platform}: {error}. LLDB will fall back to reading symbols from the device."
+                "Orbi could not cache device symbols for {platform}: {error}. LLDB will fall back to reading symbols from the device."
             ));
             Ok(None)
         }
@@ -1966,7 +1966,7 @@ fn resolve_device_symbol_root(
             candidates.into_iter().next().unwrap_or_else(|| {
                 support_root
                     .join(format!(
-                        "Orbit {}",
+                        "Orbi {}",
                         sanitize_device_support_component(device.provisioning_udid())
                     ))
                     .join("Symbols")
@@ -2014,7 +2014,7 @@ fn device_support_label_candidates(device: &PhysicalDevice) -> Vec<String> {
     }
     if labels.is_empty() {
         labels.push(format!(
-            "Orbit {}",
+            "Orbi {}",
             sanitize_device_support_component(device.provisioning_udid())
         ));
     }
@@ -2420,7 +2420,7 @@ mod tests {
             configuration: BuildConfiguration::Debug,
             distribution: DistributionKind::Development,
             destination: "local".to_owned(),
-            bundle_id: "dev.orbit.examples.examplemacapp".to_owned(),
+            bundle_id: "dev.orbi.examples.examplemacapp".to_owned(),
             bundle_path: bundle_root.clone(),
             artifact_path: bundle_root,
         });
@@ -2523,7 +2523,7 @@ mod tests {
             configuration: crate::manifest::BuildConfiguration::Debug,
             distribution: crate::manifest::DistributionKind::Development,
             destination: "simulator".to_owned(),
-            bundle_id: "dev.orbit.examples.exampleiosapp".to_owned(),
+            bundle_id: "dev.orbi.examples.exampleiosapp".to_owned(),
             bundle_path: PathBuf::from("/tmp/ExampleIOSApp.app"),
             artifact_path: PathBuf::from("/tmp/ExampleIOSApp.app"),
             created_at_unix: 1,
@@ -2619,7 +2619,7 @@ mod tests {
             "/tmp/ExampleMacApp",
             "/tmp/debug.expect",
             "/tmp/inferior.pipe",
-            "dev.orbit.examples.macos",
+            "dev.orbi.examples.macos",
         )
         .unwrap();
 

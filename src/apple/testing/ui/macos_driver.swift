@@ -21,7 +21,7 @@ enum DriverError: Error, CustomStringConvertible {
         case .invalidFlag(let flag, let value):
             return "invalid value `\(value)` for \(flag)"
         case .accessibilityPermission:
-            return "macOS UI automation requires Accessibility access for Orbit or the calling terminal. Enable it in System Settings > Privacy & Security > Accessibility and try again."
+            return "macOS UI automation requires Accessibility access for Orbi or the calling terminal. Enable it in System Settings > Privacy & Security > Accessibility and try again."
         case .appNotRunning(let bundleID):
             return "application `\(bundleID)` is not running"
         case .pointHitTest(let x, let y):
@@ -1474,7 +1474,7 @@ func writeWindowScreenshot(target: ApplicationTarget, outputPath: String) throws
 func run() throws {
     var arguments = Array(CommandLine.arguments.dropFirst())
     guard !arguments.isEmpty else {
-        throw DriverError.usage("usage: orbit-macos-ui-driver <command> [options]")
+        throw DriverError.usage("usage: orbi-macos-ui-driver <command> [options]")
     }
 
     let command = arguments.removeFirst()

@@ -153,7 +153,7 @@ fn create_certificate_authority(root: &Path) -> (PathBuf, PathBuf) {
                 "-out",
                 cert_path.to_str().unwrap(),
                 "-subj",
-                "/CN=Orbit Mock CA",
+                "/CN=Orbi Mock CA",
             ])
             .status()
             .unwrap()
@@ -323,7 +323,7 @@ fn asc_response_body(
                 "id": "DEVICE1",
                 "type": "devices",
                 "attributes": {
-                    "name": "Orbit Mock Mac",
+                    "name": "Orbi Mock Mac",
                     "platform": "MAC_OS",
                     "udid": "MAC-UDID",
                     "deviceClass": "MAC",
@@ -350,7 +350,7 @@ fn asc_response_body(
                 "id": "DEVICE1",
                 "type": "devices",
                 "attributes": {
-                    "name": json["data"]["attributes"]["name"].as_str().unwrap_or("Orbit Mock Mac"),
+                    "name": json["data"]["attributes"]["name"].as_str().unwrap_or("Orbi Mock Mac"),
                     "platform": json["data"]["attributes"]["platform"].as_str().unwrap_or("MAC_OS"),
                     "udid": json["data"]["attributes"]["udid"].as_str().unwrap_or("MAC-UDID"),
                     "deviceClass": "MAC",
@@ -389,7 +389,7 @@ fn asc_response_body(
                 "id": "PROFILE1",
                 "type": "profiles",
                 "attributes": {
-                    "name": "Orbit Mock Profile",
+                    "name": "Orbi Mock Profile",
                     "platform": platform,
                     "profileType": profile_type,
                     "profileState": "ACTIVE",
@@ -410,7 +410,7 @@ fn asc_response_body(
                 "type": "apps",
                 "attributes": {
                     "name": app_name,
-                    "sku": "DEV-ORBIT-FIXTURE",
+                    "sku": "DEV-ORBI-FIXTURE",
                     "bundleId": bundle_identifier,
                     "primaryLocale": "en-US"
                 },
@@ -430,7 +430,7 @@ fn asc_response_body(
                 "type": "apps",
                 "attributes": {
                     "name": app_name,
-                    "sku": "DEV-ORBIT-FIXTURE",
+                    "sku": "DEV-ORBI-FIXTURE",
                     "bundleId": bundle_identifier,
                     "primaryLocale": "en-US"
                 },
@@ -455,7 +455,7 @@ fn mock_certificate_display_name(certificate_type: &str) -> &'static str {
         "MAC_INSTALLER_DISTRIBUTION" | "DEVELOPER_ID_INSTALLER" => {
             "Developer ID Installer: Example Team"
         }
-        _ => "Orbit Mock Certificate",
+        _ => "Orbi Mock Certificate",
     }
 }
 

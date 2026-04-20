@@ -16,8 +16,8 @@ mod workspaces;
 #[allow(unused_imports)]
 pub use self::asc_mock::{AscMockServer, spawn_asc_mock};
 pub use self::command_fixtures::{
-    base_command, clear_log, create_home, latest_receipt_path, orbit_bin, orbit_cache_dir,
-    read_log, run_and_capture, sourcekit_lsp_command, write_executable,
+    base_command, clear_log, create_home, latest_receipt_path, orbi_bin, orbi_cache_dir, read_log,
+    run_and_capture, sourcekit_lsp_command, write_executable,
 };
 pub use self::crypto::create_api_key;
 pub use self::tool_mocks::{
@@ -67,11 +67,11 @@ pub fn prepare_embedded_asc_state(
     seed_mock_asc_auth(home, "TEAM123456", api_key_path);
 
     let mut apply = base_command(workspace, home, mock_bin, log_path);
-    apply.env("ORBIT_ASC_BASE_URL", base_url);
+    apply.env("ORBI_ASC_BASE_URL", base_url);
     apply.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "apply",
     ]);
@@ -86,7 +86,7 @@ pub fn prepare_embedded_asc_state(
     import.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "signing",
         "import",
@@ -109,7 +109,7 @@ pub fn prepare_manual_developer_id_embedded_asc_state(
     security_db_path: &std::path::Path,
 ) {
     let manifest: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join("orbit.json")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(workspace.join("orbi.json")).unwrap()).unwrap();
     let asc = manifest.get("asc").cloned().unwrap();
     let team_id = asc.get("team_id").and_then(|value| value.as_str()).unwrap();
     let (bundle_logical_name, bundle_spec) = asc
@@ -144,8 +144,8 @@ pub fn prepare_manual_developer_id_embedded_asc_state(
         .and_then(|value| value.as_str())
         .unwrap();
 
-    let orbit_asc_dir = workspace.join(".orbit/asc");
-    fs::create_dir_all(&orbit_asc_dir).unwrap();
+    let orbi_asc_dir = workspace.join(".orbi/asc");
+    fs::create_dir_all(&orbi_asc_dir).unwrap();
     let workspace_bundle = asc_sync::sync::Workspace::new(workspace);
     let passwords = BTreeMap::from([
         (
@@ -163,7 +163,7 @@ pub fn prepare_manual_developer_id_embedded_asc_state(
 
     let pkcs12_password = "developer-id-test-password".to_owned();
     let (pkcs12, serial_number) =
-        create_pkcs12_fixture(&orbit_asc_dir, certificate_name, &pkcs12_password);
+        create_pkcs12_fixture(&orbi_asc_dir, certificate_name, &pkcs12_password);
     runtime.set_cert(certificate_logical_name.to_owned(), pkcs12);
     runtime.set_cert_password(certificate_logical_name.to_owned(), pkcs12_password.clone());
     runtime.set_profile(
@@ -215,7 +215,7 @@ pub fn prepare_manual_developer_id_embedded_asc_state(
     import.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "signing",
         "import",

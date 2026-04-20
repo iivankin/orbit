@@ -19,12 +19,12 @@ pub(crate) struct EmbeddedAscConfig {
 }
 
 pub(crate) fn materialize(project: &ProjectContext) -> Result<EmbeddedAscConfig> {
-    let raw = load_raw(project)?.context("`orbit asc` requires an `asc` section in orbit.json")?;
+    let raw = load_raw(project)?.context("`orbi asc` requires an `asc` section in orbi.json")?;
     let parsed: Config = serde_json::from_value(raw.clone())
-        .context("failed to parse `asc` section from orbit.json")?;
+        .context("failed to parse `asc` section from orbi.json")?;
     parsed
         .validate()
-        .context("invalid `asc` section in orbit.json")?;
+        .context("invalid `asc` section in orbi.json")?;
     let workspace_root = project
         .manifest_path
         .parent()
@@ -172,10 +172,10 @@ mod tests {
     use crate::util::read_json_file;
 
     fn project_with_env(root: &std::path::Path, manifest_env: Option<&str>) -> ProjectContext {
-        let orbit_dir = root.join(".orbit");
-        let build_dir = orbit_dir.join("build");
-        let artifacts_dir = orbit_dir.join("artifacts");
-        let receipts_dir = orbit_dir.join("receipts");
+        let orbi_dir = root.join(".orbi");
+        let build_dir = orbi_dir.join("build");
+        let artifacts_dir = orbi_dir.join("artifacts");
+        let receipts_dir = orbi_dir.join("receipts");
         std::fs::create_dir_all(&build_dir).unwrap();
         std::fs::create_dir_all(&artifacts_dir).unwrap();
         std::fs::create_dir_all(&receipts_dir).unwrap();
@@ -193,7 +193,7 @@ mod tests {
                 },
             },
             root: root.to_path_buf(),
-            manifest_path: root.join("orbit.json"),
+            manifest_path: root.join("orbi.json"),
             manifest_schema: ManifestSchema::AppleAppV1,
             resolved_manifest: ResolvedManifest {
                 name: "Example".to_owned(),
@@ -212,7 +212,7 @@ mod tests {
                 targets: vec![TargetManifest {
                     name: "Example".to_owned(),
                     kind: TargetKind::App,
-                    bundle_id: "dev.orbit.example".to_owned(),
+                    bundle_id: "dev.orbi.example".to_owned(),
                     display_name: None,
                     build_number: None,
                     platforms: vec![ApplePlatform::Ios],
@@ -233,7 +233,7 @@ mod tests {
             },
             selected_xcode: None,
             project_paths: ProjectPaths {
-                orbit_dir,
+                orbi_dir,
                 build_dir,
                 artifacts_dir,
                 receipts_dir,
@@ -253,7 +253,7 @@ mod tests {
             serde_json::to_vec_pretty(&json!({
                 "$schema": crate::apple::manifest::SCHEMA_URL,
                 "name": "Example",
-                "bundle_id": "dev.orbit.example",
+                "bundle_id": "dev.orbi.example",
                 "version": "1.0.0",
                 "build": 1,
                 "platforms": { "ios": "18.0" },
@@ -262,7 +262,7 @@ mod tests {
                     "team_id": "BASETEAM",
                     "bundle_ids": {
                         "app": {
-                            "bundle_id": "dev.orbit.example",
+                            "bundle_id": "dev.orbi.example",
                             "name": "Example",
                             "platform": "ios"
                         }
@@ -307,7 +307,7 @@ mod tests {
             "team_id": "BASETEAM",
             "bundle_ids": {
                 "app": {
-                    "bundle_id": "dev.orbit.example",
+                    "bundle_id": "dev.orbi.example",
                     "name": "Example",
                     "platform": "ios"
                 }
@@ -371,7 +371,7 @@ mod tests {
             serde_json::to_vec_pretty(&json!({
                 "$schema": crate::apple::manifest::SCHEMA_URL,
                 "name": "Example",
-                "bundle_id": "dev.orbit.example",
+                "bundle_id": "dev.orbi.example",
                 "version": "1.0.0",
                 "build": 1,
                 "platforms": { "ios": "18.0" },
@@ -380,7 +380,7 @@ mod tests {
                     "team_id": "BASETEAM",
                     "bundle_ids": {
                         "app": {
-                            "bundle_id": "dev.orbit.example",
+                            "bundle_id": "dev.orbi.example",
                             "name": "Example",
                             "platform": "ios"
                         }
@@ -400,7 +400,7 @@ mod tests {
             "team_id": "BASETEAM",
             "bundle_ids": {
                 "app": {
-                    "bundle_id": "dev.orbit.example",
+                    "bundle_id": "dev.orbi.example",
                     "name": "Example",
                     "platform": "ios"
                 }

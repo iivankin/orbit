@@ -196,7 +196,7 @@ fn run_ui_flow_paths(
     let run_id = format!("{}-{}", unix_timestamp_secs(), Uuid::new_v4());
     let run_root = project
         .project_paths
-        .orbit_dir
+        .orbi_dir
         .join("tests")
         .join("ui")
         .join(&run_id);
@@ -341,7 +341,7 @@ pub(crate) fn doctor(project: &ProjectContext, platform: ApplePlatform) -> Resul
     match platform {
         ApplePlatform::Ios => {
             idb::ensure_tooling_available()?;
-            println!("ui backend: orbit-idb-ios-simulator");
+            println!("ui backend: orbi-idb-ios-simulator");
             println!("idb: ok");
             println!("idb_companion: ok");
             Ok(())
@@ -352,7 +352,7 @@ pub(crate) fn doctor(project: &ProjectContext, platform: ApplePlatform) -> Resul
             ensure_macos_ui_test_requirements(&status)
         }
         _ => bail!(
-            "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
+            "Orbi UI automation currently supports only `--platform ios` and `--platform macos`"
         ),
     }
 }
@@ -393,7 +393,7 @@ pub(crate) fn attach_backend(
             Ok(prepared.backend)
         }
         _ => bail!(
-            "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
+            "Orbi UI automation currently supports only `--platform ios` and `--platform macos`"
         ),
     }
 }
@@ -422,7 +422,7 @@ fn backend_for_ui_command(
 }
 
 fn print_macos_doctor_status(status: &MacosDoctorStatus) {
-    println!("ui backend: orbit-ax-macos");
+    println!("ui backend: orbi-ax-macos");
     println!(
         "accessibility: {}",
         if status.accessibility_trusted {
@@ -494,12 +494,12 @@ fn ensure_macos_ui_test_requirements(status: &MacosDoctorStatus) -> Result<()> {
     let mut missing = Vec::new();
     if !status.accessibility_trusted {
         missing.push(
-            "Accessibility access for Orbit or the calling terminal in System Settings > Privacy & Security > Accessibility",
+            "Accessibility access for Orbi or the calling terminal in System Settings > Privacy & Security > Accessibility",
         );
     }
     if !status.screen_capture_access {
         missing.push(
-            "Screen Recording access for Orbit or the calling terminal in System Settings > Privacy & Security > Screen Recording",
+            "Screen Recording access for Orbi or the calling terminal in System Settings > Privacy & Security > Screen Recording",
         );
     }
 
@@ -546,7 +546,7 @@ fn prepare_ui_session(
             })
         }
         _ => bail!(
-            "Orbit UI automation currently supports only `--platform ios` and `--platform macos`"
+            "Orbi UI automation currently supports only `--platform ios` and `--platform macos`"
         ),
     }
 }

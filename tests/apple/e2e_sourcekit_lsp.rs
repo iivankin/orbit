@@ -7,7 +7,7 @@ use crate::support::{
 
 #[test]
 #[ignore = "manual sourcekit-lsp integration test"]
-fn sourcekit_lsp_debug_index_uses_orbit_build_server() {
+fn sourcekit_lsp_debug_index_uses_orbi_build_server() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_mixed_language_workspace(temp.path());
     let home = create_home(temp.path());
@@ -22,7 +22,7 @@ fn sourcekit_lsp_debug_index_uses_orbit_build_server() {
     install.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "install-build-server",
     ]);

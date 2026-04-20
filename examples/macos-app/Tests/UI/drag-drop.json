@@ -1,6 +1,6 @@
 {
-  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
-  "appId": "dev.orbit.examples.macos",
+  "$schema": "../../../../schemas/orbi-ui-test.v1.json",
+  "appId": "dev.orbi.examples.macos",
   "name": "macos-drag-drop",
   "steps": [
     "launchApp",
@@ -17,7 +17,7 @@
       }
     },
     {
-      "assertVisible": "Dropped orbit-token"
+      "assertVisible": "Dropped orbi-token"
     },
     {
       "takeScreenshot": "macos-drag-drop"

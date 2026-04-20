@@ -35,11 +35,11 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
     let root = manifest_path.parent().unwrap().to_path_buf();
     let data_dir = temp.path().join("data");
     let cache_dir = temp.path().join("cache");
-    let orbit_dir = temp.path().join("orbit");
-    let build_dir = orbit_dir.join("build");
-    let artifacts_dir = orbit_dir.join("artifacts");
-    let receipts_dir = orbit_dir.join("receipts");
-    let manifest = ResolvedManifest::load(&manifest_path, &orbit_dir).unwrap();
+    let orbi_dir = temp.path().join("orbi");
+    let build_dir = orbi_dir.join("build");
+    let artifacts_dir = orbi_dir.join("artifacts");
+    let receipts_dir = orbi_dir.join("receipts");
+    let manifest = ResolvedManifest::load(&manifest_path, &orbi_dir).unwrap();
     std::fs::create_dir_all(&data_dir).unwrap();
     std::fs::create_dir_all(&cache_dir).unwrap();
     std::fs::create_dir_all(&build_dir).unwrap();
@@ -64,7 +64,7 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
         resolved_manifest: manifest,
         selected_xcode: None,
         project_paths: ProjectPaths {
-            orbit_dir,
+            orbi_dir,
             build_dir,
             artifacts_dir,
             receipts_dir,
@@ -76,7 +76,7 @@ fn project_for_fixture(path: &str) -> (TempDir, ProjectContext) {
 #[cfg(target_os = "macos")]
 #[test]
 fn writes_ios_app_defaults_without_scene_manifest_inference() {
-    let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
+    let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbi.json");
     let target = project
         .resolved_manifest
         .resolve_target(Some("ExampleIOSApp"))
@@ -157,7 +157,7 @@ fn writes_ios_app_defaults_without_scene_manifest_inference() {
 #[cfg(target_os = "macos")]
 #[test]
 fn writes_extension_top_level_info_plist_extra() {
-    let (temp, project) = project_for_fixture("examples/ios-app-extension/orbit.json");
+    let (temp, project) = project_for_fixture("examples/ios-app-extension/orbi.json");
     let mut target = project
         .resolved_manifest
         .resolve_target(Some("TunnelExtension"))
@@ -167,7 +167,7 @@ fn writes_extension_top_level_info_plist_extra() {
         "CFBundleDocumentTypes".to_owned(),
         json!([{
             "CFBundleTypeRole": "Editor",
-            "LSItemContentTypes": ["dev.orbit.examples.extensionapp.tunnel-document"]
+            "LSItemContentTypes": ["dev.orbi.examples.extensionapp.tunnel-document"]
         }]),
     );
     let bundle_root = temp.path().join("TunnelExtension.appex");
@@ -198,7 +198,7 @@ fn writes_extension_top_level_info_plist_extra() {
                 (
                     "LSItemContentTypes".to_owned(),
                     Value::Array(vec![Value::String(
-                        "dev.orbit.examples.extensionapp.tunnel-document".to_owned(),
+                        "dev.orbi.examples.extensionapp.tunnel-document".to_owned(),
                     )]),
                 ),
             ])
@@ -209,13 +209,13 @@ fn writes_extension_top_level_info_plist_extra() {
 #[cfg(target_os = "macos")]
 #[test]
 fn applies_manifest_driven_ios_plist_metadata() {
-    let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbit.json");
+    let (temp, project) = project_for_fixture("examples/ios-simulator-app/orbi.json");
     let mut target = project
         .resolved_manifest
         .resolve_target(Some("ExampleIOSApp"))
         .unwrap()
         .clone();
-    target.display_name = Some("Orbit Example".to_owned());
+    target.display_name = Some("Orbi Example".to_owned());
     target.build_number = Some("42".to_owned());
     target.info_plist.insert(
         "NSCameraUsageDescription".to_owned(),
@@ -257,7 +257,7 @@ fn applies_manifest_driven_ios_plist_metadata() {
     let dict = plist.as_dictionary().unwrap();
     assert_eq!(
         dict.get("CFBundleDisplayName").and_then(Value::as_string),
-        Some("Orbit Example")
+        Some("Orbi Example")
     );
     assert_eq!(
         dict.get("CFBundleVersion").and_then(Value::as_string),
@@ -330,7 +330,7 @@ fn applies_manifest_driven_ios_plist_metadata() {
 #[cfg(target_os = "macos")]
 #[test]
 fn defaults_bundle_display_name_to_target_name() {
-    let (temp, project) = project_for_fixture("examples/macos-app/orbit.json");
+    let (temp, project) = project_for_fixture("examples/macos-app/orbi.json");
     let target = project
         .resolved_manifest
         .resolve_target(Some("ExampleMacApp"))
@@ -365,7 +365,7 @@ fn defaults_bundle_display_name_to_target_name() {
 
 #[test]
 fn loads_macos_universal_binary_opt_in() {
-    let (_temp, project) = project_for_fixture("examples/macos-app/orbit.json");
+    let (_temp, project) = project_for_fixture("examples/macos-app/orbi.json");
     let macos = project
         .resolved_manifest
         .platforms
@@ -394,7 +394,7 @@ fn macos_development_device_builds_require_signing() {
 #[cfg(target_os = "macos")]
 #[test]
 fn writes_macos_app_metadata_under_contents() {
-    let (temp, project) = project_for_fixture("examples/macos-app/orbit.json");
+    let (temp, project) = project_for_fixture("examples/macos-app/orbi.json");
     let target = project
         .resolved_manifest
         .resolve_target(Some("ExampleMacApp"))
@@ -445,7 +445,7 @@ fn merges_actool_partial_info_plist_into_bundle_info() {
     std::fs::create_dir_all(&bundle_root).unwrap();
     Value::Dictionary(Dictionary::from_iter([(
         "CFBundleIdentifier".to_owned(),
-        Value::String("dev.orbit.example".to_owned()),
+        Value::String("dev.orbi.example".to_owned()),
     )]))
     .to_file_xml(bundle_root.join("Info.plist"))
     .unwrap();
@@ -483,7 +483,7 @@ fn merges_actool_partial_info_plist_into_bundle_info() {
 
 #[test]
 fn embeds_watch_children_into_expected_subdirectories() {
-    let (_temp, project) = project_for_fixture("examples/ios-watch-app/orbit.json");
+    let (_temp, project) = project_for_fixture("examples/ios-watch-app/orbi.json");
     let app = project
         .resolved_manifest
         .resolve_target(Some("ExampleCompanionApp"))
@@ -510,9 +510,9 @@ fn embeds_watch_children_into_expected_subdirectories() {
         None
     );
     let framework = crate::manifest::TargetManifest {
-        name: "OrbitFramework".to_owned(),
+        name: "OrbiFramework".to_owned(),
         kind: TargetKind::Framework,
-        bundle_id: "dev.orbit.framework".to_owned(),
+        bundle_id: "dev.orbi.framework".to_owned(),
         display_name: None,
         build_number: None,
         platforms: vec![ApplePlatform::Watchos],
@@ -538,7 +538,7 @@ fn embeds_watch_children_into_expected_subdirectories() {
 
 #[test]
 fn embeds_app_clips_into_appclips_directory() {
-    let (_temp, project) = project_for_fixture("examples/ios-app-clip/orbit.json");
+    let (_temp, project) = project_for_fixture("examples/ios-app-clip/orbi.json");
     let app = project
         .resolved_manifest
         .resolve_target(Some("ExampleApp"))
@@ -573,7 +573,7 @@ fn preserves_extra_extension_entries() {
         &mut plist,
         Dictionary::from_iter([(
             "WKAppBundleIdentifier".to_owned(),
-            plist::Value::String("dev.orbit.examples.watch.watchkitapp".to_owned()),
+            plist::Value::String("dev.orbi.examples.watch.watchkitapp".to_owned()),
         )]),
     );
 
@@ -594,7 +594,7 @@ fn preserves_extra_extension_entries() {
             .get("WKAppBundleIdentifier")
             .and_then(plist::Value::as_string)
             .unwrap(),
-        "dev.orbit.examples.watch.watchkitapp"
+        "dev.orbi.examples.watch.watchkitapp"
     );
 }
 
@@ -665,7 +665,7 @@ fn selects_matching_xcframework_slice_for_target_platform() {
     let slices = vec![
         XcframeworkLibrary {
             library_identifier: "ios-arm64".to_owned(),
-            library_path: "Orbit.framework".to_owned(),
+            library_path: "Orbi.framework".to_owned(),
             headers_path: None,
             supported_platform: "ios".to_owned(),
             supported_platform_variant: None,
@@ -673,7 +673,7 @@ fn selects_matching_xcframework_slice_for_target_platform() {
         },
         XcframeworkLibrary {
             library_identifier: "ios-arm64_x86_64-simulator".to_owned(),
-            library_path: "Orbit.framework".to_owned(),
+            library_path: "Orbi.framework".to_owned(),
             headers_path: None,
             supported_platform: "ios".to_owned(),
             supported_platform_variant: Some("simulator".to_owned()),

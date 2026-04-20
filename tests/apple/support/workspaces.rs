@@ -34,9 +34,9 @@ pub fn create_watch_workspace(root: &Path) -> PathBuf {
             ),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "WatchFixture",
-            "bundle_id": "dev.orbit.fixture.watch",
+            "bundle_id": "dev.orbi.fixture.watch",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -66,9 +66,9 @@ pub fn create_signing_workspace(root: &Path) -> PathBuf {
             "import SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(\"App\") } } }\n",
         )],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture",
+            "bundle_id": "dev.orbi.fixture",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -79,7 +79,7 @@ pub fn create_signing_workspace(root: &Path) -> PathBuf {
                 "team_id": "TEAM123456",
                 "bundle_ids": {
                     "app": {
-                        "bundle_id": "dev.orbit.fixture",
+                        "bundle_id": "dev.orbi.fixture",
                         "name": "ExampleApp",
                         "platform": "ios"
                     }
@@ -121,14 +121,14 @@ pub fn create_mixed_language_workspace(root: &Path) -> PathBuf {
             ),
             (
                 "Sources/App/Bridge.m",
-                "#import \"Bridge.h\"\nint orbit_add(int a, int b) { return a + b; }\n",
+                "#import \"Bridge.h\"\nint orbi_add(int a, int b) { return a + b; }\n",
             ),
-            ("Sources/App/Bridge.h", "int orbit_add(int a, int b);\n"),
+            ("Sources/App/Bridge.h", "int orbi_add(int a, int b);\n"),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.mixed",
+            "bundle_id": "dev.orbi.fixture.mixed",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -151,9 +151,9 @@ pub fn create_resource_workspace(root: &Path) -> PathBuf {
             ("Resources/config.json", "{\n  \"value\": 1\n}\n"),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.resources",
+            "bundle_id": "dev.orbi.fixture.resources",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -181,9 +181,9 @@ pub fn create_asset_resource_workspace(root: &Path) -> PathBuf {
             ("Resources/config.json", "{\n  \"value\": 1\n}\n"),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.asset-resources",
+            "bundle_id": "dev.orbi.fixture.asset-resources",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -204,9 +204,9 @@ pub fn create_macos_universal_workspace(root: &Path) -> PathBuf {
             "import SwiftUI\n@main struct ExampleMacApp: App { var body: some Scene { WindowGroup { Text(\"Mac\") } } }\n",
         )],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleMacApp",
-            "bundle_id": "dev.orbit.fixture.macos-universal",
+            "bundle_id": "dev.orbi.fixture.macos-universal",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -220,7 +220,7 @@ pub fn create_macos_universal_workspace(root: &Path) -> PathBuf {
                 "team_id": "TEAM123456",
                 "bundle_ids": {
                     "app": {
-                        "bundle_id": "dev.orbit.fixture.macos-universal",
+                        "bundle_id": "dev.orbi.fixture.macos-universal",
                         "name": "ExampleMacApp",
                         "platform": "mac_os"
                     }
@@ -261,9 +261,9 @@ pub fn create_macos_developer_id_workspace(root: &Path) -> PathBuf {
             "import SwiftUI\n@main struct ExampleMacApp: App { var body: some Scene { WindowGroup { Text(\"Mac\") } } }\n",
         )],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleMacApp",
-            "bundle_id": "dev.orbit.fixture.macos-direct",
+            "bundle_id": "dev.orbi.fixture.macos-direct",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -274,7 +274,7 @@ pub fn create_macos_developer_id_workspace(root: &Path) -> PathBuf {
                 "team_id": "TEAM123456",
                 "bundle_ids": {
                     "app": {
-                        "bundle_id": "dev.orbit.fixture.macos-direct",
+                        "bundle_id": "dev.orbi.fixture.macos-direct",
                         "name": "ExampleMacApp",
                         "platform": "mac_os"
                     }
@@ -307,9 +307,9 @@ pub fn create_macos_app_store_workspace(root: &Path) -> PathBuf {
             "import SwiftUI\n@main struct ExampleMacApp: App { var body: some Scene { WindowGroup { Text(\"Mac\") } } }\n",
         )],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleMacApp",
-            "bundle_id": "dev.orbit.fixture.macos-store",
+            "bundle_id": "dev.orbi.fixture.macos-store",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -320,7 +320,7 @@ pub fn create_macos_app_store_workspace(root: &Path) -> PathBuf {
                 "team_id": "TEAM123456",
                 "bundle_ids": {
                     "app": {
-                        "bundle_id": "dev.orbit.fixture.macos-store",
+                        "bundle_id": "dev.orbi.fixture.macos-store",
                         "name": "ExampleMacApp",
                         "platform": "mac_os"
                     }
@@ -351,21 +351,21 @@ pub fn create_swift_package_workspace(root: &Path) -> PathBuf {
         &[
             (
                 "Sources/App/App.swift",
-                "import OrbitPkg\nimport SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(orbitMessage()) } } }\n",
+                "import OrbiPkg\nimport SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(orbiMessage()) } } }\n",
             ),
             (
-                "Packages/OrbitPkg/Package.swift",
+                "Packages/OrbiPkg/Package.swift",
                 "// fixture handled by swift package dump-package mock\n",
             ),
             (
-                "Packages/OrbitPkg/Sources/OrbitPkg/OrbitPkg.swift",
-                "public func orbitMessage() -> String { \"Pkg\" }\n",
+                "Packages/OrbiPkg/Sources/OrbiPkg/OrbiPkg.swift",
+                "public func orbiMessage() -> String { \"Pkg\" }\n",
             ),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.package",
+            "bundle_id": "dev.orbi.fixture.package",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -373,8 +373,8 @@ pub fn create_swift_package_workspace(root: &Path) -> PathBuf {
             },
             "sources": ["Sources/App"],
             "dependencies": {
-                "OrbitPkg": {
-                    "path": "Packages/OrbitPkg"
+                "OrbiPkg": {
+                    "path": "Packages/OrbiPkg"
                 }
             }
         }),
@@ -388,17 +388,17 @@ pub fn create_testing_workspace(root: &Path) -> PathBuf {
         &[
             (
                 "Sources/App/App.swift",
-                "func greeting() -> String { \"Orbit\" }\n@main struct ExampleAppMain { static func main() { print(greeting()) } }\n",
+                "func greeting() -> String { \"Orbi\" }\n@main struct ExampleAppMain { static func main() { print(greeting()) } }\n",
             ),
             (
                 "Tests/Unit/AppTests.swift",
-                "import Testing\n@testable import ExampleApp\n@Test func smoke() { #expect(greeting() == \"Orbit\") }\n",
+                "import Testing\n@testable import ExampleApp\n@Test func smoke() { #expect(greeting() == \"Orbi\") }\n",
             ),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.testing",
+            "bundle_id": "dev.orbi.fixture.testing",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -423,20 +423,20 @@ pub fn create_ui_testing_workspace(root: &Path) -> PathBuf {
             ),
             (
                 "Tests/UI/login.json",
-                "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"appId\": \"dev.orbit.fixture.ui\",\n  \"name\": \"Login\",\n  \"steps\": [\n    \"clearKeychain\",\n    \"launchApp\",\n    {\n      \"assertVisible\": \"Continue\"\n    },\n    {\n      \"swipe\": \"LEFT\"\n    },\n    {\n      \"tapOn\": \"Continue\"\n    },\n    {\n      \"inputText\": \"hello orbit\"\n    },\n    {\n      \"openLink\": \"https://example.com\"\n    },\n    {\n      \"takeScreenshot\": \"after-login\"\n    },\n    {\n      \"setLocation\": {\n        \"latitude\": 55.7558,\n        \"longitude\": 37.6173\n      }\n    }\n  ]\n}\n",
+                "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"appId\": \"dev.orbi.fixture.ui\",\n  \"name\": \"Login\",\n  \"steps\": [\n    \"clearKeychain\",\n    \"launchApp\",\n    {\n      \"assertVisible\": \"Continue\"\n    },\n    {\n      \"swipe\": \"LEFT\"\n    },\n    {\n      \"tapOn\": \"Continue\"\n    },\n    {\n      \"inputText\": \"hello orbi\"\n    },\n    {\n      \"openLink\": \"https://example.com\"\n    },\n    {\n      \"takeScreenshot\": \"after-login\"\n    },\n    {\n      \"setLocation\": {\n        \"latitude\": 55.7558,\n        \"longitude\": 37.6173\n      }\n    }\n  ]\n}\n",
             ),
             (
                 "Tests/UI/advanced.json",
-                "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"appId\": \"dev.orbit.fixture.ui\",\n  \"name\": \"Advanced\",\n  \"steps\": [\n    {\n      \"launchApp\": {\n        \"stopApp\": false,\n        \"clearState\": true,\n        \"clearKeychain\": true,\n        \"arguments\": {\n          \"onboardingComplete\": true,\n          \"seedUser\": \"qa@example.com\"\n        },\n        \"permissions\": {\n          \"location\": \"allow\",\n          \"photos\": \"deny\"\n        }\n      }\n    },\n    {\n      \"assertVisible\": {\n        \"text\": \"Continue\"\n      }\n    },\n    {\n      \"tapOnPoint\": \"140, 142\"\n    },\n    {\n      \"pressButton\": \"SIRI\"\n    },\n    {\n      \"setClipboard\": \"orbit clipboard\"\n    },\n    {\n      \"copyTextFrom\": {\n        \"id\": \"email-value\"\n      }\n    },\n    {\n      \"pasteText\": {}\n    },\n    {\n      \"eraseText\": 4\n    },\n    {\n      \"pressKey\": \"ENTER\"\n    },\n    {\n      \"pressKeyCode\": {\n        \"keyCode\": 41,\n        \"duration\": \"200ms\"\n      }\n    },\n    {\n      \"keySequence\": [4, 5, 6]\n    },\n    \"hideKeyboard\",\n    {\n      \"extendedWaitUntil\": {\n        \"visible\": {\n          \"text\": \"Continue\"\n        },\n        \"timeout\": \"1500ms\"\n      }\n    },\n    {\n      \"waitForAnimationToEnd\": {\n        \"timeout\": \"500ms\"\n      }\n    },\n    {\n      \"setPermissions\": {\n        \"permissions\": {\n          \"microphone\": \"allow\",\n          \"reminders\": \"unset\"\n        }\n      }\n    },\n    {\n      \"addMedia\": [\"../Fixtures/cat.jpg\"]\n    },\n    {\n      \"startRecording\": \"advanced-clip\"\n    },\n    \"stopRecording\",\n    {\n      \"travel\": {\n        \"points\": [\"55.7558,37.6173\", \"55.7568,37.6183\"],\n        \"speed\": 42\n      }\n    }\n  ]\n}\n",
+                "{\n  \"$schema\": \"/tmp/.orbi/schemas/orbi-ui-test.v1.json\",\n  \"appId\": \"dev.orbi.fixture.ui\",\n  \"name\": \"Advanced\",\n  \"steps\": [\n    {\n      \"launchApp\": {\n        \"stopApp\": false,\n        \"clearState\": true,\n        \"clearKeychain\": true,\n        \"arguments\": {\n          \"onboardingComplete\": true,\n          \"seedUser\": \"qa@example.com\"\n        },\n        \"permissions\": {\n          \"location\": \"allow\",\n          \"photos\": \"deny\"\n        }\n      }\n    },\n    {\n      \"assertVisible\": {\n        \"text\": \"Continue\"\n      }\n    },\n    {\n      \"tapOnPoint\": \"140, 142\"\n    },\n    {\n      \"pressButton\": \"SIRI\"\n    },\n    {\n      \"setClipboard\": \"orbi clipboard\"\n    },\n    {\n      \"copyTextFrom\": {\n        \"id\": \"email-value\"\n      }\n    },\n    {\n      \"pasteText\": {}\n    },\n    {\n      \"eraseText\": 4\n    },\n    {\n      \"pressKey\": \"ENTER\"\n    },\n    {\n      \"pressKeyCode\": {\n        \"keyCode\": 41,\n        \"duration\": \"200ms\"\n      }\n    },\n    {\n      \"keySequence\": [4, 5, 6]\n    },\n    \"hideKeyboard\",\n    {\n      \"extendedWaitUntil\": {\n        \"visible\": {\n          \"text\": \"Continue\"\n        },\n        \"timeout\": \"1500ms\"\n      }\n    },\n    {\n      \"waitForAnimationToEnd\": {\n        \"timeout\": \"500ms\"\n      }\n    },\n    {\n      \"setPermissions\": {\n        \"permissions\": {\n          \"microphone\": \"allow\",\n          \"reminders\": \"unset\"\n        }\n      }\n    },\n    {\n      \"addMedia\": [\"../Fixtures/cat.jpg\"]\n    },\n    {\n      \"startRecording\": \"advanced-clip\"\n    },\n    \"stopRecording\",\n    {\n      \"travel\": {\n        \"points\": [\"55.7558,37.6173\", \"55.7568,37.6183\"],\n        \"speed\": 42\n      }\n    }\n  ]\n}\n",
             ),
             ("Tests/Fixtures/cat.jpg", "jpeg"),
             ("Tests/Fixtures/TestAgent.dylib", "dylib"),
             ("Tests/Fixtures/contacts.sqlite", "sqlite"),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.ui",
+            "bundle_id": "dev.orbi.fixture.ui",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -493,9 +493,9 @@ pub fn create_xcframework_workspace(root: &Path) -> PathBuf {
             ),
         ],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.xcframework",
+            "bundle_id": "dev.orbi.fixture.xcframework",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -513,16 +513,16 @@ pub fn create_xcframework_workspace(root: &Path) -> PathBuf {
 }
 
 pub fn create_git_swift_package_workspace(root: &Path) -> (PathBuf, GitSwiftPackageFixture) {
-    let package_repo = root.join("orbitpkg-remote");
-    fs::create_dir_all(package_repo.join("Sources/OrbitPkg")).unwrap();
+    let package_repo = root.join("orbipkg-remote");
+    fs::create_dir_all(package_repo.join("Sources/OrbiPkg")).unwrap();
     fs::write(
         package_repo.join("Package.swift"),
         "// fixture handled by swift package dump-package mock\n",
     )
     .unwrap();
     fs::write(
-        package_repo.join("Sources/OrbitPkg/OrbitPkg.swift"),
-        "public func orbitMessage() -> String { \"Pkg v1\" }\n",
+        package_repo.join("Sources/OrbiPkg/OrbiPkg.swift"),
+        "public func orbiMessage() -> String { \"Pkg v1\" }\n",
     )
     .unwrap();
 
@@ -532,8 +532,8 @@ pub fn create_git_swift_package_workspace(root: &Path) -> (PathBuf, GitSwiftPack
     let initial_revision = git_output(&package_repo, ["rev-parse", "HEAD"]);
 
     fs::write(
-        package_repo.join("Sources/OrbitPkg/OrbitPkg.swift"),
-        "public func orbitMessage() -> String { \"Pkg v2\" }\n",
+        package_repo.join("Sources/OrbiPkg/OrbiPkg.swift"),
+        "public func orbiMessage() -> String { \"Pkg v2\" }\n",
     )
     .unwrap();
     run_git_in(&package_repo, ["add", "."]);
@@ -545,12 +545,12 @@ pub fn create_git_swift_package_workspace(root: &Path) -> (PathBuf, GitSwiftPack
         "git-swift-package-workspace",
         &[(
             "Sources/App/App.swift",
-            "import OrbitPkg\nimport SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(orbitMessage()) } } }\n",
+            "import OrbiPkg\nimport SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(orbiMessage()) } } }\n",
         )],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.gitpackage",
+            "bundle_id": "dev.orbi.fixture.gitpackage",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -558,7 +558,7 @@ pub fn create_git_swift_package_workspace(root: &Path) -> (PathBuf, GitSwiftPack
             },
             "sources": ["Sources/App"],
             "dependencies": {
-                "OrbitPkg": {
+                "OrbiPkg": {
                     "git": package_repo.to_string_lossy(),
                     "revision": initial_revision
                 }
@@ -579,8 +579,8 @@ pub fn create_git_swift_package_workspace(root: &Path) -> (PathBuf, GitSwiftPack
 pub fn create_semver_git_swift_package_workspace(
     root: &Path,
 ) -> (PathBuf, SemverGitSwiftPackageFixture) {
-    let package_repo = root.join("orbitpkg-semver-remote");
-    fs::create_dir_all(package_repo.join("Sources/OrbitPkg")).unwrap();
+    let package_repo = root.join("orbipkg-semver-remote");
+    fs::create_dir_all(package_repo.join("Sources/OrbiPkg")).unwrap();
     fs::write(
         package_repo.join("Package.swift"),
         "// fixture handled by swift package dump-package mock\n",
@@ -590,8 +590,8 @@ pub fn create_semver_git_swift_package_workspace(
     run_git(root, ["init", package_repo.to_str().unwrap()]);
 
     fs::write(
-        package_repo.join("Sources/OrbitPkg/OrbitPkg.swift"),
-        "public func orbitMessage() -> String { \"Pkg 1.0.0\" }\n",
+        package_repo.join("Sources/OrbiPkg/OrbiPkg.swift"),
+        "public func orbiMessage() -> String { \"Pkg 1.0.0\" }\n",
     )
     .unwrap();
     run_git_in(&package_repo, ["add", "."]);
@@ -600,8 +600,8 @@ pub fn create_semver_git_swift_package_workspace(
     run_git_in(&package_repo, ["tag", "v1.0.0"]);
 
     fs::write(
-        package_repo.join("Sources/OrbitPkg/OrbitPkg.swift"),
-        "public func orbitMessage() -> String { \"Pkg 1.2.0\" }\n",
+        package_repo.join("Sources/OrbiPkg/OrbiPkg.swift"),
+        "public func orbiMessage() -> String { \"Pkg 1.2.0\" }\n",
     )
     .unwrap();
     run_git_in(&package_repo, ["add", "."]);
@@ -610,8 +610,8 @@ pub fn create_semver_git_swift_package_workspace(
     run_git_in(&package_repo, ["tag", "v1.2.0"]);
 
     fs::write(
-        package_repo.join("Sources/OrbitPkg/OrbitPkg.swift"),
-        "public func orbitMessage() -> String { \"Pkg 2.0.0\" }\n",
+        package_repo.join("Sources/OrbiPkg/OrbiPkg.swift"),
+        "public func orbiMessage() -> String { \"Pkg 2.0.0\" }\n",
     )
     .unwrap();
     run_git_in(&package_repo, ["add", "."]);
@@ -624,12 +624,12 @@ pub fn create_semver_git_swift_package_workspace(
         "semver-git-swift-package-workspace",
         &[(
             "Sources/App/App.swift",
-            "import OrbitPkg\nimport SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(orbitMessage()) } } }\n",
+            "import OrbiPkg\nimport SwiftUI\n@main struct ExampleApp: App { var body: some Scene { WindowGroup { Text(orbiMessage()) } } }\n",
         )],
         &serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleApp",
-            "bundle_id": "dev.orbit.fixture.semvergitpackage",
+            "bundle_id": "dev.orbi.fixture.semvergitpackage",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -637,7 +637,7 @@ pub fn create_semver_git_swift_package_workspace(
             },
             "sources": ["Sources/App"],
             "dependencies": {
-                "OrbitPkg": {
+                "OrbiPkg": {
                     "git": package_repo.to_string_lossy(),
                     "version": "1.0.0"
                 }
@@ -669,7 +669,7 @@ fn create_workspace(
         fs::write(path, contents).unwrap();
     }
     fs::write(
-        workspace.join("orbit.json"),
+        workspace.join("orbi.json"),
         serde_json::to_vec_pretty(manifest).unwrap(),
     )
     .unwrap();
@@ -694,9 +694,9 @@ fn run_git_commit(repo: &Path, message: &str) {
         .current_dir(repo)
         .args([
             "-c",
-            "user.name=Orbit Tests",
+            "user.name=Orbi Tests",
             "-c",
-            "user.email=orbit-tests@example.com",
+            "user.email=orbi-tests@example.com",
             "commit",
             "-m",
             message,

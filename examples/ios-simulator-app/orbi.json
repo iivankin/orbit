@@ -1,0 +1,27 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleIOSApp",
+  "bundle_id": "dev.orbi.examples.exampleiosapp",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "ios": "18.0"
+  },
+  "sources": [
+    "Sources/ExampleIOSApp",
+    "Sources/Shared"
+  ],
+  "resources": [
+    "Resources"
+  ],
+  "tests": {
+    "ui": [
+      "Tests/UI"
+    ]
+  },
+  "dependencies": {
+    "OrbiGreeting": {
+      "path": "Packages/OrbiGreeting"
+    }
+  }
+}

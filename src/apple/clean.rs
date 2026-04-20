@@ -43,7 +43,7 @@ pub fn clean_project(project: &ProjectContext, args: &CleanArgs) -> Result<()> {
     if plan.cleans_apple()
         && project.app.interactive
         && !prompt_confirm(
-            "Delete Orbit-managed Apple Developer resources for this project?",
+            "Delete Orbi-managed Apple Developer resources for this project?",
             false,
         )?
     {
@@ -52,17 +52,17 @@ pub fn clean_project(project: &ProjectContext, args: &CleanArgs) -> Result<()> {
     }
 
     // Remote cleanup needs the pre-clean signing state to know which
-    // Orbit-managed profiles and identifiers belong to this project.
+    // Orbi-managed profiles and identifiers belong to this project.
     let remote_summary = plan
         .cleans_apple()
         .then(|| crate::asc::revoke_for_clean(project))
         .transpose()?;
 
-    if plan.cleans_local_state() && project.project_paths.orbit_dir.exists() {
-        fs::remove_dir_all(&project.project_paths.orbit_dir)?;
+    if plan.cleans_local_state() && project.project_paths.orbi_dir.exists() {
+        fs::remove_dir_all(&project.project_paths.orbi_dir)?;
         println!(
-            "removed_local_orbit_dir: {}",
-            project.project_paths.orbit_dir.display()
+            "removed_local_orbi_dir: {}",
+            project.project_paths.orbi_dir.display()
         );
     }
 

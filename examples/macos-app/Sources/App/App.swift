@@ -1,8 +1,8 @@
 import OSLog
 import SwiftUI
 
-private let appLogger = Logger(subsystem: "dev.orbit.examples.macos", category: "app")
-private let fixtureLogger = Logger(subsystem: "dev.orbit.examples.macos", category: "fixture")
+private let appLogger = Logger(subsystem: "dev.orbi.examples.macos", category: "app")
+private let fixtureLogger = Logger(subsystem: "dev.orbi.examples.macos", category: "fixture")
 
 @main
 struct ExampleMacApp: App {
@@ -43,11 +43,11 @@ private struct FixtureView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            Text("Orbit macOS fixture")
+            Text("Orbi macOS fixture")
                 .font(.title2.bold())
                 .accessibilityIdentifier("fixture-title")
 
-            Text("Drive this app with the Orbit macOS UI backend.")
+            Text("Drive this app with the Orbi macOS UI backend.")
                 .foregroundStyle(.secondary)
 
             TextField("Name", text: $name)

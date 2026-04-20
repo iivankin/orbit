@@ -113,7 +113,7 @@ pub(crate) fn wait_for_launched_trace_exit(
     kind: ProfileKind,
     recording: TraceRecording,
 ) -> Result<()> {
-    // `orbit run --trace` tells the user to press Ctrl-C to stop the recording. We
+    // `orbi run --trace` tells the user to press Ctrl-C to stop the recording. We
     // intercept that signal here, forward it to `xctrace`, and stay alive long
     // enough for the trace bundle to become exportable.
     let (interrupt_tx, interrupt_rx) = mpsc::channel();
@@ -451,7 +451,7 @@ impl Drop for SignalForwarder {
 
 fn default_trace_output(root: &Path, kind: ProfileKind) -> Result<PathBuf> {
     let output_path = root
-        .join(".orbit")
+        .join(".orbi")
         .join("artifacts")
         .join("profiles")
         .join(format!("{}-{}.trace", timestamp_slug(), kind.trace_slug()));

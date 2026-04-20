@@ -48,7 +48,7 @@ fn asc_signing_apply_import_print_build_settings_and_clean_round_trip() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture",
+        "dev.orbi.fixture",
         "ExampleApp",
         false,
         false,
@@ -57,11 +57,11 @@ fn asc_signing_apply_import_print_build_settings_and_clean_round_trip() {
     seed_mock_asc_auth(&home, "TEAM123456", &api_key_path);
 
     let mut apply = base_command(&workspace, &home, &mock_bin, &log_path);
-    apply.env("ORBIT_ASC_BASE_URL", &api_base_url);
+    apply.env("ORBI_ASC_BASE_URL", &api_base_url);
     apply.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "apply",
     ]);
@@ -77,7 +77,7 @@ fn asc_signing_apply_import_print_build_settings_and_clean_round_trip() {
     import.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "signing",
         "import",
@@ -96,7 +96,7 @@ fn asc_signing_apply_import_print_build_settings_and_clean_round_trip() {
     build_settings.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "signing",
         "print-build-settings",
@@ -129,7 +129,7 @@ fn asc_signing_apply_import_print_build_settings_and_clean_round_trip() {
     clean.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "clean",
         "--local",
     ]);
@@ -139,13 +139,13 @@ fn asc_signing_apply_import_print_build_settings_and_clean_round_trip() {
         "{}",
         String::from_utf8_lossy(&clean_output.stderr)
     );
-    assert!(!workspace.join(".orbit").exists());
+    assert!(!workspace.join(".orbi").exists());
 
     let mut second_build_settings = base_command(&workspace, &home, &mock_bin, &log_path);
     second_build_settings.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "asc",
         "signing",
         "print-build-settings",
@@ -193,7 +193,7 @@ exit 1
     build.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "macos",
@@ -256,7 +256,7 @@ fn mac_app_store_build_exports_signed_app_bundle() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture.macos-store",
+        "dev.orbi.fixture.macos-store",
         "ExampleMacApp",
         false,
         false,
@@ -275,7 +275,7 @@ fn mac_app_store_build_exports_signed_app_bundle() {
     build.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "macos",

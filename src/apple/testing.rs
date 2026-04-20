@@ -15,7 +15,7 @@ use crate::util::{
     collect_files_with_extensions, ensure_dir, print_success, resolve_path, run_command,
 };
 
-const GENERATED_PACKAGE_NAME: &str = "OrbitGeneratedTests";
+const GENERATED_PACKAGE_NAME: &str = "OrbiGeneratedTests";
 const GENERATED_TESTS_DIR: &str = "tests/swift-testing";
 const C_FAMILY_SOURCE_EXTENSIONS: &[&str] = &["c", "m", "mm", "cpp", "cc", "cxx"];
 const SWIFT_SOURCE_EXTENSIONS: &[&str] = &["swift"];
@@ -25,12 +25,12 @@ pub fn run_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
         return ui::run_ui_tests(project, args);
     }
     if args.platform.is_some() {
-        bail!("`orbit test --platform ...` is only supported together with `--ui`");
+        bail!("`orbi test --platform ...` is only supported together with `--ui`");
     }
 
     let Some(unit_tests) = project.resolved_manifest.tests.unit.as_deref() else {
         if project.resolved_manifest.tests.ui.is_some() {
-            bail!("manifest does not declare `tests.unit`; pass `orbit test --ui` to run UI tests");
+            bail!("manifest does not declare `tests.unit`; pass `orbi test --ui` to run UI tests");
         }
         bail!("manifest does not declare `tests.unit`");
     };
@@ -101,7 +101,7 @@ fn validate_swift_testing_layout(
         collect_declared_sources(project, &root_target.sources, C_FAMILY_SOURCE_EXTENSIONS)?;
     if let Some(source) = c_family_sources.first() {
         bail!(
-            "Orbit Swift Testing currently supports Swift-only app targets; found C-family source `{}` in `{}`",
+            "Orbi Swift Testing currently supports Swift-only app targets; found C-family source `{}` in `{}`",
             source.display(),
             root_target.name
         );
@@ -121,7 +121,7 @@ fn materialize_swift_testing_package(
     root_target: &TargetManifest,
     unit_tests: &[PathBuf],
 ) -> Result<GeneratedSwiftTestingPackage> {
-    let runner_root = project.project_paths.orbit_dir.join(GENERATED_TESTS_DIR);
+    let runner_root = project.project_paths.orbi_dir.join(GENERATED_TESTS_DIR);
     let package_root = runner_root.join("package");
     let scratch_path = runner_root.join("scratch");
     let cache_path = runner_root.join("cache");
@@ -457,7 +457,7 @@ fn create_symlink(source: &Path, destination: &Path) -> Result<()> {
 
 #[cfg(not(unix))]
 fn create_symlink(_source: &Path, _destination: &Path) -> Result<()> {
-    bail!("Orbit Swift Testing currently requires Unix symlink support")
+    bail!("Orbi Swift Testing currently requires Unix symlink support")
 }
 
 fn sanitize_path_component(value: &str) -> String {
@@ -519,21 +519,21 @@ mod tests {
                 resource_entries: Vec::new(),
             },
             &[GeneratedPackageDependency {
-                package_declaration: ".package(name: \"OrbitPkg\", path: \"/tmp/OrbitPkg\")"
+                package_declaration: ".package(name: \"OrbiPkg\", path: \"/tmp/OrbiPkg\")"
                     .to_owned(),
-                target_dependency: ".product(name: \"OrbitPkg\", package: \"OrbitPkg\")".to_owned(),
+                target_dependency: ".product(name: \"OrbiPkg\", package: \"OrbiPkg\")".to_owned(),
             }],
         );
 
-        assert!(manifest.contains(".package(name: \"OrbitPkg\", path: \"/tmp/OrbitPkg\")"));
+        assert!(manifest.contains(".package(name: \"OrbiPkg\", path: \"/tmp/OrbiPkg\")"));
         assert!(
             manifest.contains(
-                ".executableTarget(\n            name: \"ExampleApp\",\n            dependencies: [.product(name: \"OrbitPkg\", package: \"OrbitPkg\")]"
+                ".executableTarget(\n            name: \"ExampleApp\",\n            dependencies: [.product(name: \"OrbiPkg\", package: \"OrbiPkg\")]"
             )
         );
         assert!(
             manifest.contains(
-                ".testTarget(\n            name: \"ExampleAppUnitTests\",\n            dependencies: [\"ExampleApp\", .product(name: \"OrbitPkg\", package: \"OrbitPkg\")]"
+                ".testTarget(\n            name: \"ExampleAppUnitTests\",\n            dependencies: [\"ExampleApp\", .product(name: \"OrbiPkg\", package: \"OrbiPkg\")]"
             )
         );
         assert!(manifest.contains(".copy(\"Resources/resource-0\")"));

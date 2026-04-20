@@ -7,7 +7,7 @@ use crate::support::{
 use tempfile::tempdir;
 
 #[test]
-fn orbit_test_runs_swift_testing_for_manifest_unit_tests() {
+fn orbi_test_runs_swift_testing_for_manifest_unit_tests() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
     let mock_bin = temp.path().join("mock-bin");
@@ -37,7 +37,7 @@ fn orbit_test_runs_swift_testing_for_manifest_unit_tests() {
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("trace: "));
 
-    let profiles_dir = workspace.join(".orbit").join("artifacts").join("profiles");
+    let profiles_dir = workspace.join(".orbi").join("artifacts").join("profiles");
     let entries = fs::read_dir(&profiles_dir)
         .unwrap()
         .map(|entry| entry.unwrap().path())
@@ -48,7 +48,7 @@ fn orbit_test_runs_swift_testing_for_manifest_unit_tests() {
         Some("trace")
     );
 
-    let package_root = workspace.join(".orbit/tests/swift-testing/package");
+    let package_root = workspace.join(".orbi/tests/swift-testing/package");
     let package_manifest = fs::read_to_string(package_root.join("Package.swift")).unwrap();
     assert!(package_manifest.contains(".executableTarget("));
     assert!(package_manifest.contains("name: \"ExampleApp\""));
@@ -73,7 +73,7 @@ fn orbit_test_runs_swift_testing_for_manifest_unit_tests() {
 }
 
 #[test]
-fn orbit_test_trace_fails_when_trace_finalization_fails() {
+fn orbi_test_trace_fails_when_trace_finalization_fails() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
     let mock_bin = temp.path().join("mock-bin");

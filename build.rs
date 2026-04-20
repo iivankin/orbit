@@ -25,33 +25,33 @@ struct ResolvedSwiftToolLibrary {
     cleanup_root: Option<PathBuf>,
 }
 
-const ORBIT_SWIFT_TOOLS_PREBUILT_DIR_ENV: &str = "ORBIT_SWIFT_TOOLS_PREBUILT_DIR";
+const ORBI_SWIFT_TOOLS_PREBUILT_DIR_ENV: &str = "ORBI_SWIFT_TOOLS_PREBUILT_DIR";
 const SWIFT_BUILD_PROGRESS_INTERVAL: Duration = Duration::from_secs(30);
 
 const SWIFT_TOOL_SPECS: &[SwiftToolSpec] = &[
     SwiftToolSpec {
-        command_name: "orbit lint",
-        package_dir: "tools/orbit-swiftlint",
-        product: "OrbitSwiftLintFFI",
-        dylib_name: "libOrbitSwiftLintFFI.dylib",
-        embedded_file_name: "OrbitSwiftLintFFI.dylib",
-        rust_bytes_name: "ORBIT_SWIFTLINT_FFI_BYTES",
-        rust_file_name_name: "ORBIT_SWIFTLINT_FFI_FILE_NAME",
-        rust_available_name: "ORBIT_SWIFTLINT_FFI_AVAILABLE",
-        rust_unavailable_reason_name: "ORBIT_SWIFTLINT_FFI_UNAVAILABLE_REASON",
-        prebuilt_path_env_var: "ORBIT_SWIFTLINT_FFI_PREBUILT_PATH",
+        command_name: "orbi lint",
+        package_dir: "tools/orbi-swiftlint",
+        product: "OrbiSwiftLintFFI",
+        dylib_name: "libOrbiSwiftLintFFI.dylib",
+        embedded_file_name: "OrbiSwiftLintFFI.dylib",
+        rust_bytes_name: "ORBI_SWIFTLINT_FFI_BYTES",
+        rust_file_name_name: "ORBI_SWIFTLINT_FFI_FILE_NAME",
+        rust_available_name: "ORBI_SWIFTLINT_FFI_AVAILABLE",
+        rust_unavailable_reason_name: "ORBI_SWIFTLINT_FFI_UNAVAILABLE_REASON",
+        prebuilt_path_env_var: "ORBI_SWIFTLINT_FFI_PREBUILT_PATH",
     },
     SwiftToolSpec {
-        command_name: "orbit format",
-        package_dir: "tools/orbit-swift-format",
-        product: "OrbitSwiftFormatFFI",
-        dylib_name: "libOrbitSwiftFormatFFI.dylib",
-        embedded_file_name: "OrbitSwiftFormatFFI.dylib",
-        rust_bytes_name: "ORBIT_SWIFTFORMAT_FFI_BYTES",
-        rust_file_name_name: "ORBIT_SWIFTFORMAT_FFI_FILE_NAME",
-        rust_available_name: "ORBIT_SWIFTFORMAT_FFI_AVAILABLE",
-        rust_unavailable_reason_name: "ORBIT_SWIFTFORMAT_FFI_UNAVAILABLE_REASON",
-        prebuilt_path_env_var: "ORBIT_SWIFTFORMAT_FFI_PREBUILT_PATH",
+        command_name: "orbi format",
+        package_dir: "tools/orbi-swift-format",
+        product: "OrbiSwiftFormatFFI",
+        dylib_name: "libOrbiSwiftFormatFFI.dylib",
+        embedded_file_name: "OrbiSwiftFormatFFI.dylib",
+        rust_bytes_name: "ORBI_SWIFTFORMAT_FFI_BYTES",
+        rust_file_name_name: "ORBI_SWIFTFORMAT_FFI_FILE_NAME",
+        rust_available_name: "ORBI_SWIFTFORMAT_FFI_AVAILABLE",
+        rust_unavailable_reason_name: "ORBI_SWIFTFORMAT_FFI_UNAVAILABLE_REASON",
+        prebuilt_path_env_var: "ORBI_SWIFTFORMAT_FFI_PREBUILT_PATH",
     },
 ];
 
@@ -63,7 +63,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if target_os != "macos" {
         write_unavailable_swift_tools(
             &out_dir,
-            "Orbit Swift quality tooling is supported only on macOS hosts",
+            "Orbi Swift quality tooling is supported only on macOS hosts",
         )?;
         return Ok(());
     }
@@ -72,7 +72,7 @@ fn main() -> Result<(), Box<dyn Error>> {
     if profile == "debug" {
         write_unavailable_swift_tools(
             &out_dir,
-            "Orbit debug builds skip embedded Swift quality tooling to keep local iteration fast. Build Orbit with `cargo build --release` to use `orbit lint` and `orbit format`.",
+            "Orbi debug builds skip embedded Swift quality tooling to keep local iteration fast. Build Orbi with `cargo build --release` to use `orbi lint` and `orbi format`.",
         )?;
         return Ok(());
     }
@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn Error>> {
 }
 
 fn emit_prebuilt_rerun_hints() {
-    println!("cargo:rerun-if-env-changed={ORBIT_SWIFT_TOOLS_PREBUILT_DIR_ENV}");
+    println!("cargo:rerun-if-env-changed={ORBI_SWIFT_TOOLS_PREBUILT_DIR_ENV}");
     for spec in SWIFT_TOOL_SPECS {
         println!("cargo:rerun-if-env-changed={}", spec.prebuilt_path_env_var);
     }
@@ -256,7 +256,7 @@ fn resolve_prebuilt_swift_tool_library(
         return Ok(Some(validate_prebuilt_swift_tool_library(&path, spec)?));
     }
 
-    if let Some(dir) = env::var_os(ORBIT_SWIFT_TOOLS_PREBUILT_DIR_ENV) {
+    if let Some(dir) = env::var_os(ORBI_SWIFT_TOOLS_PREBUILT_DIR_ENV) {
         let path = resolve_env_path(manifest_dir, PathBuf::from(dir)).join(spec.dylib_name);
         return Ok(Some(validate_prebuilt_swift_tool_library(&path, spec)?));
     }
@@ -387,10 +387,10 @@ fn run_command(command: &mut Command, spec: &SwiftToolSpec) -> Result<(), Box<dy
 fn emit_swift_build_status(message: &str, emit_cargo_warning: bool) {
     // Cargo buffers build-script stdout/stderr until the script exits. Writing
     // directly to the controlling terminal keeps long SwiftPM builds visible.
-    let line = format!("orbit build: {message}\n");
+    let line = format!("orbi build: {message}\n");
     let wrote_to_terminal = write_to_terminal(line.as_bytes()).is_ok();
     if emit_cargo_warning && !wrote_to_terminal {
-        println!("cargo:warning=orbit build: {message}");
+        println!("cargo:warning=orbi build: {message}");
     }
 }
 

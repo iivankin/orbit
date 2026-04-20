@@ -1,10 +1,10 @@
 import OSLog
-import OrbitGreeting
+import OrbiGreeting
 import SwiftUI
 
 struct ExampleLandingView: View {
     private static let logger = Logger(
-        subsystem: "dev.orbit.examples.exampleiosapp",
+        subsystem: "dev.orbi.examples.exampleiosapp",
         category: "Landing"
     )
     @State private var currentPage = 0
@@ -45,13 +45,13 @@ struct ExampleLandingView: View {
                 .font(.system(size: 56))
                 .foregroundStyle(Color("AccentColor"))
                 .symbolRenderingMode(.hierarchical)
-            Text("Orbit UI Demo")
+            Text("Orbi UI Demo")
                 .font(.largeTitle.bold())
             Text("Swipe once to open the form screen that the JSON flow drives.")
                 .font(.headline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
-            Text(OrbitGreeting.headline)
+            Text(OrbiGreeting.headline)
                 .font(.subheadline.weight(.medium))
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
@@ -80,7 +80,7 @@ struct ExampleLandingView: View {
             VStack(alignment: .leading, spacing: 20) {
                 Text("Account Details")
                     .font(.title.bold())
-                Text("This screen is intentionally simple so Orbit UI flows can target stable accessibility labels.")
+                Text("This screen is intentionally simple so Orbi UI flows can target stable accessibility labels.")
                     .foregroundStyle(.secondary)
 
                 VStack(spacing: 14) {

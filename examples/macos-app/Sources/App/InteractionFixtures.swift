@@ -30,7 +30,7 @@ struct DragAndDropFixture: View {
                 .font(.headline)
 
             HStack(spacing: 12) {
-                Text("Orbit token")
+                Text("Orbi token")
                     .font(.headline)
                     .frame(width: 110, height: 84)
                     .background(
@@ -39,7 +39,7 @@ struct DragAndDropFixture: View {
                     )
                     .contentShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .accessibilityIdentifier("drag-source")
-                    .draggable("orbit-token")
+                    .draggable("orbi-token")
 
                 Text(status)
                     .font(.subheadline.weight(.medium))

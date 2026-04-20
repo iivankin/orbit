@@ -6,7 +6,7 @@ use crate::support::{
     base_command, clear_log, create_build_xcrun_mock, create_git_swift_package_workspace,
     create_home, create_mixed_language_workspace, create_quality_swift_mock,
     create_semver_git_swift_package_workspace, create_signing_workspace,
-    create_swift_package_workspace, create_watch_workspace, orbit_cache_dir, read_log,
+    create_swift_package_workspace, create_watch_workspace, orbi_cache_dir, read_log,
     run_and_capture,
 };
 
@@ -18,7 +18,7 @@ fn assert_debug_build_quality_tool_unavailable(output: &std::process::Output) {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("Orbit debug builds skip embedded Swift quality tooling"),
+        stderr.contains("Orbi debug builds skip embedded Swift quality tooling"),
         "{stderr}"
     );
 }
@@ -40,7 +40,7 @@ fn lint_runs_swiftlint_and_semantic_analysis_by_default() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "lint",
     ]);
     let output = run_and_capture(&mut command);
@@ -56,7 +56,7 @@ fn lint_runs_swiftlint_and_semantic_analysis_by_default() {
 
     let log = read_log(&log_path);
     assert!(!log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("orbit-swiftlint "));
+    assert!(log.contains("orbi-swiftlint "));
     assert!(log.contains("xcrun --sdk iphonesimulator --show-sdk-path"));
     assert!(log.contains("\"compiler_invocations\""));
     assert!(log.contains("\"arguments\""));
@@ -87,7 +87,7 @@ fn lint_platform_flag_limits_semantic_analysis_scope() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "lint",
         "--platform",
         "ios",
@@ -101,7 +101,7 @@ fn lint_platform_flag_limits_semantic_analysis_scope() {
 
     let log = read_log(&log_path);
     assert!(!log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("orbit-swiftlint "));
+    assert!(log.contains("orbi-swiftlint "));
     assert!(log.contains("xcrun --sdk iphonesimulator --show-sdk-path"));
     assert!(log.contains("\"swiftc\""));
     assert!(log.contains("\"-sdk\""));
@@ -132,7 +132,7 @@ fn lint_runs_compiler_backed_c_family_diagnostics_for_mixed_targets() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "lint",
     ]);
     let output = run_and_capture(&mut command);
@@ -143,7 +143,7 @@ fn lint_runs_compiler_backed_c_family_diagnostics_for_mixed_targets() {
     );
 
     let log = read_log(&log_path);
-    assert!(log.contains("orbit-swiftlint "));
+    assert!(log.contains("orbi-swiftlint "));
     assert!(log.contains("xcrun --sdk iphonesimulator clang"));
     assert!(log.contains("-fsyntax-only"));
     assert!(log.contains("Sources/App/Bridge.m"));
@@ -167,7 +167,7 @@ fn lint_reuses_cached_semantic_artifact_between_runs() {
     create_build_xcrun_mock(&mock_bin, &sdk_root);
     create_quality_swift_mock(&mock_bin);
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
 
     let mut first = base_command(&workspace, &home, &mock_bin, &log_path);
     first.args([
@@ -223,7 +223,7 @@ fn lint_reuses_cached_swift_package_outputs_between_runs() {
     create_build_xcrun_mock(&mock_bin, &sdk_root);
     create_quality_swift_mock(&mock_bin);
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
 
     let mut first = base_command(&workspace, &home, &mock_bin, &log_path);
     first.args([
@@ -262,7 +262,7 @@ fn lint_reuses_cached_swift_package_outputs_between_runs() {
     let second_log = read_log(&log_path);
     assert!(!second_log.contains("swift package --package-path"));
     assert!(!second_log.contains("xcrun --sdk iphonesimulator swiftc"));
-    assert!(!workspace.join(".orbit").exists());
+    assert!(!workspace.join(".orbi").exists());
 }
 
 #[test]
@@ -282,7 +282,7 @@ fn lint_resolves_git_swift_package_dependencies_from_pinned_revisions() {
     create_build_xcrun_mock(&mock_bin, &sdk_root);
     create_quality_swift_mock(&mock_bin);
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
 
     let mut first = base_command(&workspace, &home, &mock_bin, &log_path);
     first.args([
@@ -298,7 +298,7 @@ fn lint_resolves_git_swift_package_dependencies_from_pinned_revisions() {
         String::from_utf8_lossy(&first_output.stderr)
     );
 
-    let cache_root = orbit_cache_dir(&home)
+    let cache_root = orbi_cache_dir(&home)
         .join("git-swift-packages")
         .read_dir()
         .unwrap()
@@ -355,8 +355,8 @@ fn lint_accepts_semver_pinned_git_swift_package_dependencies() {
     create_build_xcrun_mock(&mock_bin, &sdk_root);
     create_quality_swift_mock(&mock_bin);
 
-    let manifest_path = workspace.join("orbit.json");
-    assert!(!workspace.join(".orbit/orbit.lock").exists());
+    let manifest_path = workspace.join("orbi.json");
+    assert!(!workspace.join(".orbi/orbi.lock").exists());
 
     let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
     command.args([
@@ -372,7 +372,7 @@ fn lint_accepts_semver_pinned_git_swift_package_dependencies() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let cache_root = orbit_cache_dir(&home)
+    let cache_root = orbi_cache_dir(&home)
         .join("git-swift-packages")
         .read_dir()
         .unwrap()
@@ -391,9 +391,9 @@ fn lint_accepts_semver_pinned_git_swift_package_dependencies() {
         fixture.initial_revision
     );
     let lockfile: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".orbit/orbit.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(workspace.join(".orbi/orbi.lock")).unwrap()).unwrap();
     assert_eq!(
-        lockfile["dependencies"]["OrbitPkg"]["revision"].as_str(),
+        lockfile["dependencies"]["OrbiPkg"]["revision"].as_str(),
         Some(fixture.initial_revision.as_str())
     );
 }
@@ -412,9 +412,9 @@ fn lint_recreates_internal_lockfile_for_versioned_git_swift_package_dependencies
     let sdk_root = temp.path().join("sdk");
     fs::create_dir_all(&mock_bin).unwrap();
 
-    let manifest_path = workspace.join("orbit.json");
-    fs::create_dir_all(workspace.join(".orbit")).unwrap();
-    fs::write(workspace.join(".orbit/orbit.lock"), b"stale").unwrap();
+    let manifest_path = workspace.join("orbi.json");
+    fs::create_dir_all(workspace.join(".orbi")).unwrap();
+    fs::write(workspace.join(".orbi/orbi.lock"), b"stale").unwrap();
 
     create_build_xcrun_mock(&mock_bin, &sdk_root);
     create_quality_swift_mock(&mock_bin);
@@ -433,9 +433,9 @@ fn lint_recreates_internal_lockfile_for_versioned_git_swift_package_dependencies
         String::from_utf8_lossy(&output.stderr)
     );
     let lockfile: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".orbit/orbit.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(workspace.join(".orbi/orbi.lock")).unwrap()).unwrap();
     assert_eq!(
-        lockfile["dependencies"]["OrbitPkg"]["revision"].as_str(),
+        lockfile["dependencies"]["OrbiPkg"]["revision"].as_str(),
         Some(fixture.initial_revision.as_str())
     );
 }
@@ -455,7 +455,7 @@ fn format_defaults_to_read_only_check() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "format",
     ]);
     let output = run_and_capture(&mut command);
@@ -471,14 +471,14 @@ fn format_defaults_to_read_only_check() {
 
     let log = read_log(&log_path);
     assert!(!log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("orbit-swift-format "));
+    assert!(log.contains("orbi-swift-format "));
     assert!(log.contains("\"mode\": \"check\""));
     assert!(!log.contains("\"mode\": \"write\""));
     assert!(log.contains("Sources/App/App.swift"));
 }
 
 #[test]
-fn format_uses_orbit_default_four_space_indentation() {
+fn format_uses_orbi_default_four_space_indentation() {
     if quality_tools_are_unavailable_in_debug_build() {
         return;
     }
@@ -496,7 +496,7 @@ fn format_uses_orbit_default_four_space_indentation() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "format",
     ]);
     let output = run_and_capture(&mut command);
@@ -530,7 +530,7 @@ fn format_write_runs_swift_format_in_place() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "format",
         "--write",
     ]);
@@ -543,13 +543,13 @@ fn format_write_runs_swift_format_in_place() {
 
     let log = read_log(&log_path);
     assert!(!log.contains("swift build --disable-keychain --package-path"));
-    assert!(log.contains("orbit-swift-format "));
+    assert!(log.contains("orbi-swift-format "));
     assert!(log.contains("\"mode\": \"write\""));
     assert!(log.contains("Sources/App/App.swift"));
 }
 
 #[test]
-fn lint_reads_orbit_json_rules_and_ignore_globs() {
+fn lint_reads_orbi_json_rules_and_ignore_globs() {
     if quality_tools_are_unavailable_in_debug_build() {
         return;
     }
@@ -568,7 +568,7 @@ fn lint_reads_orbit_json_rules_and_ignore_globs() {
     )
     .unwrap();
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
     let mut manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     manifest["quality"] = json!({
@@ -616,7 +616,7 @@ fn lint_reads_orbit_json_rules_and_ignore_globs() {
 }
 
 #[test]
-fn format_reads_editorconfig_rules_and_ignore_globs_from_orbit_json() {
+fn format_reads_editorconfig_rules_and_ignore_globs_from_orbi_json() {
     if quality_tools_are_unavailable_in_debug_build() {
         return;
     }
@@ -639,7 +639,7 @@ fn format_reads_editorconfig_rules_and_ignore_globs_from_orbit_json() {
     )
     .unwrap();
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
     let mut manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     manifest["quality"] = json!({

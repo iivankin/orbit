@@ -14,7 +14,7 @@ fn deps_update_refreshes_git_dependency_revisions_in_manifest() {
     let log_path = temp.path().join("commands.log");
     fs::create_dir_all(&mock_bin).unwrap();
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
 
     let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
     command.args([
@@ -23,7 +23,7 @@ fn deps_update_refreshes_git_dependency_revisions_in_manifest() {
         manifest_path.to_str().unwrap(),
         "deps",
         "update",
-        "OrbitPkg",
+        "OrbiPkg",
     ]);
     let output = run_and_capture(&mut command);
     assert!(
@@ -35,14 +35,14 @@ fn deps_update_refreshes_git_dependency_revisions_in_manifest() {
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     assert_eq!(
-        manifest["dependencies"]["OrbitPkg"]["git"].as_str(),
+        manifest["dependencies"]["OrbiPkg"]["git"].as_str(),
         Some(fixture.remote_url.as_str())
     );
     assert_eq!(
-        manifest["dependencies"]["OrbitPkg"]["revision"].as_str(),
+        manifest["dependencies"]["OrbiPkg"]["revision"].as_str(),
         Some(fixture.latest_revision.as_str())
     );
-    assert!(!workspace.join(".orbit/orbit.lock").exists());
+    assert!(!workspace.join(".orbi/orbi.lock").exists());
 
     let log = read_log(&log_path);
     assert!(log.is_empty());
@@ -57,7 +57,7 @@ fn deps_update_uses_semver_requirement_and_keeps_dependency_pinned() {
     let log_path = temp.path().join("commands.log");
     fs::create_dir_all(&mock_bin).unwrap();
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
 
     let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
     command.args([
@@ -66,7 +66,7 @@ fn deps_update_uses_semver_requirement_and_keeps_dependency_pinned() {
         manifest_path.to_str().unwrap(),
         "deps",
         "update",
-        "OrbitPkg",
+        "OrbiPkg",
     ]);
     let output = run_and_capture(&mut command);
     assert!(
@@ -78,28 +78,28 @@ fn deps_update_uses_semver_requirement_and_keeps_dependency_pinned() {
     let manifest: serde_json::Value =
         serde_json::from_slice(&fs::read(&manifest_path).unwrap()).unwrap();
     assert_eq!(
-        manifest["dependencies"]["OrbitPkg"]["git"].as_str(),
+        manifest["dependencies"]["OrbiPkg"]["git"].as_str(),
         Some(fixture.remote_url.as_str())
     );
     assert_eq!(
-        manifest["dependencies"]["OrbitPkg"]["version"].as_str(),
+        manifest["dependencies"]["OrbiPkg"]["version"].as_str(),
         Some("1.2.0")
     );
     assert!(
-        manifest["dependencies"]["OrbitPkg"]
+        manifest["dependencies"]["OrbiPkg"]
             .as_object()
             .unwrap()
             .get("revision")
             .is_none()
     );
     let lockfile: serde_json::Value =
-        serde_json::from_slice(&fs::read(workspace.join(".orbit/orbit.lock")).unwrap()).unwrap();
+        serde_json::from_slice(&fs::read(workspace.join(".orbi/orbi.lock")).unwrap()).unwrap();
     assert_eq!(
-        lockfile["dependencies"]["OrbitPkg"]["revision"].as_str(),
+        lockfile["dependencies"]["OrbiPkg"]["revision"].as_str(),
         Some(fixture.matching_revision.as_str())
     );
     assert_ne!(
-        lockfile["dependencies"]["OrbitPkg"]["revision"].as_str(),
+        lockfile["dependencies"]["OrbiPkg"]["revision"].as_str(),
         Some(fixture.non_matching_revision.as_str())
     );
 

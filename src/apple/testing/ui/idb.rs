@@ -14,9 +14,9 @@ const FB_IDB_VERSION: &str = "1.1.7";
 
 pub(crate) fn requirement_message() -> String {
     format!(
-        "Orbit UI tooling for iOS simulators requires `idb` and `idb_companion`.\n\n\
-Orbit first looks in PATH, Homebrew-managed `idb-companion`, and common user Python bin directories.\n\
-If a tool is still missing, Orbit will try to install it automatically with:\n  \
+        "Orbi UI tooling for iOS simulators requires `idb` and `idb_companion`.\n\n\
+Orbi first looks in PATH, Homebrew-managed `idb-companion`, and common user Python bin directories.\n\
+If a tool is still missing, Orbi will try to install it automatically with:\n  \
 brew tap facebook/fb\n  \
 brew install idb-companion\n  \
 python3 -m pip install --user fb-idb=={FB_IDB_VERSION}\n\n\
@@ -216,7 +216,7 @@ fn prepend_path_entries(entries: &[PathBuf]) -> Result<()> {
     }
 
     let joined = env::join_paths(unique).context("failed to update PATH for idb tooling")?;
-    // SAFETY: Orbit updates PATH before it spawns any `idb` subprocesses in this process.
+    // SAFETY: Orbi updates PATH before it spawns any `idb` subprocesses in this process.
     unsafe {
         env::set_var("PATH", joined);
     }

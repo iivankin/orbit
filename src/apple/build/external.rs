@@ -470,7 +470,7 @@ fn swift_package_root(
         } => match (version.as_deref(), revision.as_deref()) {
             (_, Some(revision)) => materialize_git_dependency(&project.app, url, revision),
             (Some(_), None) => unreachable!(
-                "versioned git dependencies must be resolved through .orbit/orbit.lock before build resolution"
+                "versioned git dependencies must be resolved through .orbi/orbi.lock before build resolution"
             ),
             (None, None) => unreachable!("git dependencies are validated before build resolution"),
         },
@@ -637,7 +637,7 @@ fn package_target_local_dependencies(
             }
             SwiftPackageTargetDependency::Product { product } => {
                 bail!(
-                    "Swift package target `{}` depends on external product `{}`; Orbit only supports local package target graphs for now",
+                    "Swift package target `{}` depends on external product `{}`; Orbi only supports local package target graphs for now",
                     target.name,
                     product.0
                 );

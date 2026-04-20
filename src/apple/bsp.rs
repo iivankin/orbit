@@ -21,7 +21,7 @@ use crate::manifest::{ApplePlatform, TargetKind};
 use crate::util::{print_success, write_json_file};
 
 pub(crate) const BSP_VERSION: &str = "2.2.0";
-pub(crate) const BSP_CONNECTION_FILE_NAME: &str = "orbit.json";
+pub(crate) const BSP_CONNECTION_FILE_NAME: &str = "orbi.json";
 
 #[derive(Debug, Serialize)]
 pub(crate) struct BspConnectionDetails {
@@ -77,9 +77,9 @@ pub(crate) fn connection_details_with_env(
     env: Option<&str>,
 ) -> Result<BspConnectionDetails> {
     let executable_path = std::env::current_exe()
-        .context("failed to resolve the current Orbit executable")?
+        .context("failed to resolve the current Orbi executable")?
         .canonicalize()
-        .context("failed to canonicalize the current Orbit executable")?;
+        .context("failed to canonicalize the current Orbi executable")?;
     let manifest_arg = manifest_path.to_string_lossy().into_owned();
     let mut argv = vec![
         executable_path.to_string_lossy().into_owned(),
@@ -92,7 +92,7 @@ pub(crate) fn connection_details_with_env(
     }
     argv.push("bsp".to_owned());
     Ok(BspConnectionDetails {
-        name: "orbit".to_owned(),
+        name: "orbi".to_owned(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
         bsp_version: BSP_VERSION.to_owned(),
         languages: vec![
@@ -200,7 +200,7 @@ impl BspServer {
                             writer,
                             2,
                             format!(
-                                "Orbit BSP ignored watched file changes because reload failed: {error:#}"
+                                "Orbi BSP ignored watched file changes because reload failed: {error:#}"
                             ),
                             None,
                             None,
@@ -235,7 +235,7 @@ impl BspServer {
             self.emit_log_message(
                 writer,
                 4,
-                "Orbit BSP updated target change notifications from watched source edits without rebuilding the semantic snapshot.",
+                "Orbi BSP updated target change notifications from watched source edits without rebuilding the semantic snapshot.",
                 None,
                 None,
                 Some(structured_log_payload("report", None)),
@@ -258,7 +258,7 @@ impl BspServer {
         self.emit_log_message(
             writer,
             4,
-            "Orbit BSP reloaded build settings after watched file changes.",
+            "Orbi BSP reloaded build settings after watched file changes.",
             None,
             None,
             Some(structured_log_payload("report", None)),
@@ -273,7 +273,7 @@ impl BspServer {
         self.reload_snapshot(&[])?;
         let snapshot = self.snapshot()?;
         Ok(json!({
-            "displayName": "orbit",
+            "displayName": "orbi",
             "version": env!("CARGO_PKG_VERSION"),
             "bspVersion": BSP_VERSION,
             "rootUri": snapshot.project_root_uri.as_str(),
@@ -449,14 +449,14 @@ impl BspServer {
             writer,
             4,
             format!(
-                "Preparing {} Orbit build target group(s) for editor support.",
+                "Preparing {} Orbi build target group(s) for editor support.",
                 total_groups
             ),
             Some(&task),
             origin_id.as_deref(),
             Some(structured_log_payload(
                 "begin",
-                Some("Preparing Orbit build targets"),
+                Some("Preparing Orbi build targets"),
             )),
         )?;
         self.emit_task_start(
@@ -464,11 +464,11 @@ impl BspServer {
             &task,
             origin_id.as_deref(),
             format!(
-                "Preparing {} Orbit build target group(s) for editor support.",
+                "Preparing {} Orbi build target group(s) for editor support.",
                 total_groups
             ),
             Some(json!({
-                "workDoneProgressTitle": "Preparing Orbit build targets"
+                "workDoneProgressTitle": "Preparing Orbi build targets"
             })),
         )?;
 
@@ -498,14 +498,14 @@ impl BspServer {
                         origin_id: origin_id.as_deref(),
                         progress: total_groups as u64,
                         total: total_groups as u64,
-                        message: "Prepared Orbit build targets.",
+                        message: "Prepared Orbi build targets.",
                         unit: "targets",
                     },
                 )?;
                 self.emit_log_message(
                     writer,
                     4,
-                    "Prepared Orbit build targets for editor support.",
+                    "Prepared Orbi build targets for editor support.",
                     Some(&task),
                     origin_id.as_deref(),
                     Some(structured_log_payload("end", None)),
@@ -515,7 +515,7 @@ impl BspServer {
                     &task,
                     origin_id.as_deref(),
                     1,
-                    "Prepared Orbit build targets.",
+                    "Prepared Orbi build targets.",
                     None,
                 )?;
                 Ok(value)
@@ -524,7 +524,7 @@ impl BspServer {
                 self.emit_log_message(
                     writer,
                     1,
-                    format!("Orbit BSP failed to prepare build targets: {error:#}"),
+                    format!("Orbi BSP failed to prepare build targets: {error:#}"),
                     Some(&task),
                     origin_id.as_deref(),
                     Some(structured_log_payload("end", None)),
@@ -534,7 +534,7 @@ impl BspServer {
                     &task,
                     origin_id.as_deref(),
                     2,
-                    format!("Failed to prepare Orbit build targets: {error}"),
+                    format!("Failed to prepare Orbi build targets: {error}"),
                     None,
                 )?;
                 Err(error)
@@ -555,21 +555,21 @@ impl BspServer {
         self.emit_log_message(
             writer,
             4,
-            "Reloading Orbit BSP workspace state.",
+            "Reloading Orbi BSP workspace state.",
             Some(&task),
             None,
             Some(structured_log_payload(
                 "begin",
-                Some("Reloading Orbit workspace"),
+                Some("Reloading Orbi workspace"),
             )),
         )?;
         self.emit_task_start(
             writer,
             &task,
             None,
-            "Reloading Orbit BSP workspace state.",
+            "Reloading Orbi BSP workspace state.",
             Some(json!({
-                "workDoneProgressTitle": "Reloading Orbit workspace"
+                "workDoneProgressTitle": "Reloading Orbi workspace"
             })),
         )?;
         let response = match self.reload_workspace() {
@@ -594,26 +594,26 @@ impl BspServer {
                         origin_id: None,
                         progress: 1,
                         total: 1,
-                        message: "Reloaded Orbit workspace.",
+                        message: "Reloaded Orbi workspace.",
                         unit: "steps",
                     },
                 )?;
                 self.emit_log_message(
                     writer,
                     4,
-                    "Reloaded Orbit BSP workspace state.",
+                    "Reloaded Orbi BSP workspace state.",
                     Some(&task),
                     None,
                     Some(structured_log_payload("end", None)),
                 )?;
-                self.emit_task_finish(writer, &task, None, 1, "Reloaded Orbit workspace.", None)?;
+                self.emit_task_finish(writer, &task, None, 1, "Reloaded Orbi workspace.", None)?;
                 Ok(value)
             }
             Err(error) => {
                 self.emit_log_message(
                     writer,
                     1,
-                    format!("Orbit BSP failed to reload workspace state: {error:#}"),
+                    format!("Orbi BSP failed to reload workspace state: {error:#}"),
                     Some(&task),
                     None,
                     Some(structured_log_payload("end", None)),
@@ -623,7 +623,7 @@ impl BspServer {
                     &task,
                     None,
                     2,
-                    format!("Failed to reload Orbit workspace: {error}"),
+                    format!("Failed to reload Orbi workspace: {error}"),
                     None,
                 )?;
                 Err(error)
@@ -709,7 +709,7 @@ impl BspServer {
     }
 
     fn new_task_id(&mut self) -> Value {
-        let task_id = format!("orbit-task-{}", self.next_task_id);
+        let task_id = format!("orbi-task-{}", self.next_task_id);
         self.next_task_id += 1;
         json!({ "id": task_id })
     }
@@ -1324,10 +1324,9 @@ fn destination_from_str(value: &str) -> Result<DestinationKind> {
 }
 
 fn build_target_uri(platform: &str, target_name: &str) -> Result<String> {
-    let mut url =
-        Url::parse("orbit://target").context("failed to create Orbit build target URI")?;
+    let mut url = Url::parse("orbi://target").context("failed to create Orbi build target URI")?;
     url.path_segments_mut()
-        .map_err(|_| anyhow::anyhow!("failed to build Orbit build target URI"))?
+        .map_err(|_| anyhow::anyhow!("failed to build Orbi build target URI"))?
         .push(platform)
         .push(target_name);
     Ok(url.to_string())
@@ -1376,7 +1375,7 @@ fn index_unit_output_path(path: &Path) -> String {
 fn build_watchers() -> Vec<Value> {
     let watch_kind = 1 + 2 + 4;
     [
-        "orbit.json",
+        "orbi.json",
         "**/Package.swift",
         "**/Package.resolved",
         "**/.swift-format",
@@ -1545,7 +1544,7 @@ fn watched_file_changes_from_params(params: &Value) -> Vec<WatchedFileChange> {
 fn watched_file_change_affects_build_graph(path: &Path) -> bool {
     matches!(
         path.file_name().and_then(|name| name.to_str()),
-        Some("orbit.json" | "Package.swift" | "Package.resolved")
+        Some("orbi.json" | "Package.swift" | "Package.resolved")
     )
 }
 
@@ -1638,7 +1637,7 @@ mod tests {
     #[test]
     fn install_connection_file_for_manifest_writes_standard_bsp_file() {
         let temp = tempfile::tempdir().unwrap();
-        let manifest_path = temp.path().join("orbit.json");
+        let manifest_path = temp.path().join("orbi.json");
         std::fs::write(&manifest_path, "{}").unwrap();
 
         let standard_path = install_connection_file_for_manifest(&manifest_path).unwrap();
@@ -1650,11 +1649,11 @@ mod tests {
                 .unwrap()
                 .parent()
                 .unwrap()
-                .join(".bsp/orbit.json")
+                .join(".bsp/orbi.json")
         );
 
         let details: Value = read_json_file(&standard_path).unwrap();
-        assert_eq!(details["name"], "orbit");
+        assert_eq!(details["name"], "orbi");
         assert_eq!(details["bspVersion"], BSP_VERSION);
         assert_eq!(details["argv"][1], "--manifest");
         assert_eq!(
@@ -1667,7 +1666,7 @@ mod tests {
     #[test]
     fn install_connection_file_with_env_writes_env_into_bsp_file() {
         let temp = tempfile::tempdir().unwrap();
-        let manifest_path = temp.path().join("orbit.json");
+        let manifest_path = temp.path().join("orbi.json");
         std::fs::write(&manifest_path, "{}").unwrap();
 
         let standard_path =

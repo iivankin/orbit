@@ -110,7 +110,7 @@ impl IosSimulatorBackend {
 
 impl UiBackend for IosSimulatorBackend {
     fn backend_name(&self) -> &'static str {
-        "orbit-idb-ios-simulator"
+        "orbi-idb-ios-simulator"
     }
 
     fn target_name(&self) -> &str {
@@ -180,7 +180,7 @@ impl UiBackend for IosSimulatorBackend {
     fn clear_app_state(&self, bundle_id: &str) -> Result<()> {
         if bundle_id != self.bundle_id {
             bail!(
-                "clearState currently supports only Orbit's built app `{}` on iOS simulators",
+                "clearState currently supports only Orbi's built app `{}` on iOS simulators",
                 self.bundle_id
             );
         }

@@ -4,7 +4,7 @@ import SwiftUI
 struct ExampleMixedLanguageApp: App {
     var body: some Scene {
         WindowGroup {
-            Text("Orbit mixed-language fixture")
+            Text("Orbi mixed-language fixture")
         }
     }
 }

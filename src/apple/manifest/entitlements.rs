@@ -382,10 +382,10 @@ mod tests {
     #[test]
     fn builds_dictionary_for_supported_first_class_entitlements() {
         let entitlements = EntitlementsManifest {
-            app_groups: vec!["group.dev.orbit.demo".to_owned()],
-            associated_domains: vec!["applinks:orbit.dev".to_owned()],
-            merchant_ids: vec!["merchant.dev.orbit.demo".to_owned()],
-            cloud_containers: vec!["iCloud.dev.orbit.demo".to_owned()],
+            app_groups: vec!["group.dev.orbi.demo".to_owned()],
+            associated_domains: vec!["applinks:orbi.dev".to_owned()],
+            merchant_ids: vec!["merchant.dev.orbi.demo".to_owned()],
+            cloud_containers: vec!["iCloud.dev.orbi.demo".to_owned()],
             icloud_services: vec!["CloudKit".to_owned()],
             classkit_environment: Some("development".to_owned()),
             default_data_protection: Some("NSFileProtectionComplete".to_owned()),
@@ -417,14 +417,14 @@ mod tests {
             .collect(),
             ..Default::default()
         };
-        let dictionary = build_entitlements_dictionary(&entitlements, Some("dev.orbit.demo"))
+        let dictionary = build_entitlements_dictionary(&entitlements, Some("dev.orbi.demo"))
             .expect("dictionary should build")
             .expect("dictionary should exist");
 
         assert_eq!(
             dictionary.get("com.apple.security.application-groups"),
             Some(&PlistValue::Array(vec![PlistValue::String(
-                "group.dev.orbit.demo".to_owned()
+                "group.dev.orbi.demo".to_owned()
             )]))
         );
         assert_eq!(
@@ -444,7 +444,7 @@ mod tests {
         assert_eq!(
             dictionary.get("com.apple.developer.parent-application-identifiers"),
             Some(&PlistValue::Array(vec![PlistValue::String(
-                "$(AppIdentifierPrefix)dev.orbit.demo".to_owned()
+                "$(AppIdentifierPrefix)dev.orbi.demo".to_owned()
             )]))
         );
         assert_eq!(

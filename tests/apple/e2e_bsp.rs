@@ -9,7 +9,7 @@ use serde_json::{Value, json};
 use crate::support::create_mixed_language_workspace;
 use crate::support::{
     base_command, create_build_xcrun_mock, create_home, create_signing_workspace,
-    create_xcframework_workspace, orbit_bin, read_log, run_and_capture,
+    create_xcframework_workspace, orbi_bin, read_log, run_and_capture,
 };
 
 #[test]
@@ -25,7 +25,7 @@ fn ide_install_build_server_writes_standard_connection_file() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "ide",
         "install-build-server",
     ]);
@@ -36,13 +36,13 @@ fn ide_install_build_server_writes_standard_connection_file() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let standard_path = workspace.join(".bsp/orbit.json");
+    let standard_path = workspace.join(".bsp/orbi.json");
     let standard_bytes = fs::read(&standard_path).unwrap();
     assert!(!workspace.join("buildServer.json").exists());
 
-    let manifest_path = workspace.join("orbit.json").canonicalize().unwrap();
+    let manifest_path = workspace.join("orbi.json").canonicalize().unwrap();
     let details: Value = serde_json::from_slice(&standard_bytes).unwrap();
-    assert_eq!(details["name"], "orbit");
+    assert_eq!(details["name"], "orbi");
     assert_eq!(details["bspVersion"], "2.2.0");
     assert_eq!(
         details["languages"],
@@ -50,7 +50,7 @@ fn ide_install_build_server_writes_standard_connection_file() {
     );
     assert_eq!(
         details["argv"],
-        json!([orbit_bin(), "--manifest", manifest_path, "bsp"])
+        json!([orbi_bin(), "--manifest", manifest_path, "bsp"])
     );
 }
 
@@ -58,7 +58,7 @@ fn ide_install_build_server_writes_standard_connection_file() {
 fn ide_install_build_server_writes_env_into_connection_file() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_signing_workspace(temp.path());
-    fs::write(workspace.join("orbit.stage.json"), b"{}").unwrap();
+    fs::write(workspace.join("orbi.stage.json"), b"{}").unwrap();
     let home = create_home(temp.path());
     let mock_bin = temp.path().join("mock-bin");
     let log_path = temp.path().join("commands.log");
@@ -68,7 +68,7 @@ fn ide_install_build_server_writes_env_into_connection_file() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "--env",
         "stage",
         "ide",
@@ -81,14 +81,14 @@ fn ide_install_build_server_writes_env_into_connection_file() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let standard_path = workspace.join(".bsp/orbit.json");
+    let standard_path = workspace.join(".bsp/orbi.json");
     let standard_bytes = fs::read(&standard_path).unwrap();
-    let manifest_path = workspace.join("orbit.json").canonicalize().unwrap();
+    let manifest_path = workspace.join("orbi.json").canonicalize().unwrap();
     let details: Value = serde_json::from_slice(&standard_bytes).unwrap();
     assert_eq!(
         details["argv"],
         json!([
-            orbit_bin(),
+            orbi_bin(),
             "--manifest",
             manifest_path,
             "--env",
@@ -111,7 +111,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
 
     create_build_xcrun_mock(&mock_bin, &sdk_root);
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
     let source_path = workspace
         .join("Sources/App/App.swift")
         .canonicalize()
@@ -154,7 +154,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
             "id": 1,
             "method": "build/initialize",
             "params": {
-                "displayName": "orbit-test",
+                "displayName": "orbi-test",
                 "version": "0.0.0",
                 "bspVersion": "2.2.0",
                 "rootUri": Url::from_file_path(&workspace).unwrap().to_string(),
@@ -169,13 +169,13 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
         initialize["result"]["data"]["indexDatabasePath"]
             .as_str()
             .unwrap()
-            .ends_with(".orbit/ide/index/db")
+            .ends_with(".orbi/ide/index/db")
     );
     assert!(
         initialize["result"]["data"]["indexStorePath"]
             .as_str()
             .unwrap()
-            .ends_with(".orbit/ide/index/store")
+            .ends_with(".orbi/ide/index/store")
     );
     assert_eq!(
         initialize["result"]["data"]["sourceKitOptionsProvider"],
@@ -199,7 +199,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     );
     assert_eq!(
         initialize["result"]["data"]["watchers"][0]["globPattern"],
-        "orbit.json"
+        "orbi.json"
     );
     let watchers = initialize["result"]["data"]["watchers"]
         .as_array()
@@ -237,7 +237,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
         target["data"]["toolchain"]
             .as_str()
             .unwrap()
-            .contains("OrbitDefault.xctoolchain")
+            .contains("OrbiDefault.xctoolchain")
     );
     let target_uri = target["id"]["uri"].as_str().unwrap().to_owned();
 
@@ -329,7 +329,7 @@ fn bsp_server_serves_targets_sources_and_sourcekit_options() {
     let output_root = output_paths["result"]["items"][0]["outputPaths"][0]["uri"]
         .as_str()
         .unwrap();
-    assert!(output_root.contains(".orbit/ide/build/ios/ide/simulator/ExampleApp"));
+    assert!(output_root.contains(".orbi/ide/build/ios/ide/simulator/ExampleApp"));
 
     write_jsonrpc_message(
         &mut stdin,
@@ -579,7 +579,7 @@ fn bsp_server_reloads_for_xcframework_dependency_changes() {
 
     create_build_xcrun_mock(&mock_bin, &sdk_root);
 
-    let manifest_path = workspace.join("orbit.json");
+    let manifest_path = workspace.join("orbi.json");
     let info_plist_path = workspace
         .join("Vendor/VendorSDK.xcframework/Info.plist")
         .canonicalize()
@@ -611,7 +611,7 @@ fn bsp_server_reloads_for_xcframework_dependency_changes() {
             "id": 1,
             "method": "build/initialize",
             "params": {
-                "displayName": "orbit-test",
+                "displayName": "orbi-test",
                 "version": "0.0.0",
                 "bspVersion": "2.2.0",
                 "rootUri": Url::from_file_path(&workspace).unwrap().to_string(),

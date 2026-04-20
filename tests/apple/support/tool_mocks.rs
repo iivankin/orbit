@@ -362,9 +362,9 @@ set -eu
 echo "swift $@" >> "$MOCK_LOG"
 if [ "$#" -ge 4 ] && [ "$1" = "package" ] && [ "$2" = "--package-path" ] && [ "$4" = "dump-package" ]; then
   package_path="$3"
-  if [ -f "$package_path/Sources/OrbitPkg/OrbitPkg.swift" ]; then
+  if [ -f "$package_path/Sources/OrbiPkg/OrbiPkg.swift" ]; then
     cat <<'JSON'
-{"name":"OrbitPkg","products":[{"name":"OrbitPkg","targets":["OrbitPkg"]}],"targets":[{"name":"OrbitPkg","path":"Sources/OrbitPkg","dependencies":[],"type":"regular"}]}
+{"name":"OrbiPkg","products":[{"name":"OrbiPkg","targets":["OrbiPkg"]}],"targets":[{"name":"OrbiPkg","path":"Sources/OrbiPkg","dependencies":[],"type":"regular"}]}
 JSON
     exit 0
   fi
@@ -398,7 +398,7 @@ if [ "$show_bin_path" -eq 1 ]; then
   exit 0
 fi
 case "$product" in
-  orbit-swift-format|orbit-swiftlint)
+  orbi-swift-format|orbi-swiftlint)
     cat > "$bin_dir/$product" <<'SCRIPT'
 #!/bin/sh
 set -eu
@@ -486,7 +486,7 @@ pub fn create_brew_idb_companion_install_mock(mock_bin: &Path) {
             r#"#!/bin/sh
 set -eu
 echo "brew $@" >> "$MOCK_LOG"
-prefix="$HOME/.orbit-test-brew/idb-companion"
+prefix="$HOME/.orbi-test-brew/idb-companion"
 cmd="${{1:-}}"
 case "$cmd" in
   tap)
@@ -722,7 +722,7 @@ if [ "$#" -ge 3 ] && [ "$1" = "--sdk" ] && [ "$3" = "--show-sdk-path" ]; then
   exit 0
 fi
 if [ "$#" -ge 2 ] && [ "$1" = "--find" ] && [ "$2" = "swiftc" ]; then
-  printf '%s\n' "{sdk}/Toolchains/OrbitDefault.xctoolchain/usr/bin/swiftc"
+  printf '%s\n' "{sdk}/Toolchains/OrbiDefault.xctoolchain/usr/bin/swiftc"
   exit 0
 fi
 if [ "$#" -ge 3 ] && [ "$1" = "--sdk" ] && [ "$3" = "--show-sdk-version" ]; then
@@ -859,7 +859,7 @@ if [ "$#" -ge 2 ] && [ "$1" = "xctrace" ] && [ "$2" = "export" ]; then
     <info>
       <target>
         <device platform="macOS" model="MacBook Pro" name="Example Mac" os-version="26.4 (25E246)" uuid="DEVICE-UUID"/>
-        <process type="attached" return-exit-status="0" name="Orbit" pid="123" termination-reason="exit(0)"/>
+        <process type="attached" return-exit-status="0" name="Orbi" pid="123" termination-reason="exit(0)"/>
       </target>
       <summary>
         <duration>5.0</duration>
@@ -867,7 +867,7 @@ if [ "$#" -ge 2 ] && [ "$1" = "xctrace" ] && [ "$2" = "export" ]; then
       </summary>
     </info>
     <processes>
-      <process name="Orbit" pid="123" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+      <process name="Orbi" pid="123" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
     </processes>
     <tracks>
       <track name="Allocations">
@@ -893,7 +893,7 @@ XML
     <info>
       <target>
         <device platform="macOS" model="MacBook Pro" name="Example Mac" os-version="26.4 (25E246)" uuid="DEVICE-UUID"/>
-        <process type="attached" return-exit-status="0" name="Orbit" pid="123" termination-reason="exit(0)"/>
+        <process type="attached" return-exit-status="0" name="Orbi" pid="123" termination-reason="exit(0)"/>
       </target>
       <summary>
         <duration>5.0</duration>
@@ -901,7 +901,7 @@ XML
       </summary>
     </info>
     <processes>
-      <process name="Orbit" pid="123" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+      <process name="Orbi" pid="123" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
     </processes>
     <tracks>
       <track name="Allocations">
@@ -932,7 +932,7 @@ XML
     <info>
       <target>
         <device platform="macOS" model="MacBook Pro" name="Example Mac" os-version="26.4 (25E246)" uuid="DEVICE-UUID"/>
-        <process type="launched" return-exit-status="0" name="Orbit" pid="123" termination-reason="exit(0)"/>
+        <process type="launched" return-exit-status="0" name="Orbi" pid="123" termination-reason="exit(0)"/>
       </target>
       <summary>
         <start-date>2026-04-03T04:18:08.145+03:00</start-date>
@@ -946,7 +946,7 @@ XML
       </summary>
     </info>
     <processes>
-      <process name="Orbit" pid="123" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+      <process name="Orbi" pid="123" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
       <process name="xctrace" pid="456" path="/Applications/Xcode.app/Contents/Developer/usr/bin/xctrace"/>
     </processes>
     <data>
@@ -966,7 +966,7 @@ XML
     <info>
       <target>
         <device platform="macOS" model="MacBook Pro" name="Example Mac" os-version="26.4 (25E246)" uuid="DEVICE-UUID"/>
-        <process type="launched" return-exit-status="0" name="Orbit" pid="123" termination-reason="exit(0)"/>
+        <process type="launched" return-exit-status="0" name="Orbi" pid="123" termination-reason="exit(0)"/>
       </target>
       <summary>
         <start-date>2026-04-03T04:18:08.145+03:00</start-date>
@@ -980,7 +980,7 @@ XML
       </summary>
     </info>
     <processes>
-      <process name="Orbit" pid="123" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+      <process name="Orbi" pid="123" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
       <process name="xctrace" pid="456" path="/Applications/Xcode.app/Contents/Developer/usr/bin/xctrace"/>
     </processes>
     <data>
@@ -1019,9 +1019,9 @@ XML
 <?xml version="1.0"?>
 <trace-query-result>
   <node xpath='//trace-toc[1]/run[1]/tracks[1]/track[1]/details[1]/detail[2]'>
-    <row address="0x10133c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbit" size="262144"/>
-    <row address="0x10137c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbit" size="262144"/>
-    <row address="0x10139c000" category="Malloc 48 Bytes" live="true" responsible-caller="bootstrap()" responsible-library="Orbit" size="48"/>
+    <row address="0x10133c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbi" size="262144"/>
+    <row address="0x10137c000" category="Malloc 256.0 KiB" live="true" responsible-caller="allocateChunk()" responsible-library="Orbi" size="262144"/>
+    <row address="0x10139c000" category="Malloc 48 Bytes" live="true" responsible-caller="bootstrap()" responsible-library="Orbi" size="48"/>
     <row address="0x10139c100" category="VM: Anonymous VM" live="false" responsible-caller="&lt;Call stack limit reached&gt;" responsible-library="" size="393216"/>
   </node>
 </trace-query-result>
@@ -1051,7 +1051,7 @@ XML
       <tagged-backtrace id="3" fmt="heavyWork() ← main">
         <backtrace id="4">
           <frame id="5" name="heavyWork()" addr="0x102000100">
-            <binary id="6" name="Orbit" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+            <binary id="6" name="Orbi" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
           </frame>
           <frame id="7" name="main" addr="0x102000050">
             <binary ref="6"/>
@@ -1105,7 +1105,7 @@ XML
       <tagged-backtrace id="3" fmt="heavyWork() ← main">
         <backtrace id="4">
           <frame id="5" name="heavyWork()" addr="0x102000100">
-            <binary id="6" name="Orbit" path="/Applications/Orbit.app/Contents/MacOS/Orbit"/>
+            <binary id="6" name="Orbi" path="/Applications/Orbi.app/Contents/MacOS/Orbi"/>
           </frame>
           <frame id="7" name="main" addr="0x102000050">
             <binary ref="6"/>

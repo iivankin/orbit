@@ -1,6 +1,6 @@
-pub(crate) const FLOW_SCHEMA_FILENAME: &str = "orbit-ui-test.v1.json";
+pub(crate) const FLOW_SCHEMA_FILENAME: &str = "orbi-ui-test.v1.json";
 pub(crate) const FLOW_SCHEMA_URL: &str = concat!(
-    "https://orbitstorage.dev/schemas/orbit-ui-test.v1-orbit-",
+    "https://orbitstorage.dev/schemas/orbi-ui-test.v1-orbi-",
     env!("CARGO_PKG_VERSION"),
     ".json"
 );
@@ -23,7 +23,7 @@ fn schema_matches_file_name(schema_name: &str, local_file_name: &str) -> bool {
     };
     let Some(version_suffix) = schema_name
         .strip_prefix(local_stem)
-        .and_then(|value| value.strip_prefix("-orbit-"))
+        .and_then(|value| value.strip_prefix("-orbi-"))
         .and_then(|value| value.strip_suffix(".json"))
     else {
         return false;
@@ -40,7 +40,7 @@ mod tests {
     fn supports_local_flow_schema_path() {
         assert!(supports_flow_schema(FLOW_SCHEMA_FILENAME));
         assert!(supports_flow_schema(
-            "/tmp/.orbit/schemas/orbit-ui-test.v1.json"
+            "/tmp/.orbi/schemas/orbi-ui-test.v1.json"
         ));
     }
 
@@ -48,7 +48,7 @@ mod tests {
     fn supports_published_version_pinned_flow_schema_url() {
         assert!(supports_flow_schema(FLOW_SCHEMA_URL));
         assert!(supports_flow_schema(
-            "https://orbitstorage.dev/schemas/orbit-ui-test.v1-orbit-9.9.9.json"
+            "https://orbitstorage.dev/schemas/orbi-ui-test.v1-orbi-9.9.9.json"
         ));
     }
 

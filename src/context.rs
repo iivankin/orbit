@@ -36,7 +36,7 @@ pub struct GlobalPaths {
 
 #[derive(Debug, Clone)]
 pub struct ProjectPaths {
-    pub orbit_dir: PathBuf,
+    pub orbi_dir: PathBuf,
     pub build_dir: PathBuf,
     pub artifacts_dir: PathBuf,
     pub receipts_dir: PathBuf,
@@ -65,18 +65,18 @@ impl AppContext {
             .parent()
             .context("manifest path did not contain a parent directory")?
             .to_path_buf();
-        let orbit_dir = root.join(".orbit");
-        let build_dir = orbit_dir.join("build");
-        let artifacts_dir = orbit_dir.join("artifacts");
-        let receipts_dir = orbit_dir.join("receipts");
+        let orbi_dir = root.join(".orbi");
+        let build_dir = orbi_dir.join("build");
+        let artifacts_dir = orbi_dir.join("artifacts");
+        let receipts_dir = orbi_dir.join("receipts");
 
-        ensure_dir(&orbit_dir)?;
+        ensure_dir(&orbi_dir)?;
         ensure_dir(&build_dir)?;
         ensure_dir(&artifacts_dir)?;
         ensure_dir(&receipts_dir)?;
         let manifest_schema = detect_schema_with_env(&manifest_path, self.manifest_env())?;
         let resolved_manifest =
-            ResolvedManifest::load_with_env(&manifest_path, &orbit_dir, self.manifest_env())?;
+            ResolvedManifest::load_with_env(&manifest_path, &orbi_dir, self.manifest_env())?;
         let selected_xcode =
             resolve_requested_xcode_for_app(self, resolved_manifest.xcode.as_deref())?;
 
@@ -88,7 +88,7 @@ impl AppContext {
             resolved_manifest,
             selected_xcode,
             project_paths: ProjectPaths {
-                orbit_dir,
+                orbi_dir,
                 build_dir,
                 artifacts_dir,
                 receipts_dir,
@@ -112,7 +112,7 @@ impl AppContext {
             return Ok(resolve_path(&self.cwd, manifest));
         }
 
-        let direct_manifest = self.cwd.join("orbit.json");
+        let direct_manifest = self.cwd.join("orbi.json");
         if direct_manifest.exists() {
             return Ok(direct_manifest);
         }
@@ -120,7 +120,7 @@ impl AppContext {
         let mut manifests = Vec::new();
         for entry in WalkDir::new(&self.cwd).max_depth(4) {
             let entry = entry?;
-            if entry.file_type().is_file() && entry.file_name() == "orbit.json" {
+            if entry.file_type().is_file() && entry.file_name() == "orbi.json" {
                 manifests.push(entry.into_path());
             }
         }
@@ -128,7 +128,7 @@ impl AppContext {
 
         match manifests.len() {
             0 => bail!(
-                "could not find `orbit.json` under {}; pass --manifest explicitly",
+                "could not find `orbi.json` under {}; pass --manifest explicitly",
                 self.cwd.display()
             ),
             1 => Ok(manifests.remove(0)),
@@ -149,25 +149,25 @@ impl AppContext {
 }
 
 fn resolve_global_paths() -> Result<GlobalPaths> {
-    let data_dir_override = env_path("ORBIT_DATA_DIR");
+    let data_dir_override = env_path("ORBI_DATA_DIR");
     let data_dir = match &data_dir_override {
         Some(path) => path.clone(),
         None => dirs::data_local_dir()
             .context("failed to resolve the user data directory")?
-            .join("orbit"),
+            .join("orbi"),
     };
-    let cache_dir = match env_path("ORBIT_CACHE_DIR") {
+    let cache_dir = match env_path("ORBI_CACHE_DIR") {
         Some(path) => path,
         None if data_dir_override.is_some() => data_dir.join("cache"),
         None => dirs::cache_dir()
             .unwrap_or_else(|| data_dir.join("cache"))
-            .join("orbit"),
+            .join("orbi"),
     };
-    let schema_dir = match env_path("ORBIT_SCHEMA_DIR") {
+    let schema_dir = match env_path("ORBI_SCHEMA_DIR") {
         Some(path) => path,
         None => dirs::home_dir()
-            .context("failed to resolve the user home directory for Orbit schemas")?
-            .join(".orbit")
+            .context("failed to resolve the user home directory for Orbi schemas")?
+            .join(".orbi")
             .join("schemas"),
     };
     ensure_dir(&data_dir)?;

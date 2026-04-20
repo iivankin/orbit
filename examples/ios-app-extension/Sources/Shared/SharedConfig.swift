@@ -1,3 +1,3 @@
 enum SharedConfig {
-    static let displayName = "Orbit Extension Demo"
+    static let displayName = "Orbi Extension Demo"
 }

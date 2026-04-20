@@ -1,0 +1,13 @@
+{
+  "$schema": "../../schemas/apple-app.v1.json",
+  "name": "ExampleTVApp",
+  "bundle_id": "dev.orbi.examples.tvos",
+  "version": "0.1.0",
+  "build": 1,
+  "platforms": {
+    "tvos": "18.0"
+  },
+  "sources": [
+    "Sources/App"
+  ]
+}

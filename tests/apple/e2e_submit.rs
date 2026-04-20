@@ -41,7 +41,7 @@ fn submit_uses_existing_receipt_without_rebuilding() {
 "#,
     )
     .unwrap();
-    let receipt_dir = workspace.join(".orbit/receipts");
+    let receipt_dir = workspace.join(".orbi/receipts");
     fs::create_dir_all(&receipt_dir).unwrap();
     let receipt_path = receipt_dir.join("receipt.json");
     fs::write(
@@ -53,7 +53,7 @@ fn submit_uses_existing_receipt_without_rebuilding() {
             "configuration": "release",
             "distribution": "app-store",
             "destination": "device",
-            "bundle_id": "dev.orbit.fixture",
+            "bundle_id": "dev.orbi.fixture",
             "bundle_path": bundle_path,
             "artifact_path": artifact_path,
             "created_at_unix": 1,
@@ -66,21 +66,21 @@ fn submit_uses_existing_receipt_without_rebuilding() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture",
+        "dev.orbi.fixture",
         "ExampleApp",
         true,
         true,
     );
     let api_base_url = format!("{}/v1", server.base_url);
     let mut submit = base_command(&workspace, &home, &mock_bin, &log_path);
-    submit.env("ORBIT_ASC_BASE_URL", &api_base_url);
+    submit.env("ORBI_ASC_BASE_URL", &api_base_url);
     submit.env("ASC_KEY_ID", "KEY1234567");
     submit.env("ASC_ISSUER_ID", "00000000-0000-0000-0000-000000000000");
     submit.env("ASC_PRIVATE_KEY_PATH", &api_key_path);
     submit.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "submit",
         "--receipt",
         latest_receipt_path(&workspace).to_str().unwrap(),
@@ -121,11 +121,11 @@ fn developer_id_submit_uses_xcode_like_notary_flow() {
     )
     .unwrap();
     fs::write(
-        workspace.join("orbit.json"),
+        workspace.join("orbi.json"),
         serde_json::to_vec_pretty(&serde_json::json!({
-            "$schema": "/tmp/.orbit/schemas/apple-app.v1.json",
+            "$schema": "/tmp/.orbi/schemas/apple-app.v1.json",
             "name": "ExampleMacApp",
-            "bundle_id": "dev.orbit.fixture.mac",
+            "bundle_id": "dev.orbi.fixture.mac",
             "version": "0.1.0",
             "build": 1,
             "platforms": {
@@ -136,7 +136,7 @@ fn developer_id_submit_uses_xcode_like_notary_flow() {
                 "team_id": "TEAM123456",
                 "bundle_ids": {
                     "app": {
-                        "bundle_id": "dev.orbit.fixture.mac",
+                        "bundle_id": "dev.orbi.fixture.mac",
                         "name": "ExampleMacApp",
                         "platform": "mac_os"
                     }
@@ -174,7 +174,7 @@ exit 1
     fs::create_dir_all(&bundle_path).unwrap();
     let artifact_path = workspace.join("ExampleMacApp-DeveloperId.dmg");
     fs::write(&artifact_path, b"developer-id-dmg").unwrap();
-    let receipt_dir = workspace.join(".orbit/receipts");
+    let receipt_dir = workspace.join(".orbi/receipts");
     fs::create_dir_all(&receipt_dir).unwrap();
     let receipt_path = receipt_dir.join("developer-id-receipt.json");
     fs::write(
@@ -186,7 +186,7 @@ exit 1
             "configuration": "release",
             "distribution": "developer-id",
             "destination": "device",
-            "bundle_id": "dev.orbit.fixture.mac",
+            "bundle_id": "dev.orbi.fixture.mac",
             "bundle_path": bundle_path,
             "artifact_path": artifact_path,
             "created_at_unix": 1,
@@ -205,7 +205,7 @@ exit 1
     submit.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "submit",
         "--receipt",
         receipt_path.to_str().unwrap(),
@@ -241,7 +241,7 @@ fn mac_app_store_submit_uploads_app_bundle_from_receipt() {
     fs::create_dir_all(&artifact_path).unwrap();
     let bundle_path = workspace.join("ExampleMacApp.app");
     fs::create_dir_all(&bundle_path).unwrap();
-    let receipt_dir = workspace.join(".orbit/receipts");
+    let receipt_dir = workspace.join(".orbi/receipts");
     fs::create_dir_all(&receipt_dir).unwrap();
     let receipt_path = receipt_dir.join("mac-app-store-receipt.json");
     fs::write(
@@ -253,7 +253,7 @@ fn mac_app_store_submit_uploads_app_bundle_from_receipt() {
             "configuration": "release",
             "distribution": "mac-app-store",
             "destination": "device",
-            "bundle_id": "dev.orbit.fixture.macos-store",
+            "bundle_id": "dev.orbi.fixture.macos-store",
             "bundle_path": bundle_path,
             "artifact_path": artifact_path,
             "created_at_unix": 1,
@@ -266,21 +266,21 @@ fn mac_app_store_submit_uploads_app_bundle_from_receipt() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture.macos-store",
+        "dev.orbi.fixture.macos-store",
         "ExampleMacApp",
         true,
         true,
     );
     let api_base_url = format!("{}/v1", server.base_url);
     let mut submit = base_command(&workspace, &home, &mock_bin, &log_path);
-    submit.env("ORBIT_ASC_BASE_URL", &api_base_url);
+    submit.env("ORBI_ASC_BASE_URL", &api_base_url);
     submit.env("ASC_KEY_ID", "KEY1234567");
     submit.env("ASC_ISSUER_ID", "00000000-0000-0000-0000-000000000000");
     submit.env("ASC_PRIVATE_KEY_PATH", &api_key_path);
     submit.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "submit",
         "--receipt",
         receipt_path.to_str().unwrap(),

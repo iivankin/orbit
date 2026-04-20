@@ -643,7 +643,7 @@ impl UiFlowRunner {
             && app_id != self.bundle_id
         {
             bail!(
-                "flow `{}` targets appId `{app_id}`, but Orbit built `{}`",
+                "flow `{}` targets appId `{app_id}`, but Orbi built `{}`",
                 flow.path.display(),
                 self.bundle_id
             );
@@ -779,7 +779,7 @@ impl UiFlowRunner {
         let start = resolve_point_expr(&screen, &swipe.start);
         let end = resolve_point_expr(&screen, &swipe.end);
         // `idb` defaults to coarse 10pt steps, which is too rough for some SwiftUI pagers.
-        // Orbit applies a denser path unless the flow overrides it explicitly.
+        // Orbi applies a denser path unless the flow overrides it explicitly.
         let duration_ms = swipe.duration_ms.or(Some(DEFAULT_SWIPE_DURATION_MS));
         let delta = swipe.delta.or(Some(DEFAULT_SWIPE_DELTA));
         self.backend.swipe_points(start, end, duration_ms, delta)?;

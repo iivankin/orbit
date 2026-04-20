@@ -22,7 +22,7 @@ use super::config;
 
 pub(crate) fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
     let Command::Asc(asc_args) = &cli.command else {
-        unreachable!("asc::execute only handles `orbit asc` commands");
+        unreachable!("asc::execute only handles `orbi asc` commands");
     };
     if matches!(
         &asc_args.command,
@@ -81,7 +81,7 @@ pub(crate) fn submit_artifact(
             notarize::run_with_config(&embedded.parsed, &receipt.artifact_path)
         }
         other => bail!(
-            "receipt `{}` is not submit-eligible through Orbit ASC workflows for `{}`",
+            "receipt `{}` is not submit-eligible through Orbi ASC workflows for `{}`",
             receipt.id,
             other.as_str()
         ),
@@ -90,7 +90,7 @@ pub(crate) fn submit_artifact(
 
 pub(crate) fn revoke_for_clean(project: &ProjectContext) -> Result<()> {
     let Some(_) = config::load_raw(project)? else {
-        println!("skipped ASC cleanup because orbit.json has no `asc` section");
+        println!("skipped ASC cleanup because orbi.json has no `asc` section");
         return Ok(());
     };
     let embedded = config::materialize(project)?;
@@ -148,7 +148,7 @@ fn execute_device_command(project: &ProjectContext, command: &AscDeviceCommand) 
             device.udid,
             manifest_path.display()
         );
-        println!("Re-run `orbit asc apply` to refresh development/ad-hoc profiles.");
+        println!("Re-run `orbi asc apply` to refresh development/ad-hoc profiles.");
     } else {
         println!(
             "Wrote device {} ({}) into {}.",
@@ -156,7 +156,7 @@ fn execute_device_command(project: &ProjectContext, command: &AscDeviceCommand) 
             device.udid,
             manifest_path.display()
         );
-        println!("Run `orbit asc apply` when you want ASC registration and updated profiles.");
+        println!("Run `orbi asc apply` when you want ASC registration and updated profiles.");
     }
     Ok(())
 }
@@ -744,14 +744,14 @@ fn logical_bundle_id_for_receipt(
         [] => {
             ensure!(
                 config.bundle_ids.len() <= 1,
-                "bundle `{}` is not declared in `asc.bundle_ids`; add a matching entry or pass `orbit asc submit --bundle-id ...` explicitly",
+                "bundle `{}` is not declared in `asc.bundle_ids`; add a matching entry or pass `orbi asc submit --bundle-id ...` explicitly",
                 receipt.bundle_id
             );
             Ok(None)
         }
         [logical_name] => Ok(Some(logical_name.clone())),
         _ => bail!(
-            "multiple `asc.bundle_ids` entries point at {}; submit through `orbit asc submit --bundle-id ...`",
+            "multiple `asc.bundle_ids` entries point at {}; submit through `orbi asc submit --bundle-id ...`",
             receipt.bundle_id
         ),
     }
@@ -825,7 +825,7 @@ mod tests {
             },
         };
         let cli = Cli {
-            manifest: Some(PathBuf::from("missing-orbit.json")),
+            manifest: Some(PathBuf::from("missing-orbi.json")),
             env: None,
             non_interactive: true,
             verbose: false,
@@ -838,7 +838,7 @@ mod tests {
 
         let error = execute(&app, &cli).unwrap_err().to_string();
         assert!(error.contains("auth import requires an interactive terminal"));
-        assert!(!error.contains("could not find `orbit.json`"));
+        assert!(!error.contains("could not find `orbi.json`"));
         assert!(!error.contains("failed to canonicalize"));
     }
 

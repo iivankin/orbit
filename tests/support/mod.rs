@@ -1,3 +1,3 @@
-pub fn orbit_bin() -> &'static str {
-    env!("CARGO_BIN_EXE_orbit")
+pub fn orbi_bin() -> &'static str {
+    env!("CARGO_BIN_EXE_orbi")
 }

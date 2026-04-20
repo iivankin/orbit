@@ -28,7 +28,7 @@ use crate::util::{
     run_command_capture, timestamp_slug, write_json_file,
 };
 
-const PREVIEW_HELPER_NAME: &str = "__orbit_make_preview_view";
+const PREVIEW_HELPER_NAME: &str = "__orbi_make_preview_view";
 const MACRO_SECTION_DIVIDER: &str = "------------------------------";
 
 #[derive(Debug, Clone)]
@@ -576,7 +576,7 @@ fn select_preview<'a>(
             0 => bail!("no preview matched `{query}`"),
             1 => Ok(matches[0]),
             _ if !project.app.interactive => bail!(
-                "multiple previews matched `{query}`; run `orbit preview list` to disambiguate"
+                "multiple previews matched `{query}`; run `orbi preview list` to disambiguate"
             ),
             _ => {
                 let options = matches
@@ -673,7 +673,7 @@ fn generate_preview_project(
 
     let run_root = project
         .project_paths
-        .orbit_dir
+        .orbi_dir
         .join("previews")
         .join(format!(
             "{}-{}",
@@ -681,11 +681,11 @@ fn generate_preview_project(
             sanitize_component(preview_display_name(preview).as_str())
         ));
     ensure_dir(&run_root)?;
-    let orbit_dir = run_root.join(".orbit");
-    let build_dir = orbit_dir.join("build");
-    let artifacts_dir = orbit_dir.join("artifacts");
-    let receipts_dir = orbit_dir.join("receipts");
-    ensure_dir(&orbit_dir)?;
+    let orbi_dir = run_root.join(".orbi");
+    let build_dir = orbi_dir.join("build");
+    let artifacts_dir = orbi_dir.join("artifacts");
+    let receipts_dir = orbi_dir.join("receipts");
+    ensure_dir(&orbi_dir)?;
     ensure_dir(&build_dir)?;
     ensure_dir(&artifacts_dir)?;
     ensure_dir(&receipts_dir)?;
@@ -699,9 +699,9 @@ fn generate_preview_project(
         )?);
     }
 
-    let host_source_root = run_root.join("Sources").join("__OrbitPreviewHost");
+    let host_source_root = run_root.join("Sources").join("__OrbiPreviewHost");
     ensure_dir(&host_source_root)?;
-    let host_source_path = host_source_root.join("OrbitPreviewHostApp.swift");
+    let host_source_path = host_source_root.join("OrbiPreviewHostApp.swift");
     fs::write(
         &host_source_path,
         render_preview_host_app(platform, preview.raw_traits.as_deref()),
@@ -715,7 +715,7 @@ fn generate_preview_project(
         Some(&preview.source_file),
         Some(&helper_code),
     )?;
-    cloned_app_target.bundle_id = format!("{}.orbit.previewshot", app_target.bundle_id);
+    cloned_app_target.bundle_id = format!("{}.orbi.previewshot", app_target.bundle_id);
     cloned_app_target.sources.push(host_source_root);
     cloned_app_target.dependencies = dependency_targets
         .iter()
@@ -744,7 +744,7 @@ fn generate_preview_project(
         targets: synthetic_targets,
     };
 
-    let manifest_path = run_root.join("orbit.preview.json");
+    let manifest_path = run_root.join("orbi.preview.json");
     fs::write(
         &manifest_path,
         format!(
@@ -776,7 +776,7 @@ fn generate_preview_project(
             resolved_manifest: synthetic_manifest,
             selected_xcode: project.selected_xcode.clone(),
             project_paths: ProjectPaths {
-                orbit_dir,
+                orbi_dir,
                 build_dir,
                 artifacts_dir,
                 receipts_dir,
@@ -819,7 +819,7 @@ fn clone_preview_target(
     for (index, source_root) in target.sources.iter().enumerate() {
         let resolved_root = resolve_path(&project.root, source_root);
         let destination_root = PathBuf::from("Sources")
-            .join("__OrbitPreview")
+            .join("__OrbiPreview")
             .join(sanitize_component(target.name.as_str()))
             .join(format!("root-{index}"));
         let destination = run_root.join(&destination_root);
@@ -937,9 +937,9 @@ fn render_preview_host_app(platform: ApplePlatform, raw_traits: Option<&str>) ->
         .map(|note| format!("\n        // {note}"))
         .unwrap_or_default();
     let root_view = if layout_modifier.is_empty() {
-        "AnyView(__orbit_make_preview_view())".to_owned()
+        "AnyView(__orbi_make_preview_view())".to_owned()
     } else {
-        format!("AnyView(__orbit_make_preview_view()){layout_modifier}")
+        format!("AnyView(__orbi_make_preview_view()){layout_modifier}")
     };
     let scene_body = match platform {
         ApplePlatform::Macos => format!(
@@ -950,7 +950,7 @@ fn render_preview_host_app(platform: ApplePlatform, raw_traits: Option<&str>) ->
         ),
     };
     format!(
-        "import SwiftUI\n\n@main\nstruct OrbitPreviewHostApp: App {{\n    var body: some Scene {{\n{scene_body}    }}\n}}\n"
+        "import SwiftUI\n\n@main\nstruct OrbiPreviewHostApp: App {{\n    var body: some Scene {{\n{scene_body}    }}\n}}\n"
     )
 }
 

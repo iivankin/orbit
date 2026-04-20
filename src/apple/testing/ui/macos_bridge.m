@@ -4,14 +4,14 @@
 #import <fcntl.h>
 #import <unistd.h>
 
-static NSString *const OrbitBridgeDirectoryEnv = @"ORBIT_MACOS_UI_BRIDGE_DIR";
-static NSString *const OrbitBridgeNotificationEnv = @"ORBIT_MACOS_UI_BRIDGE_NOTIFICATION";
-static NSString *const OrbitLogPipeEnv = @"ORBIT_MACOS_UI_LOG_PIPE";
-static NSString *const OrbitTraceLaunchIDEnv = @"ORBIT_MACOS_UI_TRACE_LAUNCH_ID";
-static NSString *const OrbitTraceRegistrationPathEnv = @"ORBIT_MACOS_UI_TRACE_REGISTRATION_PATH";
-static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EXPECTED_BUNDLE_ID";
+static NSString *const OrbiBridgeDirectoryEnv = @"ORBI_MACOS_UI_BRIDGE_DIR";
+static NSString *const OrbiBridgeNotificationEnv = @"ORBI_MACOS_UI_BRIDGE_NOTIFICATION";
+static NSString *const OrbiLogPipeEnv = @"ORBI_MACOS_UI_LOG_PIPE";
+static NSString *const OrbiRunTraceLaunchIDEnv = @"ORBI_MACOS_UI_TRACE_LAUNCH_ID";
+static NSString *const OrbiRunTraceRegistrationPathEnv = @"ORBI_MACOS_UI_TRACE_REGISTRATION_PATH";
+static NSString *const OrbiRunTraceExpectedBundleIDEnv = @"ORBI_MACOS_UI_TRACE_EXPECTED_BUNDLE_ID";
 
-@interface OrbitMacOSUIBridge : NSObject
+@interface OrbiMacOSUIBridge : NSObject
 
 @property(nonatomic, copy) NSString *bridgeDirectory;
 @property(nonatomic, copy) NSString *notificationName;
@@ -27,7 +27,7 @@ static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EX
 
 @end
 
-@implementation OrbitMacOSUIBridge
+@implementation OrbiMacOSUIBridge
 
 + (void)load {
     [[self sharedBridge] configureLogPipeIfConfigured];
@@ -37,7 +37,7 @@ static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EX
 }
 
 + (instancetype)sharedBridge {
-    static OrbitMacOSUIBridge *bridge = nil;
+    static OrbiMacOSUIBridge *bridge = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
         bridge = [[self alloc] init];
@@ -57,7 +57,7 @@ static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EX
         return;
     }
 
-    NSString *logPipePath = NSProcessInfo.processInfo.environment[OrbitLogPipeEnv];
+    NSString *logPipePath = NSProcessInfo.processInfo.environment[OrbiLogPipeEnv];
     if (logPipePath.length == 0) {
         return;
     }
@@ -76,8 +76,8 @@ static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EX
 
 - (void)startIfConfigured {
     NSDictionary<NSString *, NSString *> *environment = NSProcessInfo.processInfo.environment;
-    NSString *bridgeDirectory = environment[OrbitBridgeDirectoryEnv];
-    NSString *notificationName = environment[OrbitBridgeNotificationEnv];
+    NSString *bridgeDirectory = environment[OrbiBridgeDirectoryEnv];
+    NSString *notificationName = environment[OrbiBridgeNotificationEnv];
     if (bridgeDirectory.length == 0 || notificationName.length == 0) {
         return;
     }
@@ -103,14 +103,14 @@ static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EX
 
 - (void)writeTraceLaunchRegistrationIfConfigured:
     (NSDictionary<NSString *, NSString *> *)environment {
-    NSString *launchID = environment[OrbitTraceLaunchIDEnv];
-    NSString *registrationPath = environment[OrbitTraceRegistrationPathEnv];
+    NSString *launchID = environment[OrbiRunTraceLaunchIDEnv];
+    NSString *registrationPath = environment[OrbiRunTraceRegistrationPathEnv];
     if (launchID.length == 0 || registrationPath.length == 0) {
         return;
     }
 
     NSString *bundleID = NSBundle.mainBundle.bundleIdentifier ?: @"";
-    NSString *expectedBundleID = environment[OrbitTraceExpectedBundleIDEnv];
+    NSString *expectedBundleID = environment[OrbiRunTraceExpectedBundleIDEnv];
     if (expectedBundleID.length > 0 && ![bundleID isEqualToString:expectedBundleID]) {
         return;
     }
@@ -197,7 +197,7 @@ static NSString *const OrbitTraceExpectedBundleIDEnv = @"ORBIT_MACOS_UI_TRACE_EX
 }
 
 - (NSError *)bridgeError:(NSString *)description {
-    return [NSError errorWithDomain:@"OrbitMacOSUIBridge"
+    return [NSError errorWithDomain:@"OrbiMacOSUIBridge"
                                code:1
                            userInfo:@{NSLocalizedDescriptionKey : description}];
 }

@@ -288,7 +288,7 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
         profile.distribution,
     )?;
     if args.trace.is_some() && args.debug {
-        bail!("`orbit run --trace` does not support `--debug`");
+        bail!("`orbi run --trace` does not support `--debug`");
     }
     if args.device_id.is_some() && destination != DestinationKind::Device {
         bail!("--device-id can only be used together with a physical-device run");
@@ -534,7 +534,7 @@ fn build_project(
 }
 
 fn acquire_build_output_lock(build_root: &Path) -> Result<BuildOutputLockGuard> {
-    let lock_path = build_root.join(".orbit-build-output.lock");
+    let lock_path = build_root.join(".orbi-build-output.lock");
     let file = fs::OpenOptions::new()
         .read(true)
         .write(true)
@@ -547,7 +547,7 @@ fn acquire_build_output_lock(build_root: &Path) -> Result<BuildOutputLockGuard> 
         Ok(()) => {}
         Err(TryLockError::WouldBlock) => {
             eprintln!(
-                "another Orbit build is updating {}; waiting for the shared build output lock",
+                "another Orbi build is updating {}; waiting for the shared build output lock",
                 build_root.display()
             );
             file.lock()

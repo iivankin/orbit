@@ -62,7 +62,7 @@ pub fn combine_command_output(stdout: &str, stderr: &str) -> String {
 
 pub fn run_command(command: &mut Command) -> Result<()> {
     let debug = debug_command(command);
-    if std::env::var_os("ORBIT_PRINT_COMMANDS").is_some() {
+    if std::env::var_os("ORBI_PRINT_COMMANDS").is_some() {
         eprintln!("{debug}");
     }
     let status = command

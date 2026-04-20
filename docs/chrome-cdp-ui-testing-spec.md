@@ -1,7 +1,7 @@
 # Chrome CDP UI Testing Spec
 
 Status: draft  
-Owner: Orbit  
+Owner: Orbi
 Last verified: 2026-04-01
 
 ## Verified target
@@ -26,7 +26,7 @@ Verified on 2026-04-01:
 
 ## Goal
 
-Implement a separate `orbit-cdp` CLI that reuses Orbit's YAML flow language and reporting model, but runs against Chrome DevTools Protocol instead of iOS/macOS automation.
+Implement a separate `orbi-cdp` CLI that reuses Orbi's YAML flow language and reporting model, but runs against Chrome DevTools Protocol instead of iOS/macOS automation.
 
 The tool is for deterministic local and CI execution against a managed Chrome for Testing 148 binary. It is not a generic browser automation framework.
 
@@ -35,7 +35,7 @@ The tool is for deterministic local and CI execution against a managed Chrome fo
 - No Playwright, Puppeteer, Selenium, or WebDriver layer
 - No support for non-Chrome browsers in v1
 - No support for arbitrary Chrome versions in v1
-- No integration into the main `orbit` CLI in v1
+- No integration into the main `orbi` CLI in v1
 - No attempt to unify Apple and Chrome backends behind the current Apple-specific `UiBackend` trait
 - No HTML5 drag-and-drop or OS file drag-and-drop in v1
 - No HAR export, tracing UI, or Lighthouse integration in v1
@@ -52,7 +52,7 @@ Required startup checks:
 - Require major version `148`
 - Require `protocolVersion == "1.3"`
 
-If any check fails, abort with a hard error and explain that milestone `148` was not stable on 2026-04-01 and that Orbit is intentionally pinned to the verified Dev build.
+If any check fails, abort with a hard error and explain that milestone `148` was not stable on 2026-04-01 and that Orbi is intentionally pinned to the verified Dev build.
 
 ## Public surface
 
@@ -62,13 +62,13 @@ This tool is a separate binary, not a subcommand.
 
 Binary name:
 
-- `orbit-cdp`
+- `orbi-cdp`
 
 Primary invocation:
 
 ```sh
-orbit-cdp run ./Tests/UI/login.yaml --output ./artifacts/login
-orbit-cdp run ./Tests/UI --output ./artifacts/full-run --base-url http://127.0.0.1:3000
+orbi-cdp run ./Tests/UI/login.yaml --output ./artifacts/login
+orbi-cdp run ./Tests/UI --output ./artifacts/full-run --base-url http://127.0.0.1:3000
 ```
 
 Required arguments:
@@ -92,9 +92,9 @@ Optional flags:
 
 Authoring/debug commands:
 
-- `orbit-cdp doctor`
-- `orbit-cdp dump-tree --output ./artifacts/tree.json`
-- `orbit-cdp describe-point --x 140 --y 142 --output ./artifacts/point.json`
+- `orbi-cdp doctor`
+- `orbi-cdp dump-tree --output ./artifacts/tree.json`
+- `orbi-cdp describe-point --x 140 --y 142 --output ./artifacts/point.json`
 
 `doctor` checks:
 
@@ -107,7 +107,7 @@ Authoring/debug commands:
 
 The CLI is intentionally file-oriented. There is no manifest dependency.
 
-Optional top-level config keys for `orbit-cdp` flows:
+Optional top-level config keys for `orbi-cdp` flows:
 
 - `name`
 - `baseUrl`
@@ -132,9 +132,9 @@ Validation rules:
 
 ### Hard cutover flow semantics
 
-`orbit-cdp` does not reuse Apple `appId` semantics.
+`orbi-cdp` does not reuse Apple `appId` semantics.
 
-For `orbit-cdp`:
+For `orbi-cdp`:
 
 - `launchApp` means browser navigation
 - `launchApp` accepts either:
@@ -143,7 +143,7 @@ For `orbit-cdp`:
   - `launchApp: "https://absolute.url"`
   - `launchApp: { url: "/login", clearState: true, permissions: ... }`
 
-`appId` is not supported in `orbit-cdp` flows.
+`appId` is not supported in `orbi-cdp` flows.
 
 ## File layout
 
@@ -151,7 +151,7 @@ Do not wire this into `src/cli.rs` or `src/apple/testing/ui/*`.
 
 Separate binary entrypoint:
 
-- `src/bin/orbit-cdp.rs`
+- `src/bin/orbi-cdp.rs`
 
 Create shared UI flow model modules:
 
@@ -172,7 +172,7 @@ Create CDP-specific modules:
 - `src/cdp/testing/ui/helper.js`
 - `src/cdp/ui.rs`
 
-Apple runner code may later import the shared model/parser/report modules, but `orbit-cdp` must ship independently from the main `orbit` command surface.
+Apple runner code may later import the shared model/parser/report modules, but `orbi-cdp` must ship independently from the main `orbi` command surface.
 
 ## Browser lifecycle
 
@@ -181,7 +181,7 @@ Apple runner code may later import the shared model/parser/report modules, but `
 Chrome executable resolution order:
 
 1. `--chrome`
-2. `ORBIT_CDP_CHROME_148_PATH`
+2. `ORBI_CDP_CHROME_148_PATH`
 3. known local Chrome for Testing cache path
 4. fail
 
@@ -240,9 +240,9 @@ Cleanup:
 
 ## Selector model
 
-The Chrome backend must not rely on repeated full-tree AX plus per-node `DOM.getBoxModel` calls. That approach is too expensive for Orbit's polling model.
+The Chrome backend must not rely on repeated full-tree AX plus per-node `DOM.getBoxModel` calls. That approach is too expensive for Orbi's polling model.
 
-Instead, Orbit uses an injected helper script in an isolated world and resolves selectors per poll.
+Instead, Orbi uses an injected helper script in an isolated world and resolves selectors per poll.
 
 ### Helper responsibilities
 
@@ -466,7 +466,7 @@ Implementation:
 
 If `ffmpeg` is missing:
 
-- `orbit-cdp doctor` fails
+- `orbi-cdp doctor` fails
 - test execution fails before the first flow starts
 
 ## Reporting
@@ -498,7 +498,7 @@ Failure artifacts:
 
 ## Dump-tree and describe-point
 
-`dump-tree` for Chrome returns Orbit's helper snapshot, not raw DOM or raw AX.
+`dump-tree` for Chrome returns Orbi's helper snapshot, not raw DOM or raw AX.
 
 Each entry includes:
 
@@ -529,7 +529,7 @@ Each entry includes:
 
 ### Real browser e2e
 
-Add `tests/e2e_orbit_cdp.rs` with a static fixture server and managed Chrome 148.
+Add `tests/e2e_orbi_cdp.rs` with a static fixture server and managed Chrome 148.
 
 Required e2e coverage:
 

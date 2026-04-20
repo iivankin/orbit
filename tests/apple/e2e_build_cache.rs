@@ -21,7 +21,7 @@ fn build_command(
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "ios",
@@ -40,7 +40,7 @@ fn distribution_build_command(
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "ios",
@@ -61,7 +61,7 @@ fn macos_build_command(
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "macos",
@@ -135,7 +135,7 @@ fn build_cache_invalidates_when_header_changes() {
     clear_log(&log_path);
     fs::write(
         workspace.join("Sources/App/Bridge.h"),
-        "int orbit_add(int a, int b);\nint orbit_subtract(int a, int b);\n",
+        "int orbi_add(int a, int b);\nint orbi_subtract(int a, int b);\n",
     )
     .unwrap();
 
@@ -236,7 +236,7 @@ fn resource_only_changes_reuse_code_cache_and_refresh_bundle_outputs() {
     assert!(!second_log.contains("xcrun --sdk iphonesimulator swiftc"));
 
     let built_resource = workspace
-        .join(".orbit/build/ios/development-debug/simulator/ExampleApp/ExampleApp.app/config.json");
+        .join(".orbi/build/ios/development-debug/simulator/ExampleApp/ExampleApp.app/config.json");
     assert_eq!(
         fs::read_to_string(built_resource).unwrap(),
         "{\n  \"value\": 2\n}\n"
@@ -287,7 +287,7 @@ fn copy_only_resource_changes_reuse_cached_actool_outputs() {
     assert!(!second_log.contains("xcrun actool"));
     assert_eq!(
         fs::read_to_string(workspace.join(
-            ".orbit/build/ios/development-debug/simulator/ExampleApp/ExampleApp.app/config.json"
+            ".orbi/build/ios/development-debug/simulator/ExampleApp/ExampleApp.app/config.json"
         ),)
         .unwrap(),
         "{\n  \"value\": 2\n}\n"
@@ -295,7 +295,7 @@ fn copy_only_resource_changes_reuse_cached_actool_outputs() {
     assert!(
         workspace
             .join(
-                ".orbit/build/ios/development-debug/simulator/ExampleApp/ExampleApp.app/Assets.car"
+                ".orbi/build/ios/development-debug/simulator/ExampleApp/ExampleApp.app/Assets.car"
             )
             .exists()
     );
@@ -324,7 +324,7 @@ fn watch_dependency_copy_outputs_are_reused_between_no_op_builds() {
     );
 
     let embedded_watch_binary = workspace.join(
-        ".orbit/build/ios/development-debug/simulator/WatchFixture/WatchFixture.app/Watch/WatchApp.app/WatchApp",
+        ".orbi/build/ios/development-debug/simulator/WatchFixture/WatchFixture.app/Watch/WatchApp.app/WatchApp",
     );
     let first_modified = fs::metadata(&embedded_watch_binary)
         .unwrap()
@@ -372,7 +372,7 @@ fn distribution_build_reuses_signing_and_export_outputs_between_runs() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture",
+        "dev.orbi.fixture",
         "ExampleApp",
         false,
         false,
@@ -439,7 +439,7 @@ fn universal_macos_build_reuses_cached_lipo_merge_between_runs() {
     let server = spawn_asc_mock(
         temp.path(),
         "TEAM123456",
-        "dev.orbit.fixture.macos-universal",
+        "dev.orbi.fixture.macos-universal",
         "ExampleMacApp",
         false,
         false,
@@ -485,7 +485,7 @@ fn macos_development_build_without_embedded_asc_uses_ad_hoc_signing() {
     let temp = tempfile::tempdir().unwrap();
     let workspace = create_ui_testing_workspace(temp.path());
     set_manifest_platforms(
-        workspace.join("orbit.json").as_path(),
+        workspace.join("orbi.json").as_path(),
         serde_json::json!({
             "macos": "15.0"
         }),
@@ -505,7 +505,7 @@ fn macos_development_build_without_embedded_asc_uses_ad_hoc_signing() {
     command.args([
         "--non-interactive",
         "--manifest",
-        workspace.join("orbit.json").to_str().unwrap(),
+        workspace.join("orbi.json").to_str().unwrap(),
         "build",
         "--platform",
         "macos",

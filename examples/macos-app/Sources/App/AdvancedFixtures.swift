@@ -56,7 +56,7 @@ struct AutomationMenuFixture: View {
 }
 
 struct PersistenceFixture: View {
-    @AppStorage("orbit.fixture.persisted-message")
+    @AppStorage("orbi.fixture.persisted-message")
     private var message = "Clean slate"
 
     var body: some View {
