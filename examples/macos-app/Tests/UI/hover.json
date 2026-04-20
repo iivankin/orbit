@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
+  "appId": "dev.orbit.examples.macos",
+  "name": "macos-hover",
+  "steps": [
+    "launchApp",
+    {
+      "hoverOn": {
+        "id": "hover-target"
+      }
+    },
+    {
+      "assertVisible": "Hover detected"
+    },
+    {
+      "takeScreenshot": "macos-hover"
+    }
+  ]
+}

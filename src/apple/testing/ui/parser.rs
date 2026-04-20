@@ -2,9 +2,11 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use anyhow::{Context, Result, bail};
+use serde_json::Value as JsonValue;
+use yaml_rust2::Yaml;
 use yaml_rust2::yaml::Hash as YamlHash;
-use yaml_rust2::{Yaml, YamlLoader};
 
+use super::schema::{FLOW_SCHEMA_FILENAME, supports_flow_schema};
 use super::{
     UiCommand, UiCoordinate, UiDragAndDrop, UiElementScroll, UiElementSwipe, UiExtendedWaitUntil,
     UiFlow, UiFlowConfig, UiHardwareButton, UiKeyModifier, UiKeyPress, UiLaunchApp,
@@ -15,32 +17,37 @@ use super::{
 pub fn parse_ui_flow(path: &Path) -> Result<UiFlow> {
     let contents =
         fs::read_to_string(path).with_context(|| format!("failed to read {}", path.display()))?;
-    let documents = YamlLoader::load_from_str(&contents)
+    let document: JsonValue = serde_json::from_str(&contents)
         .with_context(|| format!("failed to parse {}", path.display()))?;
-    if documents.is_empty() {
-        bail!("`{}` did not contain any YAML documents", path.display());
+    let JsonValue::Object(root) = &document else {
+        bail!(
+            "`{}` must contain a single JSON object with `$schema` and `steps`",
+            path.display()
+        );
+    };
+    let schema = root
+        .get("$schema")
+        .context(format!("`{}` must declare `$schema`", path.display()))?
+        .as_str()
+        .context("`$schema` must be a string")?;
+    if !supports_flow_schema(schema) {
+        bail!(
+            "unsupported UI flow schema `{schema}`; expected a local schema path ending with `{}` or a version-pinned published Orbit schema URL from `https://orbitstorage.dev/schemas/`",
+            FLOW_SCHEMA_FILENAME
+        );
     }
 
-    let (config, commands) = match documents.as_slice() {
-        [Yaml::Array(commands)] => (UiFlowConfig::default(), parse_commands(commands)?),
-        [Yaml::Hash(config), Yaml::Array(commands)] => {
-            (parse_config(config)?, parse_commands(commands)?)
-        }
-        [Yaml::Hash(config)] => {
-            let config = parse_config(config)?;
-            let Some(commands) = config_steps_document(&documents[0])? else {
-                bail!(
-                    "`{}` must use either `appId: ...` + `---` + commands, or a top-level command list",
-                    path.display()
-                );
-            };
-            (config, commands)
-        }
-        _ => bail!(
-            "`{}` must contain either a single command list or two YAML documents",
-            path.display()
-        ),
+    let Yaml::Hash(root) = json_to_yaml(&document)? else {
+        unreachable!("JSON objects always convert to YAML hashes");
     };
+    let config = parse_config(&root)?;
+    let Some(commands_value) = get_optional(&root, "steps") else {
+        bail!("`{}` must declare `steps`", path.display());
+    };
+    let Yaml::Array(commands) = commands_value else {
+        bail!("`steps` must be a JSON array");
+    };
+    let commands = parse_commands(commands)?;
 
     if commands.is_empty() {
         bail!("`{}` does not contain any UI commands", path.display());
@@ -53,24 +60,12 @@ pub fn parse_ui_flow(path: &Path) -> Result<UiFlow> {
     })
 }
 
-fn config_steps_document(document: &Yaml) -> Result<Option<Vec<UiCommand>>> {
-    let Yaml::Hash(map) = document else {
-        return Ok(None);
-    };
-    let Some(steps_value) = get_optional(map, "steps") else {
-        return Ok(None);
-    };
-    let Yaml::Array(commands) = steps_value else {
-        bail!("`steps` must be a YAML sequence");
-    };
-    Ok(Some(parse_commands(commands)?))
-}
-
 fn parse_config(map: &YamlHash) -> Result<UiFlowConfig> {
     let mut config = UiFlowConfig::default();
     for (key, value) in map {
         let key = yaml_string(key).context("flow configuration keys must be strings")?;
         match key {
+            "$schema" => {}
             "appId" => config.app_id = Some(yaml_string(value)?.to_owned()),
             "name" => config.name = Some(yaml_string(value)?.to_owned()),
             "steps" => {}
@@ -907,7 +902,7 @@ fn get_optional<'a>(map: &'a YamlHash, key: &str) -> Option<&'a Yaml> {
 fn yaml_string(value: &Yaml) -> Result<&str> {
     value
         .as_str()
-        .with_context(|| "expected a YAML string".to_owned())
+        .with_context(|| "expected a string".to_owned())
 }
 
 fn yaml_u32(value: &Yaml) -> Result<u32> {
@@ -946,6 +941,38 @@ fn yaml_bool(value: &Yaml) -> Result<bool> {
     bail!("expected a boolean")
 }
 
+fn json_to_yaml(value: &JsonValue) -> Result<Yaml> {
+    Ok(match value {
+        JsonValue::Null => Yaml::Null,
+        JsonValue::Bool(value) => Yaml::Boolean(*value),
+        JsonValue::Number(value) => {
+            if let Some(integer) = value.as_i64() {
+                Yaml::Integer(integer)
+            } else if let Some(integer) = value.as_u64() {
+                Yaml::Integer(
+                    i64::try_from(integer).context("JSON integer exceeded the supported range")?,
+                )
+            } else {
+                Yaml::Real(value.to_string())
+            }
+        }
+        JsonValue::String(value) => Yaml::String(value.clone()),
+        JsonValue::Array(values) => Yaml::Array(
+            values
+                .iter()
+                .map(json_to_yaml)
+                .collect::<Result<Vec<_>>>()?,
+        ),
+        JsonValue::Object(map) => {
+            let mut yaml_map = YamlHash::new();
+            for (key, value) in map {
+                yaml_map.insert(Yaml::String(key.clone()), json_to_yaml(value)?);
+            }
+            Yaml::Hash(yaml_map)
+        }
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use std::fs;
@@ -959,12 +986,12 @@ mod tests {
     };
 
     #[test]
-    fn parses_two_document_ui_flow() {
+    fn parses_json_ui_flow() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
+        let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "appId: dev.orbit.fixture\nname: Login\n---\n- launchApp\n- tapOn: Continue\n- retry:\n    times: 2\n    commands:\n      - assertVisible: Welcome\n",
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"appId\": \"dev.orbit.fixture\",\n  \"name\": \"Login\",\n  \"steps\": [\n    \"launchApp\",\n    {\n      \"tapOn\": \"Continue\"\n    },\n    {\n      \"retry\": {\n        \"times\": 2,\n        \"commands\": [\n          {\n            \"assertVisible\": \"Welcome\"\n          }\n        ]\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -991,8 +1018,12 @@ mod tests {
     #[test]
     fn rejects_unknown_config_keys() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
-        fs::write(&path, "env:\n  A: B\n---\n- launchApp\n").unwrap();
+        let path = temp.path().join("flow.json");
+        fs::write(
+            &path,
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"env\": {\n    \"A\": \"B\"\n  },\n  \"steps\": [\"launchApp\"]\n}\n",
+        )
+        .unwrap();
 
         let error = parse_ui_flow(&path).unwrap_err();
         assert!(
@@ -1003,12 +1034,22 @@ mod tests {
     }
 
     #[test]
+    fn rejects_missing_schema() {
+        let temp = tempdir().unwrap();
+        let path = temp.path().join("flow.json");
+        fs::write(&path, "{\n  \"steps\": [\"launchApp\"]\n}\n").unwrap();
+
+        let error = parse_ui_flow(&path).unwrap_err();
+        assert!(error.to_string().contains("must declare `$schema`"));
+    }
+
+    #[test]
     fn parses_swipe_direction_and_coordinate_forms() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
+        let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "- swipe: LEFT\n- swipe:\n    start: 90%, 50%\n    end: 10%, 50%\n    duration: 800ms\n    delta: 5\n",
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"swipe\": \"LEFT\"\n    },\n    {\n      \"swipe\": {\n        \"start\": \"90%, 50%\",\n        \"end\": \"10%, 50%\",\n        \"duration\": \"800ms\",\n        \"delta\": 5\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1027,10 +1068,10 @@ mod tests {
     #[test]
     fn parses_scroll_until_visible_mapping() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
+        let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "- scrollUntilVisible:\n    element:\n      text: Ready\n    direction: DOWN\n    timeout: 3s\n",
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"scrollUntilVisible\": {\n        \"element\": {\n          \"text\": \"Ready\"\n        },\n        \"direction\": \"DOWN\",\n        \"timeout\": \"3s\"\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1048,10 +1089,10 @@ mod tests {
     #[test]
     fn parses_long_press_and_scroll_commands() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
+        let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "- hoverOn:\n    id: hover-target\n- rightClickOn:\n    id: context-target\n- doubleTapOn: Continue\n- longPressOn:\n    element: Continue\n    duration: 1200ms\n- swipeOn:\n    element:\n      id: pager\n    direction: LEFT\n    duration: 650ms\n    delta: 4\n- dragAndDrop:\n    from:\n      id: drag-source\n    to:\n      id: drop-target\n    duration: 800ms\n    delta: 3\n- scroll: DOWN\n- scrollOn:\n    element:\n      id: feed\n    direction: UP\n- selectMenuItem: Automation > Trigger Shortcut\n- killApp\n",
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"hoverOn\": {\n        \"id\": \"hover-target\"\n      }\n    },\n    {\n      \"rightClickOn\": {\n        \"id\": \"context-target\"\n      }\n    },\n    {\n      \"doubleTapOn\": \"Continue\"\n    },\n    {\n      \"longPressOn\": {\n        \"element\": \"Continue\",\n        \"duration\": \"1200ms\"\n      }\n    },\n    {\n      \"swipeOn\": {\n        \"element\": {\n          \"id\": \"pager\"\n        },\n        \"direction\": \"LEFT\",\n        \"duration\": \"650ms\",\n        \"delta\": 4\n      }\n    },\n    {\n      \"dragAndDrop\": {\n        \"from\": {\n          \"id\": \"drag-source\"\n        },\n        \"to\": {\n          \"id\": \"drop-target\"\n        },\n        \"duration\": \"800ms\",\n        \"delta\": 3\n      }\n    },\n    {\n      \"scroll\": \"DOWN\"\n    },\n    {\n      \"scrollOn\": {\n        \"element\": {\n          \"id\": \"feed\"\n        },\n        \"direction\": \"UP\"\n      }\n    },\n    {\n      \"selectMenuItem\": \"Automation > Trigger Shortcut\"\n    },\n    \"killApp\"\n  ]\n}\n",
         )
         .unwrap();
 
@@ -1125,8 +1166,12 @@ mod tests {
     #[test]
     fn rejects_scroll_on_without_element() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
-        fs::write(&path, "- scrollOn:\n    direction: DOWN\n").unwrap();
+        let path = temp.path().join("flow.json");
+        fs::write(
+            &path,
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"scrollOn\": {\n        \"direction\": \"DOWN\"\n      }\n    }\n  ]\n}\n",
+        )
+        .unwrap();
 
         let error = parse_ui_flow(&path).unwrap_err();
         assert!(error.to_string().contains("`scrollOn` expects `element`"));
@@ -1135,8 +1180,12 @@ mod tests {
     #[test]
     fn rejects_swipe_on_without_mapping() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
-        fs::write(&path, "- swipeOn: LEFT\n").unwrap();
+        let path = temp.path().join("flow.json");
+        fs::write(
+            &path,
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"swipeOn\": \"LEFT\"\n    }\n  ]\n}\n",
+        )
+        .unwrap();
 
         let error = parse_ui_flow(&path).unwrap_err();
         assert!(error.to_string().contains("`swipeOn` expects a mapping"));
@@ -1145,8 +1194,12 @@ mod tests {
     #[test]
     fn rejects_drag_and_drop_without_to() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
-        fs::write(&path, "- dragAndDrop:\n    from:\n      id: drag-source\n").unwrap();
+        let path = temp.path().join("flow.json");
+        fs::write(
+            &path,
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"dragAndDrop\": {\n        \"from\": {\n          \"id\": \"drag-source\"\n        }\n      }\n    }\n  ]\n}\n",
+        )
+        .unwrap();
 
         let error = parse_ui_flow(&path).unwrap_err();
         assert!(error.to_string().contains("`dragAndDrop` expects `to`"));
@@ -1155,10 +1208,10 @@ mod tests {
     #[test]
     fn parses_launch_permissions_and_wait_commands() {
         let temp = tempdir().unwrap();
-        let path = temp.path().join("flow.yaml");
+        let path = temp.path().join("flow.json");
         fs::write(
             &path,
-            "- launchApp:\n    appId: dev.orbit.fixture\n    stopApp: false\n    clearState: true\n    clearKeychain: true\n    arguments:\n      onboardingComplete: true\n      seedUser: qa@example.com\n    permissions:\n      location: allow\n      photos: deny\n- tapOnPoint: 140, 142\n- pressButton:\n    button: SIRI\n    duration: 500ms\n- setClipboard: copied value\n- copyTextFrom:\n    id: email-value\n- pasteText: {}\n- eraseText: 6\n- pressKey:\n    key: K\n    modifiers:\n      - COMMAND\n      - SHIFT\n- pressKeyCode:\n    keyCode: 41\n    duration: 200ms\n    modifiers: CONTROL\n- keySequence:\n    - 4\n    - 5\n    - 6\n- hideKeyboard\n- extendedWaitUntil:\n    visible:\n      text: Ready\n    timeout: 2s\n- waitForAnimationToEnd:\n    timeout: 750ms\n- addMedia:\n    - ../Fixtures/cat.jpg\n- startRecording: login-clip\n- stopRecording\n- travel:\n    points:\n      - 55.7558,37.6173\n      - 55.7568,37.6183\n    speed: 42\n",
+            "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    {\n      \"launchApp\": {\n        \"appId\": \"dev.orbit.fixture\",\n        \"stopApp\": false,\n        \"clearState\": true,\n        \"clearKeychain\": true,\n        \"arguments\": {\n          \"onboardingComplete\": true,\n          \"seedUser\": \"qa@example.com\"\n        },\n        \"permissions\": {\n          \"location\": \"allow\",\n          \"photos\": \"deny\"\n        }\n      }\n    },\n    {\n      \"tapOnPoint\": \"140, 142\"\n    },\n    {\n      \"pressButton\": {\n        \"button\": \"SIRI\",\n        \"duration\": \"500ms\"\n      }\n    },\n    {\n      \"setClipboard\": \"copied value\"\n    },\n    {\n      \"copyTextFrom\": {\n        \"id\": \"email-value\"\n      }\n    },\n    {\n      \"pasteText\": {}\n    },\n    {\n      \"eraseText\": 6\n    },\n    {\n      \"pressKey\": {\n        \"key\": \"K\",\n        \"modifiers\": [\"COMMAND\", \"SHIFT\"]\n      }\n    },\n    {\n      \"pressKeyCode\": {\n        \"keyCode\": 41,\n        \"duration\": \"200ms\",\n        \"modifiers\": \"CONTROL\"\n      }\n    },\n    {\n      \"keySequence\": [4, 5, 6]\n    },\n    \"hideKeyboard\",\n    {\n      \"extendedWaitUntil\": {\n        \"visible\": {\n          \"text\": \"Ready\"\n        },\n        \"timeout\": \"2s\"\n      }\n    },\n    {\n      \"waitForAnimationToEnd\": {\n        \"timeout\": \"750ms\"\n      }\n    },\n    {\n      \"addMedia\": [\"../Fixtures/cat.jpg\"]\n    },\n    {\n      \"startRecording\": \"login-clip\"\n    },\n    \"stopRecording\",\n    {\n      \"travel\": {\n        \"points\": [\"55.7558,37.6173\", \"55.7568,37.6183\"],\n        \"speed\": 42\n      }\n    }\n  ]\n}\n",
         )
         .unwrap();
 

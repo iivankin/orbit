@@ -21,9 +21,7 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
             PreviewCommand::Shot(args) => apple::preview::shot(app, args, cli.manifest.as_deref()),
         },
         Command::Ui(ui_args) => match &ui_args.command {
-            UiCommand::Schema(args) => apple::ui::schema(args),
             UiCommand::CleanTraceTemp(args) => apple::ui::clean_trace_temp(args),
-            UiCommand::ResetIdb(_) => apple::ui::reset_idb(),
             _ => {
                 let project = app.load_project(cli.manifest.as_deref())?;
                 apple::ui::execute(&project, &ui_args.command)

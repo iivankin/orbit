@@ -1,0 +1,17 @@
+{
+  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
+  "appId": "dev.orbit.examples.macos",
+  "name": "macos-menu-item",
+  "steps": [
+    "launchApp",
+    {
+      "selectMenuItem": ["Automation", "Trigger Shortcut"]
+    },
+    {
+      "assertVisible": "Menu action triggered"
+    },
+    {
+      "takeScreenshot": "macos-menu-item"
+    }
+  ]
+}

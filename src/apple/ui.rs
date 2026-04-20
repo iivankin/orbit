@@ -7,14 +7,14 @@ use crate::apple::runtime;
 use crate::apple::testing::ui::{self, UiCrashDeleteRequest, UiCrashQuery, backend::UiBackend};
 use crate::cli::{
     UiAddMediaArgs, UiCleanTraceTempArgs, UiCommand as UiCliCommand, UiCrashArgs, UiCrashCommand,
-    UiDescribePointArgs, UiDoctorArgs, UiDumpTreeArgs, UiFocusArgs, UiInstallDylibArgs,
-    UiInstrumentsArgs, UiLogsArgs, UiOpenArgs, UiSchemaArgs, UiUpdateContactsArgs,
+    UiDescribePointArgs, UiDoctorArgs, UiDumpTreeArgs, UiFocusArgs, UiInitArgs, UiInstallDylibArgs,
+    UiInstrumentsArgs, UiLogsArgs, UiOpenArgs, UiUpdateContactsArgs,
 };
 use crate::context::ProjectContext;
 
 pub fn execute(project: &ProjectContext, command: &UiCliCommand) -> Result<()> {
     match command {
-        UiCliCommand::Schema(args) => schema(args),
+        UiCliCommand::Init(args) => init(project, args),
         UiCliCommand::Doctor(args) => doctor(project, args),
         UiCliCommand::CleanTraceTemp(args) => clean_trace_temp(args),
         UiCliCommand::DumpTree(args) => dump_tree(project, args),
@@ -72,19 +72,11 @@ pub fn execute(project: &ProjectContext, command: &UiCliCommand) -> Result<()> {
         UiCliCommand::Instruments(args) => instruments(project, args),
         UiCliCommand::UpdateContacts(args) => update_contacts(project, args),
         UiCliCommand::Crash(args) => crash(project, args),
-        UiCliCommand::ResetIdb(_) => reset_idb(),
     }
 }
 
-pub fn schema(args: &UiSchemaArgs) -> Result<()> {
-    let platform = args.platform.map(runtime::apple_platform_from_cli);
-    if args.json {
-        let value = ui::schema_json(platform);
-        println!("{}", serde_json::to_string_pretty(&value)?);
-    } else {
-        println!("{}", ui::schema_text(platform));
-    }
-    Ok(())
+pub fn init(project: &ProjectContext, args: &UiInitArgs) -> Result<()> {
+    ui::init_ui_flow(project, args)
 }
 
 pub fn doctor(project: &ProjectContext, args: &UiDoctorArgs) -> Result<()> {
@@ -174,10 +166,6 @@ pub fn crash(project: &ProjectContext, args: &UiCrashArgs) -> Result<()> {
             delete_all: command.all,
         }),
     }
-}
-
-pub fn reset_idb() -> Result<()> {
-    ui::reset_idb()
 }
 
 fn run_direct(project: &ProjectContext, command: DirectUiCommand) -> Result<()> {

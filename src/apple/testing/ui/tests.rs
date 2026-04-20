@@ -426,12 +426,16 @@ fn flow_selector_matches_configured_name_and_file_stem() {
     let temp = tempdir().unwrap();
     let named = write_flow(
         temp.path(),
-        "onboarding-profile.yaml",
-        "name: onboarding-provider-setup-profile\n---\n- launchApp\n",
+        "onboarding-profile.json",
+        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"name\": \"onboarding-provider-setup-profile\",\n  \"steps\": [\"launchApp\"]\n}\n",
     )
     .canonicalize()
     .unwrap();
-    let plain = write_flow(temp.path(), "relaunch.yaml", "---\n- launchApp\n")
+    let plain = write_flow(
+        temp.path(),
+        "relaunch.json",
+        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\"launchApp\"]\n}\n",
+    )
         .canonicalize()
         .unwrap();
 
@@ -453,8 +457,8 @@ fn flow_selector_reports_available_flows_when_no_match_exists() {
     let temp = tempdir().unwrap();
     let named = write_flow(
         temp.path(),
-        "onboarding-profile.yaml",
-        "name: onboarding-provider-setup-profile\n---\n- launchApp\n",
+        "onboarding-profile.json",
+        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"name\": \"onboarding-provider-setup-profile\",\n  \"steps\": [\"launchApp\"]\n}\n",
     )
     .canonicalize()
     .unwrap();
@@ -463,6 +467,6 @@ fn flow_selector_reports_available_flows_when_no_match_exists() {
         select_ui_flow_paths(&[named], &["missing-flow".to_owned()], temp.path()).unwrap_err();
     let message = error.to_string();
     assert!(message.contains("missing-flow"));
-    assert!(message.contains("onboarding-profile.yaml"));
+    assert!(message.contains("onboarding-profile.json"));
     assert!(message.contains("onboarding-provider-setup-profile"));
 }

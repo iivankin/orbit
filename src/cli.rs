@@ -28,8 +28,8 @@ const TRACE_ARG_HELP: &str = "Collect a CPU or memory trace while the command ru
 #[command(arg_required_else_help = true)]
 #[command(styles = CLAP_STYLING)]
 #[command(
-    long_about = "Orbit reads app intent from `orbit.json`.\n\nUse the JSON schema to understand manifest fields. Use CLI help for workflows and command behavior. `orbit init` also writes an informational `_description` field that points back here.\n\nEvery command supports `--help` for detailed flags, arguments, and examples. For example: `orbit build --help`, `orbit test --help`, `orbit ui schema --help`.\n\nUse `orbit ui schema` to inspect the accepted `tests.ui` YAML dialect and backend support.",
-    after_help = "Scenarios:\n  Development:\n    Create a new project:\n      orbit init\n\n    Run the app in common modes:\n      orbit run --platform ios --simulator\n      orbit run --platform ios --device --debug\n      orbit run --platform macos\n\n    Capture SwiftUI `#Preview` screenshots:\n      orbit preview list --platform ios\n      orbit preview shot Basic --platform ios\n\n    Check formatting and project semantics:\n      orbit format\n      orbit format --write\n      orbit lint\n\n    Run unit tests:\n      orbit test\n      orbit test --trace\n\n    Run UI tests:\n      orbit test --ui --platform ios\n      orbit test --ui --platform macos\n      orbit test --ui --platform macos --flow onboarding-provider-setup\n\n    Trace UI tests:\n      orbit test --ui --platform ios --trace\n      orbit test --ui --platform macos --trace\n      orbit test --ui --platform macos --trace --flow onboarding-provider-setup\n\n    Inspect recorded traces:\n      orbit inspect-trace .orbit/artifacts/profiles/run.trace\n\n    Inspect the UI test DSL and backend support:\n      orbit ui schema --platform ios\n\n  Build And Submit:\n    Build local development artifacts:\n      orbit build --platform ios --distribution development\n\n    Build release artifacts:\n      orbit build --platform ios --distribution app-store --release\n      orbit build --platform macos --distribution developer-id --release\n      orbit build --platform macos --distribution mac-app-store --release\n\n    Submit a built artifact:\n      orbit submit --platform ios --wait\n      orbit submit --receipt .orbit/receipts/<receipt>.json --wait"
+    long_about = "Orbit reads app intent from `orbit.json`.\n\nUse the JSON schema to understand manifest fields. Use CLI help for workflows and command behavior. `orbit init` also writes an informational `_description` field that points back here.\n\nEvery command supports `--help` for detailed flags, arguments, and examples. For example: `orbit build --help`, `orbit test --help`, `orbit ui init --help`.\n\nUI test flows are JSON files with `$schema`; use `orbit ui init` to scaffold them.",
+    after_help = "Scenarios:\n  Recommended UI Workflow:\n    Write Swift and optional backend unit tests:\n      orbit test\n\n    Check that the interface looks right with a SwiftUI preview screenshot:\n      orbit preview list --platform ios\n      orbit preview shot Basic --platform ios\n\n    Write UI test flows:\n      orbit ui init Tests/UI/login.json\n\n    Run UI tests normally:\n      orbit test --ui --platform ios\n      orbit test --ui --platform macos\n      orbit test --ui --platform macos --flow onboarding-provider-setup\n\n    Run a final trace pass:\n      orbit test --ui --platform ios --trace\n      orbit test --ui --platform macos --trace\n      orbit test --ui --platform macos --trace --flow onboarding-provider-setup\n\n    Inspect recorded traces:\n      orbit inspect-trace .orbit/artifacts/profiles/run.trace\n\n  Development:\n    Create a new project:\n      orbit init\n\n    Run the app in common modes:\n      orbit run --platform ios --simulator\n      orbit run --platform ios --device --debug\n      orbit run --platform macos\n\n    Check formatting and project semantics:\n      orbit format\n      orbit format --write\n      orbit lint\n\n  Build And Submit:\n    Build local development artifacts:\n      orbit build --platform ios --distribution development\n\n    Build release artifacts:\n      orbit build --platform ios --distribution app-store --release\n      orbit build --platform macos --distribution developer-id --release\n      orbit build --platform macos --distribution mac-app-store --release\n\n    Submit a built artifact:\n      orbit submit --platform ios --wait\n      orbit submit --receipt .orbit/receipts/<receipt>.json --wait"
 )]
 pub struct Cli {
     #[arg(
@@ -76,7 +76,7 @@ pub enum Command {
     Test(TestArgs),
     /// Inspect and render SwiftUI previews.
     Preview(PreviewArgs),
-    /// Inspect automation targets and query the UI test dialect.
+    /// Inspect automation targets and run direct UI actions.
     Ui(UiArgs),
     /// Refresh lock state for git-backed dependencies.
     Deps(DepsArgs),
@@ -125,8 +125,8 @@ pub struct FormatArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "Run unit tests, UI flows, or profiling sessions declared in the manifest.",
-    long_about = "By default `orbit test` runs the manifest's `tests.unit` suite.\n\nUse `--ui` to run `tests.ui`, and use `orbit ui schema` when you need the accepted YAML grammar or backend support matrix.",
-    after_help = "Examples:\n  orbit test\n  orbit test --ui --platform ios\n  orbit test --ui --platform macos --flow onboarding-provider-setup\n  orbit test --ui --platform macos --focus\n  orbit test --trace\n  orbit ui schema --platform ios"
+    long_about = "By default `orbit test` runs the manifest's `tests.unit` suite.\n\nUse `--ui` to run `tests.ui`. UI test flows are JSON files with `$schema`; use `orbit ui init` when you need a starter flow file.",
+    after_help = "Examples:\n  orbit test\n  orbit test --ui --platform ios\n  orbit test --ui --platform macos --flow onboarding-provider-setup\n  orbit test --ui --platform macos --focus\n  orbit test --trace\n  orbit ui init Tests/UI/login.json"
 )]
 pub struct TestArgs {
     #[arg(long, help = "Run `tests.ui` instead of the unit-test suite.")]
@@ -221,9 +221,9 @@ pub struct PreviewShotArgs {
 #[derive(Debug, Args)]
 #[command(arg_required_else_help = true)]
 #[command(
-    about = "Inspect automation targets and query the UI test dialect.",
-    long_about = "Use `orbit ui schema` for product-level documentation of the accepted `tests.ui` YAML dialect and backend support.\n\nUse the other subcommands when you need to inspect a running automation target, debug selectors, or mutate simulator state.",
-    after_help = "Common commands:\n  orbit ui schema --platform ios\n  orbit ui tap --platform ios --text Continue\n  orbit ui swipe --platform ios --direction left\n  orbit ui dump-tree --platform ios\n  orbit ui describe-point --platform ios --x 140 --y 142\n  orbit ui doctor --platform macos"
+    about = "Inspect automation targets and run direct UI actions.",
+    long_about = "Use `orbit ui init` to scaffold a `tests.ui` flow file.\n\nUse `orbit ui clean-trace-temp` when you want to reclaim disk space from stale Instruments temp traces left by previous runs.\n\nUse the other subcommands when you need to inspect a running automation target, debug selectors, or mutate simulator state.",
+    after_help = "Common commands:\n  orbit ui init Tests/UI/login.json\n  orbit ui clean-trace-temp\n  orbit ui tap --platform ios --text Continue\n  orbit ui swipe --platform ios --direction left\n  orbit ui dump-tree --platform ios\n  orbit ui describe-point --platform ios --x 140 --y 142\n  orbit ui doctor --platform macos"
 )]
 pub struct UiArgs {
     #[command(subcommand)]
@@ -232,8 +232,8 @@ pub struct UiArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum UiCommand {
-    /// Print the accepted `tests.ui` grammar and backend support matrix.
-    Schema(UiSchemaArgs),
+    /// Write a starter JSON UI flow file with `$schema`.
+    Init(UiInitArgs),
     /// Check automation prerequisites for the selected platform.
     Doctor(UiDoctorArgs),
     /// Remove stale Instruments temp traces from the current user's temp directory.
@@ -333,8 +333,6 @@ pub enum UiCommand {
     UpdateContacts(UiUpdateContactsArgs),
     /// Inspect or delete captured crash logs.
     Crash(UiCrashArgs),
-    #[command(hide = true)]
-    ResetIdb(UiResetIdbArgs),
 }
 
 #[derive(Debug, Args, Clone)]
@@ -729,23 +727,28 @@ pub struct UiTravelArgs {
 
 #[derive(Debug, Args)]
 #[command(
-    about = "Print the accepted `tests.ui` grammar and backend support matrix.",
-    long_about = "Print product-level documentation for the accepted `tests.ui` YAML dialect and backend support.\n\nBy default Orbit prints a human-readable CLI view. Pass `--json` for the raw machine-readable schema.",
-    after_help = "Examples:\n  orbit ui schema\n  orbit ui schema --platform ios\n  orbit ui schema --platform ios --json"
+    about = "Write a starter JSON UI flow file.",
+    long_about = "Write a starter `tests.ui` flow as JSON with the required `$schema` and `steps` keys.\n\nBy default Orbit infers `appId` from the manifest bundle identifier and `name` from the file stem.",
+    after_help = "Examples:\n  orbit ui init Tests/UI/login.json\n  orbit ui init Tests/UI/login.json --name Login\n  orbit ui init Tests/UI/login.json --app-id dev.orbit.example.app"
 )]
-pub struct UiSchemaArgs {
-    #[arg(
-        long,
-        value_enum,
-        help = "Filter backend support details to one platform."
-    )]
-    pub platform: Option<TargetPlatform>,
+pub struct UiInitArgs {
+    #[arg(help = "Path to the JSON flow file to create, relative to the project root.")]
+    pub path: PathBuf,
 
     #[arg(
         long,
-        help = "Print the raw machine-readable schema JSON instead of the human-readable CLI view."
+        help = "Override the default flow name. Defaults to the file stem."
     )]
-    pub json: bool,
+    pub name: Option<String>,
+
+    #[arg(
+        long,
+        help = "Override the default app bundle identifier from the manifest."
+    )]
+    pub app_id: Option<String>,
+
+    #[arg(long, help = "Overwrite the destination file if it already exists.")]
+    pub force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -992,9 +995,6 @@ pub struct UiCrashDeleteArgs {
     )]
     pub all: bool,
 }
-
-#[derive(Debug, Args)]
-pub struct UiResetIdbArgs {}
 
 #[derive(Debug, Args)]
 #[command(arg_required_else_help = true)]
@@ -1438,7 +1438,7 @@ mod tests {
         let mut command = Cli::command();
         let help = command.render_long_help().to_string();
 
-        assert!(help.contains("orbit ui schema --platform ios"));
+        assert!(help.contains("orbit ui init Tests/UI/login.json"));
         assert!(help.contains("orbit preview shot Basic --platform ios"));
         assert!(help.contains("orbit test --ui --platform macos --flow onboarding-provider-setup"));
         assert!(
@@ -1448,34 +1448,28 @@ mod tests {
         );
         assert!(help.contains("orbit submit --platform ios --wait"));
         assert!(help.contains("Every command supports `--help`"));
-        assert!(help.contains("Capture SwiftUI `#Preview` screenshots"));
+        assert!(help.contains("Recommended UI Workflow:"));
+        assert!(help.contains("Write Swift and optional backend unit tests"));
+        assert!(
+            help.contains("Check that the interface looks right with a SwiftUI preview screenshot")
+        );
+        assert!(help.contains("Run a final trace pass"));
         assert!(help.contains("orbit inspect-trace .orbit/artifacts/profiles/run.trace"));
         assert!(!help.contains("Common commands:"));
+        assert!(!help.contains("query the UI test dialect"));
         assert!(!help.contains("\n  bsp"));
     }
 
     #[test]
-    fn ui_help_includes_schema_subcommand() {
+    fn ui_help_includes_init_subcommand() {
         let mut command = Cli::command();
         let ui = command.find_subcommand_mut("ui").unwrap();
         let help = ui.render_long_help().to_string();
 
-        assert!(help.contains("schema"));
+        assert!(help.contains("init"));
         assert!(help.contains("tap"));
         assert!(help.contains("swipe"));
         assert!(help.contains("clean-trace-temp"));
-        assert!(help.contains("tests.ui"));
-    }
-
-    #[test]
-    fn ui_schema_help_mentions_json_output() {
-        let mut command = Cli::command();
-        let ui = command.find_subcommand_mut("ui").unwrap();
-        let schema = ui.find_subcommand_mut("schema").unwrap();
-        let help = schema.render_long_help().to_string();
-
-        assert!(help.contains("human-readable CLI view"));
-        assert!(help.contains("--json"));
     }
 
     #[test]

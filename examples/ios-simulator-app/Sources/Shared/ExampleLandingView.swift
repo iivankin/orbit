@@ -47,7 +47,7 @@ struct ExampleLandingView: View {
                 .symbolRenderingMode(.hierarchical)
             Text("Orbit UI Demo")
                 .font(.largeTitle.bold())
-            Text("Swipe once to open the form screen that the YAML flow drives.")
+            Text("Swipe once to open the form screen that the JSON flow drives.")
                 .font(.headline)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)

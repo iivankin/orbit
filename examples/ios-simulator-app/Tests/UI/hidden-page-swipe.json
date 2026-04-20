@@ -1,0 +1,26 @@
+{
+  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
+  "appId": "dev.orbit.examples.exampleiosapp",
+  "name": "Hidden Page Swipe Demo",
+  "steps": [
+    "launchApp",
+    {
+      "tapOn": "Open Swipe Lab"
+    },
+    {
+      "tapOn": "Pager Without Indicator"
+    },
+    {
+      "assertVisible": "Pager Without Indicator"
+    },
+    {
+      "swipe": "LEFT"
+    },
+    {
+      "assertVisible": "Swipe Lab Email"
+    },
+    {
+      "takeScreenshot": "hidden-page-swipe"
+    }
+  ]
+}

@@ -1,9 +1,0 @@
-appId: dev.orbit.examples.macos
-name: macos-menu-item
----
-- launchApp
-- selectMenuItem:
-    - Automation
-    - Trigger Shortcut
-- assertVisible: Menu action triggered
-- takeScreenshot: macos-menu-item

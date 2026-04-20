@@ -1,0 +1,20 @@
+{
+  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
+  "appId": "dev.orbit.examples.exampleiosapp",
+  "name": "Scroll Demo",
+  "steps": [
+    "launchApp",
+    {
+      "tapOn": "Open Form"
+    },
+    {
+      "scrollUntilVisible": "Automation Footer"
+    },
+    {
+      "assertVisible": "Automation Footer"
+    },
+    {
+      "takeScreenshot": "scroll-footer"
+    }
+  ]
+}

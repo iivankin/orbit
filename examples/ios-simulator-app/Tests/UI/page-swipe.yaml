@@ -1,8 +1,0 @@
-appId: dev.orbit.examples.exampleiosapp
-name: Page Swipe Demo
----
-- launchApp
-- assertVisible: Orbit UI Demo
-- swipe: LEFT
-- assertVisible: Email
-- takeScreenshot: page-swipe

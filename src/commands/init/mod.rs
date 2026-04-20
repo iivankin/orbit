@@ -306,6 +306,7 @@ fn init_asc_config(team_id: &str) -> AscConfig {
         devices: Default::default(),
         certs: Default::default(),
         profiles: Default::default(),
+        apps: Default::default(),
     }
 }
 

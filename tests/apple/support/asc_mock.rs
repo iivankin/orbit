@@ -411,6 +411,7 @@ fn asc_response_body(
                 "attributes": {
                     "name": app_name,
                     "sku": "DEV-ORBIT-FIXTURE",
+                    "bundleId": bundle_identifier,
                     "primaryLocale": "en-US"
                 },
                 "relationships": {}
@@ -430,6 +431,7 @@ fn asc_response_body(
                 "attributes": {
                     "name": app_name,
                     "sku": "DEV-ORBIT-FIXTURE",
+                    "bundleId": bundle_identifier,
                     "primaryLocale": "en-US"
                 },
                 "relationships": {}

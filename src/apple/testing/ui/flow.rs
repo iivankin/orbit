@@ -21,7 +21,7 @@ pub(super) fn collect_ui_flow_paths(
         if !resolved.exists() {
             bail!("declared path `{}` does not exist", resolved.display());
         }
-        for path in collect_files_with_extensions(&resolved, &["yml", "yaml"])? {
+        for path in collect_files_with_extensions(&resolved, &["json"])? {
             let canonical = canonical_or_absolute(&path)?;
             if seen.insert(canonical.clone()) {
                 flows.push(canonical);

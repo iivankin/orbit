@@ -1,8 +1,0 @@
-appId: dev.orbit.examples.macos
-name: macos-hover
----
-- launchApp
-- hoverOn:
-    id: hover-target
-- assertVisible: Hover detected
-- takeScreenshot: macos-hover

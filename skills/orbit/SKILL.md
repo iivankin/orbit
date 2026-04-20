@@ -25,7 +25,7 @@ Use this skill when a repository is driven by `orbit.json` and Orbit CLI.
 
 - Manifest field docs live in the `orbit.json` schema. Prefer editor/schema help over handwritten markdown.
 - Workflow and command docs live in `orbit --help` and `orbit <command> --help`.
-- UI flow grammar and backend support live in `orbit ui schema [--platform ...]`.
+- UI flow grammar lives in the UI flow JSON Schema referenced by each flow file's `$schema`.
 - Use `examples/` for canonical manifest shapes and example UI flows.
 
 ## Inside The Orbit CLI Repository

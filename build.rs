@@ -1,8 +1,11 @@
 use std::env;
 use std::error::Error;
 use std::fs;
+use std::io::{self, Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 struct SwiftToolSpec {
     command_name: &'static str,
@@ -17,7 +20,13 @@ struct SwiftToolSpec {
     prebuilt_path_env_var: &'static str,
 }
 
+struct ResolvedSwiftToolLibrary {
+    path: PathBuf,
+    cleanup_root: Option<PathBuf>,
+}
+
 const ORBIT_SWIFT_TOOLS_PREBUILT_DIR_ENV: &str = "ORBIT_SWIFT_TOOLS_PREBUILT_DIR";
+const SWIFT_BUILD_PROGRESS_INTERVAL: Duration = Duration::from_secs(30);
 
 const SWIFT_TOOL_SPECS: &[SwiftToolSpec] = &[
     SwiftToolSpec {
@@ -80,14 +89,17 @@ fn main() -> Result<(), Box<dyn Error>> {
     for spec in SWIFT_TOOL_SPECS {
         let package_dir = manifest_dir.join(spec.package_dir);
         emit_rerun_if_changed(&package_dir)?;
-        let built_dylib = resolve_swift_tool_library(
+        let resolved_library = resolve_swift_tool_library(
             &manifest_dir,
             &package_dir,
             &build_root.join(spec.product),
             spec,
         )?;
         let embedded_path = out_dir.join(spec.embedded_file_name);
-        fs::copy(&built_dylib, &embedded_path)?;
+        fs::copy(&resolved_library.path, &embedded_path)?;
+        if let Some(cleanup_root) = resolved_library.cleanup_root {
+            cleanup_swift_tool_build_root(&cleanup_root, spec)?;
+        }
         generated.push_str(&generated_swift_tool_definition(
             spec,
             Some(&embedded_path),
@@ -166,7 +178,7 @@ fn build_swift_tool_library(
     fs::create_dir_all(&cache_path)?;
 
     let mut build_command = base_swift_build_command(package_dir, &scratch_path, &cache_path, spec);
-    run_command(&mut build_command)?;
+    run_command(&mut build_command, spec)?;
 
     let mut show_bin_command =
         base_swift_build_command(package_dir, &scratch_path, &cache_path, spec);
@@ -190,13 +202,49 @@ fn resolve_swift_tool_library(
     package_dir: &Path,
     build_root: &Path,
     spec: &SwiftToolSpec,
-) -> Result<PathBuf, Box<dyn Error>> {
+) -> Result<ResolvedSwiftToolLibrary, Box<dyn Error>> {
     if let Some(prebuilt_path) = resolve_prebuilt_swift_tool_library(manifest_dir, spec)? {
         println!("cargo:rerun-if-changed={}", prebuilt_path.display());
-        return Ok(prebuilt_path);
+        return Ok(ResolvedSwiftToolLibrary {
+            path: prebuilt_path,
+            cleanup_root: None,
+        });
     }
 
-    build_swift_tool_library(package_dir, build_root, spec)
+    Ok(ResolvedSwiftToolLibrary {
+        path: build_swift_tool_library(package_dir, build_root, spec)?,
+        cleanup_root: Some(build_root.to_path_buf()),
+    })
+}
+
+fn cleanup_swift_tool_build_root(
+    build_root: &Path,
+    spec: &SwiftToolSpec,
+) -> Result<(), Box<dyn Error>> {
+    emit_swift_build_status(
+        &format!(
+            "cleaning SwiftPM build artifacts for `{}` at {}.",
+            spec.product,
+            build_root.display()
+        ),
+        false,
+    );
+    match fs::remove_dir_all(build_root) {
+        Ok(()) => {
+            emit_swift_build_status(
+                &format!("cleaned SwiftPM build artifacts for `{}`.", spec.product),
+                false,
+            );
+            Ok(())
+        }
+        Err(err) if err.kind() == io::ErrorKind::NotFound => Ok(()),
+        Err(err) => Err(format!(
+            "failed to clean SwiftPM build artifacts for `{}` at {}: {err}",
+            spec.product,
+            build_root.display()
+        )
+        .into()),
+    }
 }
 
 fn resolve_prebuilt_swift_tool_library(
@@ -262,19 +310,121 @@ fn base_swift_build_command(
     command
 }
 
-fn run_command(command: &mut Command) -> Result<(), Box<dyn Error>> {
+fn run_command(command: &mut Command, spec: &SwiftToolSpec) -> Result<(), Box<dyn Error>> {
     let debug = debug_command(command);
-    let output = command.output()?;
-    if !output.status.success() {
+    emit_swift_build_status(
+        &format!(
+            "building embedded Swift tool `{}` for `{}`. First release build can take several minutes while SwiftPM compiles dependencies like SwiftSyntax.",
+            spec.product, spec.command_name
+        ),
+        true,
+    );
+
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command
+        .spawn()
+        .map_err(|err| format!("failed to start `{debug}`: {err}"))?;
+    let stdout = child.stdout.take().ok_or_else(|| {
+        format!(
+            "failed to capture stdout for `{}` while building `{}`",
+            debug, spec.product
+        )
+    })?;
+    let stderr = child.stderr.take().ok_or_else(|| {
+        format!(
+            "failed to capture stderr for `{}` while building `{}`",
+            debug, spec.product
+        )
+    })?;
+    let stdout_reader = thread::spawn(move || read_and_forward(stdout));
+    let stderr_reader = thread::spawn(move || read_and_forward(stderr));
+
+    let started = Instant::now();
+    let mut next_progress = SWIFT_BUILD_PROGRESS_INTERVAL;
+    let status = loop {
+        if let Some(status) = child.try_wait()? {
+            break status;
+        }
+
+        let elapsed = started.elapsed();
+        if elapsed >= next_progress {
+            emit_swift_build_status(
+                &format!(
+                    "still building embedded Swift tool `{}` after {}s.",
+                    spec.product,
+                    elapsed.as_secs()
+                ),
+                false,
+            );
+            next_progress += SWIFT_BUILD_PROGRESS_INTERVAL;
+        }
+        thread::sleep(Duration::from_secs(1));
+    };
+
+    let stdout = join_reader(stdout_reader, "stdout", &debug)?;
+    let stderr = join_reader(stderr_reader, "stderr", &debug)?;
+    if !status.success() {
         return Err(format!(
             "`{debug}` failed with {}\nstdout:\n{}\nstderr:\n{}",
-            output.status,
-            String::from_utf8_lossy(&output.stdout),
-            String::from_utf8_lossy(&output.stderr)
+            status,
+            String::from_utf8_lossy(&stdout),
+            String::from_utf8_lossy(&stderr)
         )
         .into());
     }
+
+    emit_swift_build_status(
+        &format!(
+            "finished embedded Swift tool `{}` in {}s.",
+            spec.product,
+            started.elapsed().as_secs()
+        ),
+        true,
+    );
     Ok(())
+}
+
+fn emit_swift_build_status(message: &str, emit_cargo_warning: bool) {
+    // Cargo buffers build-script stdout/stderr until the script exits. Writing
+    // directly to the controlling terminal keeps long SwiftPM builds visible.
+    let line = format!("orbit build: {message}\n");
+    let wrote_to_terminal = write_to_terminal(line.as_bytes()).is_ok();
+    if emit_cargo_warning && !wrote_to_terminal {
+        println!("cargo:warning=orbit build: {message}");
+    }
+}
+
+fn write_to_terminal(bytes: &[u8]) -> io::Result<()> {
+    let mut terminal = fs::OpenOptions::new().write(true).open("/dev/tty")?;
+    terminal.write_all(bytes)?;
+    terminal.flush()
+}
+
+fn read_and_forward<R: Read>(mut reader: R) -> io::Result<Vec<u8>> {
+    let mut output = Vec::new();
+    let mut buffer = [0; 8192];
+    let mut stderr = io::stderr().lock();
+    loop {
+        let bytes_read = reader.read(&mut buffer)?;
+        if bytes_read == 0 {
+            break;
+        }
+        output.extend_from_slice(&buffer[..bytes_read]);
+        let _ = stderr.write_all(&buffer[..bytes_read]);
+        let _ = stderr.flush();
+    }
+    Ok(output)
+}
+
+fn join_reader(
+    reader: thread::JoinHandle<io::Result<Vec<u8>>>,
+    stream_name: &str,
+    debug: &str,
+) -> Result<Vec<u8>, Box<dyn Error>> {
+    reader
+        .join()
+        .map_err(|_| format!("reader thread panicked while capturing {stream_name} for `{debug}`"))?
+        .map_err(|err| format!("failed to read {stream_name} for `{debug}`: {err}").into())
 }
 
 fn command_output(command: &mut Command) -> Result<String, Box<dyn Error>> {

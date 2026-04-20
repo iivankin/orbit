@@ -1,8 +1,0 @@
-appId: dev.orbit.examples.exampleiosapp
-name: Scroll Demo
----
-- launchApp
-- tapOn: Open Form
-- scrollUntilVisible: Automation Footer
-- assertVisible: Automation Footer
-- takeScreenshot: scroll-footer

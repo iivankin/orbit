@@ -12,12 +12,7 @@ pub fn execute(app: &AppContext, cli: &Cli) -> Result<()> {
         Command::Init(_) => init::execute(app, cli.manifest.as_deref()),
         Command::Asc(_) => crate::asc::execute(app, cli),
         Command::InspectTrace(args) => crate::apple::profile::inspect_trace_command(app, args),
-        Command::Ui(ui_args)
-            if matches!(
-                &ui_args.command,
-                UiCommand::Schema(_) | UiCommand::CleanTraceTemp(_) | UiCommand::ResetIdb(_)
-            ) =>
-        {
+        Command::Ui(ui_args) if matches!(&ui_args.command, UiCommand::CleanTraceTemp(_)) => {
             apple::execute(app, cli)
         }
         _ => dispatch_project_command(app, cli),

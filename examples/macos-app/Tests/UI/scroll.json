@@ -1,0 +1,24 @@
+{
+  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
+  "appId": "dev.orbit.examples.macos",
+  "name": "macos-scroll",
+  "steps": [
+    "launchApp",
+    {
+      "scrollUntilVisible": {
+        "element": {
+          "id": "scroll-footer"
+        },
+        "direction": "DOWN"
+      }
+    },
+    {
+      "assertVisible": {
+        "id": "scroll-footer"
+      }
+    },
+    {
+      "takeScreenshot": "macos-scroll-footer"
+    }
+  ]
+}

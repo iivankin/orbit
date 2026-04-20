@@ -1,0 +1,19 @@
+{
+  "$schema": "../../../../schemas/orbit-ui-test.v1.json",
+  "appId": "dev.orbit.examples.macos",
+  "name": "macos-right-click",
+  "steps": [
+    "launchApp",
+    {
+      "rightClickOn": {
+        "id": "secondary-click-area"
+      }
+    },
+    {
+      "assertVisible": "Secondary click recognized"
+    },
+    {
+      "takeScreenshot": "macos-right-click"
+    }
+  ]
+}

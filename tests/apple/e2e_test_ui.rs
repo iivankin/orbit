@@ -103,6 +103,38 @@ fn orbit_test_runs_ui_flows_for_manifest_tests() {
 }
 
 #[test]
+fn orbit_ui_init_writes_json_flow_template() {
+    let temp = tempdir().unwrap();
+    let home = create_home(temp.path());
+    let mock_bin = temp.path().join("mock-bin");
+    let log_path = temp.path().join("mock.log");
+    fs::create_dir_all(&mock_bin).unwrap();
+    let workspace = create_ui_testing_workspace(temp.path());
+
+    let mut command = base_command(&workspace, &home, &mock_bin, &log_path);
+    command.args([
+        "--non-interactive",
+        "ui",
+        "init",
+        "Tests/UI/generated-flow.json",
+    ]);
+    let output = run_and_capture(&mut command);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        output.status.success(),
+        "{}",
+        format_failure_output(&stderr)
+    );
+
+    let contents = fs::read_to_string(workspace.join("Tests/UI/generated-flow.json")).unwrap();
+    assert!(contents.contains("\"$schema\""));
+    assert!(contents.contains("\"appId\": \"dev.orbit.fixture.ui\""));
+    assert!(contents.contains("\"name\": \"generated-flow\""));
+    assert!(contents.contains("\"steps\""));
+    assert!(contents.contains("\"launchApp\""));
+}
+
+#[test]
 fn orbit_test_ui_trace_fails_on_ios_simulator() {
     let temp = tempdir().unwrap();
     let home = create_home(temp.path());
@@ -149,13 +181,13 @@ fn orbit_test_ui_trace_advances_past_macos_relaunch_planning() {
         }),
     );
     fs::write(
-        workspace.join("Tests/UI/advanced.yaml"),
-        "---\n- launchApp\n- assertVisible: Continue\n",
+        workspace.join("Tests/UI/advanced.json"),
+        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    \"launchApp\",\n    {\n      \"assertVisible\": \"Continue\"\n    }\n  ]\n}\n",
     )
     .unwrap();
     fs::write(
-        workspace.join("Tests/UI/login.yaml"),
-        "---\n- launchApp\n- assertVisible: Continue\n",
+        workspace.join("Tests/UI/login.json"),
+        "{\n  \"$schema\": \"/tmp/.orbit/schemas/orbit-ui-test.v1.json\",\n  \"steps\": [\n    \"launchApp\",\n    {\n      \"assertVisible\": \"Continue\"\n    }\n  ]\n}\n",
     )
     .unwrap();
 
@@ -588,15 +620,6 @@ fn orbit_ui_aux_commands_forward_to_idb() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let mut reset = base_command(&workspace, &home, &mock_bin, &log_path);
-    reset.args(["ui", "reset-idb"]);
-    let output = run_and_capture(&mut reset);
-    assert!(
-        output.status.success(),
-        "{}",
-        String::from_utf8_lossy(&output.stderr)
-    );
-
     let log = read_log(&log_path);
     assert!(log.contains("idb focus --udid IOS-UDID"));
     assert!(log.contains("idb log --udid IOS-UDID -- --timeout 1s"));
@@ -613,7 +636,6 @@ fn orbit_ui_aux_commands_forward_to_idb() {
     assert!(log.contains("idb crash list --bundle-id dev.orbit.fixture.ui --udid IOS-UDID"));
     assert!(log.contains("idb crash show mock-crash-1.ips --udid IOS-UDID"));
     assert!(log.contains("idb crash delete --since 1710000000 --all --udid IOS-UDID"));
-    assert!(log.contains("idb kill"));
 }
 
 #[test]

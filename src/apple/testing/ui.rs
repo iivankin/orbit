@@ -3,7 +3,7 @@ use std::path::Path;
 use std::time::{Duration, Instant, SystemTime};
 
 use anyhow::{Context, Result, bail};
-use serde_json::Value as JsonValue;
+use serde_json::{Map as JsonMap, Value as JsonValue, json};
 use uuid::Uuid;
 
 #[path = "ui/backend.rs"]
@@ -43,15 +43,16 @@ pub(crate) use self::model::{
 };
 use self::report::{RunStatus, UiTestRunReport, unix_timestamp_secs};
 use self::runner::UiFlowRunner;
-pub(crate) use self::schema::{schema_json, schema_text};
 use self::trace::MacosUiTraceRuntime;
 use crate::apple::build::toolchain::DestinationKind;
 use crate::apple::logs::SimulatorAppLogStream;
 use crate::apple::{build, runtime};
-use crate::cli::{ProfileKind, TestArgs, UiCleanTraceTempArgs};
+use crate::cli::{ProfileKind, TestArgs, UiCleanTraceTempArgs, UiInitArgs};
 use crate::context::ProjectContext;
 use crate::manifest::ApplePlatform;
-use crate::util::{ensure_dir, format_elapsed, human_bytes, print_success, write_json_file};
+use crate::util::{
+    ensure_dir, format_elapsed, human_bytes, print_success, resolve_path, write_json_file,
+};
 
 struct PreparedUiSession {
     build_outcome: crate::apple::build::pipeline::BuildOutcome,
@@ -82,9 +83,64 @@ pub fn run_ui_tests(project: &ProjectContext, args: &TestArgs) -> Result<()> {
     )?;
     let flow_paths = collect_ui_flow_paths(project, ui_tests, args.flows.as_slice())?;
     if flow_paths.is_empty() {
-        bail!("`tests.ui` did not contain any `.yml` or `.yaml` files");
+        bail!("`tests.ui` did not contain any `.json` files");
     }
     run_ui_flow_paths(project, platform, flow_paths, args.trace, args.focus)
+}
+
+pub fn init_ui_flow(project: &ProjectContext, args: &UiInitArgs) -> Result<()> {
+    let path = resolve_path(&project.root, &args.path);
+    let extension = path.extension().and_then(|value| value.to_str());
+    if !extension.is_some_and(|value| value.eq_ignore_ascii_case("json")) {
+        bail!("UI flow files must use the `.json` extension");
+    }
+    if path.exists() && !args.force {
+        bail!(
+            "{} already exists; pass `--force` to overwrite it",
+            path.display()
+        );
+    }
+
+    let default_name = path
+        .file_stem()
+        .and_then(|value| value.to_str())
+        .context("UI flow path must include a valid UTF-8 file name")?
+        .trim()
+        .to_owned();
+    if default_name.is_empty() {
+        bail!("UI flow path must include a non-empty file name");
+    }
+    let default_app_id = project
+        .resolved_manifest
+        .resolve_target(None)?
+        .bundle_id
+        .clone();
+
+    let mut document = JsonMap::new();
+    document.insert(
+        "$schema".to_owned(),
+        JsonValue::String(schema::FLOW_SCHEMA_URL.to_owned()),
+    );
+    document.insert(
+        "appId".to_owned(),
+        JsonValue::String(args.app_id.clone().unwrap_or(default_app_id)),
+    );
+    document.insert(
+        "name".to_owned(),
+        JsonValue::String(
+            args.name
+                .as_deref()
+                .map(str::trim)
+                .filter(|value| !value.is_empty())
+                .unwrap_or(default_name.as_str())
+                .to_owned(),
+        ),
+    );
+    document.insert("steps".to_owned(), json!(["launchApp"]));
+
+    write_json_file(&path, &JsonValue::Object(document))?;
+    print_success(format!("Wrote UI flow template to {}.", path.display()));
+    Ok(())
 }
 
 pub fn run_ui_command(
@@ -279,13 +335,6 @@ pub(crate) fn describe_point_json(
 ) -> Result<JsonValue> {
     let prepared = prepare_ui_session(project, platform, true)?;
     prepared.backend.describe_point(x, y)
-}
-
-pub(crate) fn reset_idb() -> Result<()> {
-    idb::ensure_tooling_available()?;
-    let mut command = std::process::Command::new("idb");
-    command.arg("kill");
-    crate::util::run_command(&mut command).context(idb::requirement_message())
 }
 
 pub(crate) fn doctor(project: &ProjectContext, platform: ApplePlatform) -> Result<()> {
