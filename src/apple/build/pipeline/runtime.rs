@@ -1,7 +1,8 @@
 use std::fs;
+#[cfg(unix)]
 use std::os::unix::process::ExitStatusExt;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Command, ExitStatus, Stdio};
 use std::thread;
 use std::time::{Duration, Instant};
 
@@ -1090,7 +1091,7 @@ fn wait_for_device_process_for_installation(
             && let Some(status) = child.try_wait()?
             && !status.success()
         {
-            if let Some(signal) = status.signal() {
+            if let Some(signal) = exit_signal(&status) {
                 bail!(
                     "`devicectl device process launch --console --start-stopped` exited from signal {signal} before Orbi could attach LLDB"
                 );
@@ -1109,6 +1110,16 @@ fn wait_for_device_process_for_installation(
         device.name(),
         device.provisioning_udid()
     )
+}
+
+#[cfg(unix)]
+fn exit_signal(status: &ExitStatus) -> Option<i32> {
+    status.signal()
+}
+
+#[cfg(not(unix))]
+fn exit_signal(_status: &ExitStatus) -> Option<i32> {
+    None
 }
 
 fn find_running_process_for_installation<'a>(

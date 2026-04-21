@@ -2,6 +2,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, TryRecvError};
 use std::thread;
+#[cfg(unix)]
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
@@ -10,7 +11,9 @@ use crate::apple::xcode::{SelectedXcode, xcrun_command};
 use crate::cli::ProfileKind;
 use crate::util::{command_output_allow_failure, debug_command, ensure_parent_dir, timestamp_slug};
 use anyhow::{Context, Result, bail};
+#[cfg(unix)]
 use signal_hook::consts::signal::SIGINT;
+#[cfg(unix)]
 use signal_hook::iterator::{Handle as SignalHandle, Signals};
 
 pub(crate) const SIMULATOR_PROFILING_UNAVAILABLE_MESSAGE: &str = "simulator profiling is currently unavailable because Apple's xctrace/InstrumentsCLI simulator path is unstable and can hang or emit broken traces. Use a physical device or macOS target instead.";
@@ -50,10 +53,14 @@ struct LaunchedTraceRequest<'a> {
     stdio: TraceLaunchStdio,
 }
 
+#[cfg(unix)]
 struct SignalForwarder {
     handle: SignalHandle,
     thread: Option<JoinHandle<()>>,
 }
+
+#[cfg(not(unix))]
+struct SignalForwarder;
 
 pub(crate) fn start_optional_launched_process_trace(
     root: &Path,
@@ -424,6 +431,7 @@ fn send_interrupt_to_child(child: &Child) -> Result<()> {
 }
 
 impl SignalForwarder {
+    #[cfg(unix)]
     fn install(interrupt_tx: mpsc::Sender<()>) -> Result<Self> {
         let mut signals = Signals::new([SIGINT])
             .context("failed to install Ctrl-C handler for trace recording")?;
@@ -438,8 +446,14 @@ impl SignalForwarder {
             thread: Some(thread),
         })
     }
+
+    #[cfg(not(unix))]
+    fn install(_interrupt_tx: mpsc::Sender<()>) -> Result<Self> {
+        Ok(Self)
+    }
 }
 
+#[cfg(unix)]
 impl Drop for SignalForwarder {
     fn drop(&mut self) {
         self.handle.close();
