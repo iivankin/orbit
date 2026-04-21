@@ -73,11 +73,16 @@ const APPLE_MULTIPLATFORM_DEVICE_SLOTS: [InitDeviceSlot; 2] = [
     ),
 ];
 
-const APPLE_TEMPLATE_CHOICES: [TemplateChoice; 7] = [
+const APPLE_TEMPLATE_CHOICES: [TemplateChoice; 8] = [
     TemplateChoice {
         kind: InitTemplate::Ios,
         label: "iOS app",
         description: "Single-target SwiftUI iPhone/iPad app",
+    },
+    TemplateChoice {
+        kind: InitTemplate::IosUIKit,
+        label: "iOS UIKit app",
+        description: "Single-target UIKit iPhone/iPad app",
     },
     TemplateChoice {
         kind: InitTemplate::MacosSwiftUi,
@@ -128,6 +133,12 @@ const IOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
     &IOS_PLATFORMS,
     "Orbi is ready for iOS",
     "Edit Sources/App/HomeView.swift, then launch the simulator again.",
+    &["orbi run --platform ios --simulator"],
+);
+const IOS_UIKIT_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
+    &IOS_PLATFORMS,
+    "Orbi is ready for iOS",
+    "Edit Sources/App/HomeViewController.swift, then launch the simulator again.",
     &["orbi run --platform ios --simulator"],
 );
 const MACOS_APP_TEMPLATE: AppTemplateSpec = AppTemplateSpec::new(
@@ -186,6 +197,7 @@ impl InitEcosystem {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum InitTemplate {
     Ios,
+    IosUIKit,
     MacosSwiftUi,
     MacosAppKit,
     AppleMultiplatform,
@@ -197,7 +209,7 @@ pub(super) enum InitTemplate {
 impl InitTemplate {
     pub(super) const fn required_device_slots(self) -> &'static [InitDeviceSlot] {
         match self {
-            Self::Ios => &IOS_TEMPLATE_DEVICE_SLOTS,
+            Self::Ios | Self::IosUIKit => &IOS_TEMPLATE_DEVICE_SLOTS,
             Self::MacosSwiftUi | Self::MacosAppKit => &MACOS_TEMPLATE_DEVICE_SLOTS,
             Self::AppleMultiplatform => &APPLE_MULTIPLATFORM_DEVICE_SLOTS,
             Self::IosWatchCompanion => &WATCH_TEMPLATE_DEVICE_SLOTS,
@@ -321,6 +333,9 @@ impl AppTemplateSpec {
 pub(super) fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan {
     match answers.template {
         InitTemplate::Ios => app_template_plan(answers, schema_reference, &IOS_APP_TEMPLATE),
+        InitTemplate::IosUIKit => {
+            ios_uikit_plan(answers, schema_reference, &IOS_UIKIT_APP_TEMPLATE)
+        }
         InitTemplate::MacosSwiftUi => {
             app_template_plan(answers, schema_reference, &MACOS_APP_TEMPLATE)
         }
@@ -335,6 +350,33 @@ pub(super) fn scaffold_plan(answers: &InitAnswers, schema_reference: &str) -> Sc
         InitTemplate::Visionos => {
             app_template_plan(answers, schema_reference, &VISIONOS_APP_TEMPLATE)
         }
+    }
+}
+
+fn ios_uikit_plan(
+    answers: &InitAnswers,
+    schema_reference: &str,
+    template: &AppTemplateSpec,
+) -> ScaffoldPlan {
+    let swift_name = swift_type_name(&answers.name);
+    ScaffoldPlan {
+        manifest: app_manifest(answers, schema_reference, template.platforms),
+        directories: base_directories(),
+        files: vec![
+            generated_file(
+                "Sources/App/App.swift",
+                uikit_app_file_contents(&format!("{swift_name}App"), HOME_VIEW_CONTROLLER_NAME),
+            ),
+            generated_file(
+                "Sources/App/HomeViewController.swift",
+                uikit_home_view_controller_file_contents(
+                    HOME_VIEW_CONTROLLER_NAME,
+                    template.home_view_title,
+                    template.home_view_detail,
+                ),
+            ),
+        ],
+        next_commands: next_commands(answers, template.next_commands),
     }
 }
 
@@ -555,7 +597,7 @@ fn with_optional_scaffolded_asc(answers: &InitAnswers, mut manifest: JsonValue) 
 
 pub(super) fn asc_manifest(answers: &InitAnswers) -> JsonValue {
     with_asc_description(match answers.template {
-        InitTemplate::Ios => ios_asc_manifest(answers),
+        InitTemplate::Ios | InitTemplate::IosUIKit => ios_asc_manifest(answers),
         InitTemplate::MacosSwiftUi | InitTemplate::MacosAppKit => macos_asc_manifest(answers),
         InitTemplate::AppleMultiplatform => multiplatform_asc_manifest(answers),
         InitTemplate::IosWatchCompanion => watch_companion_asc_manifest(answers),
@@ -1016,7 +1058,23 @@ fn app_file_contents(app_type_name: &str, root_view_name: &str) -> String {
 
 fn home_view_file_contents(view_name: &str, title: &str, detail: &str) -> String {
     format!(
-        "import SwiftUI\n\nstruct {view_name}: View {{\n    var body: some View {{\n        VStack(spacing: 16) {{\n            Image(systemName: \"sparkles\")\n                .font(.system(size: 44))\n                .foregroundStyle(.tint)\n            Text(\"{title}\")\n                .font(.largeTitle.bold())\n            Text(\"{detail}\")\n                .multilineTextAlignment(.center)\n                .foregroundStyle(.secondary)\n        }}\n        .padding(32)\n    }}\n}}\n"
+        "import SwiftUI\n\nstruct {view_name}: View {{\n    var body: some View {{\n        VStack(spacing: 16) {{\n            Image(systemName: \"sparkles\")\n                .font(.system(size: 44))\n                .foregroundStyle(.tint)\n            Text(\"{title}\")\n                .font(.largeTitle.bold())\n            Text(\"{detail}\")\n                .multilineTextAlignment(.center)\n                .foregroundStyle(.secondary)\n        }}\n        .padding(32)\n    }}\n}}\n\n#Preview {{\n    {view_name}()\n}}\n"
+    )
+}
+
+fn uikit_app_file_contents(app_type_name: &str, root_controller_name: &str) -> String {
+    format!(
+        "import UIKit\n\n@main\nfinal class {app_type_name}: UIResponder, UIApplicationDelegate {{\n    var window: UIWindow?\n\n    func application(\n        _ application: UIApplication,\n        didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?\n    ) -> Bool {{\n        let window = UIWindow(frame: UIScreen.main.bounds)\n        window.rootViewController = {root_controller_name}()\n        window.makeKeyAndVisible()\n        self.window = window\n        return true\n    }}\n}}\n"
+    )
+}
+
+fn uikit_home_view_controller_file_contents(
+    controller_name: &str,
+    title: &str,
+    detail: &str,
+) -> String {
+    format!(
+        "import UIKit\n\nfinal class {controller_name}: UIViewController {{\n    override func viewDidLoad() {{\n        super.viewDidLoad()\n        view.backgroundColor = .systemBackground\n\n        let symbolView = UIImageView(image: UIImage(systemName: \"sparkles\"))\n        symbolView.tintColor = .tintColor\n        symbolView.preferredSymbolConfiguration = UIImage.SymbolConfiguration(pointSize: 44, weight: .regular)\n\n        let titleLabel = UILabel()\n        titleLabel.text = \"{title}\"\n        titleLabel.font = .preferredFont(forTextStyle: .largeTitle)\n        titleLabel.adjustsFontForContentSizeCategory = true\n        titleLabel.textAlignment = .center\n\n        let detailLabel = UILabel()\n        detailLabel.text = \"{detail}\"\n        detailLabel.font = .preferredFont(forTextStyle: .body)\n        detailLabel.adjustsFontForContentSizeCategory = true\n        detailLabel.textColor = .secondaryLabel\n        detailLabel.textAlignment = .center\n        detailLabel.numberOfLines = 0\n\n        let stack = UIStackView(arrangedSubviews: [symbolView, titleLabel, detailLabel])\n        stack.axis = .vertical\n        stack.alignment = .center\n        stack.spacing = 16\n        stack.translatesAutoresizingMaskIntoConstraints = false\n\n        view.addSubview(stack)\n        NSLayoutConstraint.activate([\n            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),\n            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),\n            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.safeAreaLayoutGuide.leadingAnchor, constant: 32),\n            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.trailingAnchor, constant: -32),\n            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),\n        ])\n    }}\n}}\n\n#Preview {{\n    {controller_name}()\n}}\n"
     )
 }
 
@@ -1036,7 +1094,7 @@ fn appkit_home_view_controller_file_contents(
     detail: &str,
 ) -> String {
     format!(
-        "import AppKit\n\nfinal class {controller_name}: NSViewController {{\n    override func loadView() {{\n        view = NSView()\n    }}\n\n    override func viewDidLoad() {{\n        super.viewDidLoad()\n\n        let eyebrowLabel = NSTextField(labelWithString: \"Orbi\")\n        eyebrowLabel.font = .systemFont(ofSize: 15, weight: .semibold)\n        eyebrowLabel.textColor = .controlAccentColor\n\n        let titleLabel = NSTextField(labelWithString: \"{title}\")\n        titleLabel.font = .systemFont(ofSize: 30, weight: .bold)\n\n        let detailLabel = NSTextField(wrappingLabelWithString: \"{detail}\")\n        detailLabel.alignment = .center\n        detailLabel.textColor = .secondaryLabelColor\n\n        let stack = NSStackView(views: [eyebrowLabel, titleLabel, detailLabel])\n        stack.orientation = .vertical\n        stack.alignment = .centerX\n        stack.spacing = 16\n        stack.translatesAutoresizingMaskIntoConstraints = false\n\n        view.addSubview(stack)\n        NSLayoutConstraint.activate([\n            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),\n            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),\n            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),\n            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32),\n            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),\n        ])\n    }}\n}}\n"
+        "import AppKit\n\nfinal class {controller_name}: NSViewController {{\n    override func loadView() {{\n        view = NSView()\n    }}\n\n    override func viewDidLoad() {{\n        super.viewDidLoad()\n\n        let eyebrowLabel = NSTextField(labelWithString: \"Orbi\")\n        eyebrowLabel.font = .systemFont(ofSize: 15, weight: .semibold)\n        eyebrowLabel.textColor = .controlAccentColor\n\n        let titleLabel = NSTextField(labelWithString: \"{title}\")\n        titleLabel.font = .systemFont(ofSize: 30, weight: .bold)\n\n        let detailLabel = NSTextField(wrappingLabelWithString: \"{detail}\")\n        detailLabel.alignment = .center\n        detailLabel.textColor = .secondaryLabelColor\n\n        let stack = NSStackView(views: [eyebrowLabel, titleLabel, detailLabel])\n        stack.orientation = .vertical\n        stack.alignment = .centerX\n        stack.spacing = 16\n        stack.translatesAutoresizingMaskIntoConstraints = false\n\n        view.addSubview(stack)\n        NSLayoutConstraint.activate([\n            stack.centerXAnchor.constraint(equalTo: view.centerXAnchor),\n            stack.centerYAnchor.constraint(equalTo: view.centerYAnchor),\n            stack.leadingAnchor.constraint(greaterThanOrEqualTo: view.leadingAnchor, constant: 32),\n            stack.trailingAnchor.constraint(lessThanOrEqualTo: view.trailingAnchor, constant: -32),\n            detailLabel.widthAnchor.constraint(lessThanOrEqualToConstant: 360),\n        ])\n    }}\n}}\n\n#Preview {{\n    {controller_name}()\n}}\n"
     )
 }
 
@@ -1196,6 +1254,11 @@ mod tests {
                 PathBuf::from("Sources/App/HomeView.swift"),
             ]
         );
+        assert!(plan.files.iter().any(|file| {
+            file.path == Path::new("Sources/App/HomeView.swift")
+                && file.contents.contains("#Preview")
+                && file.contents.contains("HomeView()")
+        }));
         assert_eq!(
             plan.next_commands,
             vec![
@@ -1222,6 +1285,56 @@ mod tests {
         assert_eq!(
             plan.next_commands,
             vec!["orbi run --platform ios --simulator".to_owned()]
+        );
+    }
+
+    #[test]
+    fn ios_uikit_template_generates_uikit_sources() {
+        let plan = scaffold_plan(
+            &InitAnswers {
+                ecosystem: InitEcosystem::Apple,
+                name: "Example App".to_owned(),
+                bundle_id: "dev.orbi.exampleapp".to_owned(),
+                template: InitTemplate::IosUIKit,
+                asc: test_init_asc(vec![test_init_device(
+                    ASC_IOS_DEVICE_ID,
+                    DeviceFamily::Ios,
+                    TEST_IOS_UDID,
+                    "Your iPhone",
+                )]),
+            },
+            "/tmp/.orbi/schemas/apple-app.v1.json",
+        );
+
+        assert_eq!(
+            plan.files
+                .iter()
+                .map(|file| file.path.clone())
+                .collect::<Vec<_>>(),
+            vec![
+                PathBuf::from("Sources/App/App.swift"),
+                PathBuf::from("Sources/App/HomeViewController.swift"),
+            ]
+        );
+        assert!(plan.files.iter().any(|file| {
+            file.path == Path::new("Sources/App/App.swift")
+                && file.contents.contains("import UIKit")
+                && file.contents.contains("UIApplicationDelegate")
+        }));
+        assert!(plan.files.iter().any(|file| {
+            file.path == Path::new("Sources/App/HomeViewController.swift")
+                && file
+                    .contents
+                    .contains("final class HomeViewController: UIViewController")
+                && file.contents.contains("#Preview")
+                && file.contents.contains("HomeViewController()")
+        }));
+        assert_eq!(
+            plan.next_commands,
+            vec![
+                "orbi asc apply".to_owned(),
+                "orbi run --platform ios --simulator".to_owned()
+            ]
         );
     }
 
@@ -1263,6 +1376,8 @@ mod tests {
                 && file
                     .contents
                     .contains("final class HomeViewController: NSViewController")
+                && file.contents.contains("#Preview")
+                && file.contents.contains("HomeViewController()")
         }));
         assert_eq!(
             plan.next_commands,

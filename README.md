@@ -4,7 +4,7 @@ Orbi turns an Apple app into one readable manifest and one batteries-included
 local CLI.
 
 No hand-maintained Xcode project graph. No signing maze. The everyday app
-toolchain is built in: lint, format, tests, SwiftUI `#Preview` screenshots, UI
+toolchain is built in: lint, format, tests, Swift `#Preview` screenshots, UI
 automation, trace capture, signing, and App Store Connect submission. Orbi reads
 `orbi.json` and drives the whole loop from one CLI.
 
@@ -34,8 +34,8 @@ The installer puts `orbi` under `~/.local/bin` on macOS/Linux and
   toolchain directly and keeps generated state under `.orbi/`.
 - **Quality tooling out of the box.** `orbi lint` and `orbi format` are part of
   the product workflow, with Orbi-owned defaults and manifest-driven config.
-- **SwiftUI `#Preview` support.** List previews and render screenshot PNGs from
-  the same CLI you use for builds and tests.
+- **Swift `#Preview` support.** List SwiftUI, UIKit, and AppKit previews and
+  render screenshot PNGs from the same CLI you use for builds and tests.
 - **Signing and submission are part of the workflow.** Build development,
   App Store, TestFlight, Developer ID, and Mac App Store artifacts from the same
   CLI surface.
@@ -55,7 +55,7 @@ orbi init
 orbi lint
 orbi format --write
 
-# Run tests and inspect SwiftUI #Preview screenshots.
+# Run tests and inspect Swift #Preview screenshots.
 orbi test
 orbi preview list --platform ios
 orbi preview shot Basic --platform ios

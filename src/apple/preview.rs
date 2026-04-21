@@ -30,7 +30,7 @@ use crate::util::{
     prompt_select, resolve_path, run_command, run_command_capture, timestamp_slug, write_json_file,
 };
 
-const PREVIEW_HELPER_NAME: &str = "__orbi_make_preview_view";
+const PREVIEW_HELPER_NAME: &str = "__orbi_make_preview_content";
 const MACRO_SECTION_DIVIDER: &str = "------------------------------";
 
 #[derive(Debug, Clone)]
@@ -1026,7 +1026,7 @@ fn strip_main_attribute_line(line: &str) -> String {
 
 fn render_preview_helper(preview: &DiscoveredPreview) -> String {
     format!(
-        "@MainActor\nfunc {PREVIEW_HELPER_NAME}() -> any SwiftUI.View {{\n{}\n}}\n",
+        "@MainActor\nfunc {PREVIEW_HELPER_NAME}() -> Any {{\n{}\n}}\n",
         indent_block(preview.helper_body.as_str(), 4)
     )
 }
@@ -1038,21 +1038,44 @@ fn render_preview_host_app(platform: ApplePlatform, raw_traits: Option<&str>) ->
         .map(|note| format!("\n        // {note}"))
         .unwrap_or_default();
     let root_view = if layout_modifier.is_empty() {
-        "AnyView(__orbi_make_preview_view())".to_owned()
+        "OrbiPreviewContent(content: __orbi_make_preview_content())".to_owned()
     } else {
-        format!("AnyView(__orbi_make_preview_view()){layout_modifier}")
+        format!("OrbiPreviewContent(content: __orbi_make_preview_content()){layout_modifier}")
     };
-    let scene_body = match platform {
-        ApplePlatform::Macos => format!(
-            "        WindowGroup {{\n            {root_view}{orientation_note}\n        }}\n"
-        ),
-        _ => format!(
-            "        WindowGroup {{\n            {root_view}{orientation_note}\n        }}\n"
-        ),
+    let platform_import = match platform {
+        ApplePlatform::Macos => "\nimport AppKit",
+        ApplePlatform::Ios | ApplePlatform::Tvos | ApplePlatform::Visionos => "\nimport UIKit",
+        ApplePlatform::Watchos => "",
     };
+    let platform_cases = render_preview_platform_cases(platform);
+    let platform_wrappers = render_preview_platform_wrappers(platform);
     format!(
-        "import SwiftUI\n\n@main\nstruct OrbiPreviewHostApp: App {{\n    var body: some Scene {{\n{scene_body}    }}\n}}\n"
+        "import SwiftUI{platform_import}\n\n@main\nstruct OrbiPreviewHostApp: App {{\n    var body: some Scene {{\n        WindowGroup {{\n            {root_view}{orientation_note}\n        }}\n    }}\n}}\n\nprivate struct OrbiPreviewContent: View {{\n    let content: Any\n\n    var body: some View {{\n        if let view = content as? any View {{\n            AnyView(view)\n{platform_cases}        }} else {{\n            Text(\"Unsupported preview content: \\(String(describing: type(of: content)))\")\n        }}\n    }}\n}}\n{platform_wrappers}"
     )
+}
+
+fn render_preview_platform_cases(platform: ApplePlatform) -> &'static str {
+    match platform {
+        ApplePlatform::Macos => {
+            "        } else if let view = content as? NSView {\n            OrbiNSViewPreview(view: view)\n        } else if let controller = content as? NSViewController {\n            OrbiNSViewControllerPreview(controller: controller)\n"
+        }
+        ApplePlatform::Ios | ApplePlatform::Tvos | ApplePlatform::Visionos => {
+            "        } else if let view = content as? UIView {\n            OrbiUIViewPreview(view: view)\n        } else if let controller = content as? UIViewController {\n            OrbiUIViewControllerPreview(controller: controller)\n"
+        }
+        ApplePlatform::Watchos => "",
+    }
+}
+
+fn render_preview_platform_wrappers(platform: ApplePlatform) -> &'static str {
+    match platform {
+        ApplePlatform::Macos => {
+            "\nprivate struct OrbiNSViewPreview: NSViewRepresentable {\n    let view: NSView\n\n    func makeNSView(context: Context) -> NSView {\n        view\n    }\n\n    func updateNSView(_ nsView: NSView, context: Context) {}\n}\n\nprivate struct OrbiNSViewControllerPreview: NSViewControllerRepresentable {\n    let controller: NSViewController\n\n    func makeNSViewController(context: Context) -> NSViewController {\n        controller\n    }\n\n    func updateNSViewController(_ nsViewController: NSViewController, context: Context) {}\n}\n"
+        }
+        ApplePlatform::Ios | ApplePlatform::Tvos | ApplePlatform::Visionos => {
+            "\nprivate struct OrbiUIViewPreview: UIViewRepresentable {\n    let view: UIView\n\n    func makeUIView(context: Context) -> UIView {\n        view\n    }\n\n    func updateUIView(_ uiView: UIView, context: Context) {}\n}\n\nprivate struct OrbiUIViewControllerPreview: UIViewControllerRepresentable {\n    let controller: UIViewController\n\n    func makeUIViewController(context: Context) -> UIViewController {\n        controller\n    }\n\n    func updateUIViewController(_ uiViewController: UIViewController, context: Context) {}\n}\n"
+        }
+        ApplePlatform::Watchos => "",
+    }
 }
 
 fn render_preview_layout_modifier(raw_traits: Option<&str>) -> String {
@@ -1384,11 +1407,13 @@ impl TapIfEmpty for String {
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
+    use std::path::PathBuf;
 
     use super::{
-        discoverable_preview_target_names, extract_function_body, extract_preview_constructor,
-        parse_macro_expansion_sections, parse_preview_name, parse_preview_traits,
-        preview_target_plan, strip_main_attribute_line, trim_common_indent,
+        DiscoveredPreview, discoverable_preview_target_names, extract_function_body,
+        extract_preview_constructor, parse_macro_expansion_sections, parse_preview_name,
+        parse_preview_traits, preview_target_plan, render_preview_helper, render_preview_host_app,
+        strip_main_attribute_line, trim_common_indent,
     };
     use crate::manifest::{
         ApplePlatform, PlatformManifest, ResolvedManifest, TargetKind, TargetManifest,
@@ -1624,6 +1649,50 @@ DeveloperToolsSupport.Preview {
         .unwrap();
         assert_eq!(unnamed_args, "");
         assert_eq!(unnamed_body, r#"Text("Hi")"#);
+    }
+
+    #[test]
+    fn preview_helper_returns_type_erased_content() {
+        let preview = DiscoveredPreview {
+            target_name: "App".to_owned(),
+            source_file: PathBuf::from("Sources/App/HomeViewController.swift"),
+            line: 10,
+            column: 1,
+            name: Some("Controller".to_owned()),
+            helper_body: "return HomeViewController()".to_owned(),
+            raw_traits: None,
+        };
+
+        let helper = render_preview_helper(&preview);
+
+        assert!(helper.contains("func __orbi_make_preview_content() -> Any"));
+        assert!(helper.contains("return HomeViewController()"));
+    }
+
+    #[test]
+    fn preview_host_wraps_appkit_preview_content() {
+        let host = render_preview_host_app(ApplePlatform::Macos, None);
+
+        assert!(host.contains("import AppKit"));
+        assert!(host.contains("if let view = content as? any View"));
+        assert!(host.contains("content as? NSView"));
+        assert!(host.contains("content as? NSViewController"));
+        assert!(host.contains("NSViewRepresentable"));
+        assert!(host.contains("NSViewControllerRepresentable"));
+        assert!(!host.contains("import UIKit"));
+    }
+
+    #[test]
+    fn preview_host_wraps_uikit_preview_content() {
+        let host = render_preview_host_app(ApplePlatform::Ios, None);
+
+        assert!(host.contains("import UIKit"));
+        assert!(host.contains("if let view = content as? any View"));
+        assert!(host.contains("content as? UIView"));
+        assert!(host.contains("content as? UIViewController"));
+        assert!(host.contains("UIViewRepresentable"));
+        assert!(host.contains("UIViewControllerRepresentable"));
+        assert!(!host.contains("import AppKit"));
     }
 
     #[test]

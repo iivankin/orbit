@@ -411,9 +411,10 @@ fn default_bundle_target(
     template: InitTemplate,
 ) -> Result<&crate::manifest::TargetManifest> {
     let platform = match template {
-        InitTemplate::Ios | InitTemplate::IosWatchCompanion | InitTemplate::AppleMultiplatform => {
-            ApplePlatform::Ios
-        }
+        InitTemplate::Ios
+        | InitTemplate::IosUIKit
+        | InitTemplate::IosWatchCompanion
+        | InitTemplate::AppleMultiplatform => ApplePlatform::Ios,
         InitTemplate::MacosSwiftUi | InitTemplate::MacosAppKit => ApplePlatform::Macos,
         InitTemplate::Tvos => ApplePlatform::Tvos,
         InitTemplate::Visionos => ApplePlatform::Visionos,

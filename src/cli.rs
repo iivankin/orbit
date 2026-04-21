@@ -29,7 +29,7 @@ const TRACE_ARG_HELP: &str = "Collect a CPU or memory trace while the command ru
 #[command(styles = CLAP_STYLING)]
 #[command(
     long_about = "Orbi reads app intent from `orbi.json`.\n\nUse the JSON schema to understand manifest fields. Use CLI help for workflows and command behavior. `orbi init` also writes an informational `_description` field that points back here.\n\nEvery command supports `--help` for detailed flags, arguments, and examples. For example: `orbi build --help`, `orbi test --help`, `orbi ui init --help`.\n\nUI test flows are JSON files with `$schema`; use `orbi ui init` to scaffold them.",
-    after_help = "Scenarios:\n  Recommended UI Workflow:\n    Write Swift and optional backend unit tests:\n      orbi test\n\n    Check that the interface looks right with a SwiftUI preview screenshot:\n      orbi preview list --platform ios\n      orbi preview shot Basic --platform ios\n\n    Write UI test flows:\n      orbi ui init Tests/UI/login.json\n\n    Run UI tests normally:\n      orbi test --ui --platform ios\n      orbi test --ui --platform macos\n      orbi test --ui --platform macos --flow onboarding-provider-setup\n\n    Run a final trace pass:\n      orbi test --ui --platform ios --trace\n      orbi test --ui --platform macos --trace\n      orbi test --ui --platform macos --trace --flow onboarding-provider-setup\n\n    Inspect recorded traces:\n      orbi inspect-trace .orbi/artifacts/profiles/run.trace\n\n  Development:\n    Create a new project:\n      orbi init\n\n    Run the app in common modes:\n      orbi run --platform ios --simulator\n      orbi run --platform ios --device --debug\n      orbi run --platform macos\n\n    Check formatting and project semantics:\n      orbi format\n      orbi format --write\n      orbi lint\n\n  Build And Submit:\n    Build local development artifacts:\n      orbi build --platform ios --distribution development\n\n    Build release artifacts:\n      orbi build --platform ios --distribution app-store --release\n      orbi build --platform macos --distribution developer-id --release\n      orbi build --platform macos --distribution mac-app-store --release\n\n    Submit a built artifact:\n      orbi submit --platform ios --wait\n      orbi submit --receipt .orbi/receipts/<receipt>.json --wait"
+    after_help = "Scenarios:\n  Recommended UI Workflow:\n    Write Swift and optional backend unit tests:\n      orbi test\n\n    Check that the interface looks right with a Swift preview screenshot:\n      orbi preview list --platform ios\n      orbi preview shot Basic --platform ios\n\n    Write UI test flows:\n      orbi ui init Tests/UI/login.json\n\n    Run UI tests normally:\n      orbi test --ui --platform ios\n      orbi test --ui --platform macos\n      orbi test --ui --platform macos --flow onboarding-provider-setup\n\n    Run a final trace pass:\n      orbi test --ui --platform ios --trace\n      orbi test --ui --platform macos --trace\n      orbi test --ui --platform macos --trace --flow onboarding-provider-setup\n\n    Inspect recorded traces:\n      orbi inspect-trace .orbi/artifacts/profiles/run.trace\n\n  Development:\n    Create a new project:\n      orbi init\n\n    Run the app in common modes:\n      orbi run --platform ios --simulator\n      orbi run --platform ios --device --debug\n      orbi run --platform macos\n\n    Check formatting and project semantics:\n      orbi format\n      orbi format --write\n      orbi lint\n\n  Build And Submit:\n    Build local development artifacts:\n      orbi build --platform ios --distribution development\n\n    Build release artifacts:\n      orbi build --platform ios --distribution app-store --release\n      orbi build --platform macos --distribution developer-id --release\n      orbi build --platform macos --distribution mac-app-store --release\n\n    Submit a built artifact:\n      orbi submit --platform ios --wait\n      orbi submit --receipt .orbi/receipts/<receipt>.json --wait"
 )]
 pub struct Cli {
     #[arg(
@@ -74,7 +74,7 @@ pub enum Command {
     Format(FormatArgs),
     /// Run unit tests, UI flows, or profiling sessions declared in the manifest.
     Test(TestArgs),
-    /// Inspect and render SwiftUI previews.
+    /// Inspect and render Swift previews.
     Preview(PreviewArgs),
     /// Inspect automation targets and run direct UI actions.
     Ui(UiArgs),
@@ -163,7 +163,7 @@ pub struct TestArgs {
 }
 
 #[derive(Debug, Args)]
-#[command(about = "Inspect and render SwiftUI previews declared in the app sources.")]
+#[command(about = "Inspect and render Swift previews declared in the app sources.")]
 #[command(arg_required_else_help = true)]
 pub struct PreviewArgs {
     #[command(subcommand)]
@@ -1473,7 +1473,7 @@ mod tests {
         assert!(help.contains("Recommended UI Workflow:"));
         assert!(help.contains("Write Swift and optional backend unit tests"));
         assert!(
-            help.contains("Check that the interface looks right with a SwiftUI preview screenshot")
+            help.contains("Check that the interface looks right with a Swift preview screenshot")
         );
         assert!(help.contains("Run a final trace pass"));
         assert!(help.contains("orbi inspect-trace .orbi/artifacts/profiles/run.trace"));
