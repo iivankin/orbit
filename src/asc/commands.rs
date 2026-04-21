@@ -16,7 +16,7 @@ use crate::cli::{
 };
 use crate::context::{AppContext, ProjectContext};
 use crate::manifest::{DistributionKind, ProfileManifest};
-use crate::util::prompt_select;
+use crate::util::{print_success, prompt_confirm, prompt_select};
 
 use super::config;
 
@@ -41,6 +41,7 @@ pub(crate) fn execute_project_command(project: &ProjectContext, args: &AscArgs) 
         AscCommand::Auth { .. } => {
             unreachable!("`asc auth import` is handled before project loading")
         }
+        AscCommand::Init => run_init(project),
         AscCommand::Validate => run_validate(project),
         AscCommand::Plan => run_sync_command(project, Mode::Plan),
         AscCommand::Apply => run_sync_command(project, Mode::Apply),
@@ -59,6 +60,24 @@ pub(crate) fn execute_project_command(project: &ProjectContext, args: &AscArgs) 
         AscCommand::Device { command } => execute_device_command(project, command),
         AscCommand::Signing { command } => execute_signing_command(project, command),
     }
+}
+
+fn run_init(project: &ProjectContext) -> Result<()> {
+    ensure!(
+        project.app.interactive,
+        "`orbi asc init` requires an interactive terminal"
+    );
+    ensure!(
+        config::load_raw(project)?.is_none(),
+        "`orbi asc init` requires a manifest without an `asc` section"
+    );
+
+    let asc = crate::commands::init::collect_asc_manifest_for_project(project)?;
+    let manifest_path = config::initialize_asc(project, asc)?;
+    print_success(format!("Wrote ASC config to {}", manifest_path.display()));
+    println!("Next commands:");
+    println!("  orbi asc apply");
+    Ok(())
 }
 
 pub(crate) fn submit_artifact(
@@ -366,7 +385,7 @@ fn run_sync_command(project: &ProjectContext, mode: Mode) -> Result<()> {
     }
 
     let passwords = bundle::bootstrap_bundle(&workspace.bundle_path, team_id)?;
-    print_bootstrap_passwords(workspace, &passwords);
+    print_bootstrap_passwords(workspace, &passwords, project.app.interactive)?;
 
     if present_scopes.is_empty() {
         println!(
@@ -531,7 +550,8 @@ fn ordered_scopes(config: &asc_sync::config::Config) -> Vec<asc_sync::scope::Sco
 fn print_bootstrap_passwords(
     workspace: &Workspace,
     passwords: &BTreeMap<asc_sync::scope::Scope, age::secrecy::SecretString>,
-) {
+    interactive: bool,
+) -> Result<()> {
     use age::secrecy::ExposeSecret;
 
     println!(
@@ -544,7 +564,20 @@ fn print_bootstrap_passwords(
             .expect("bootstrap passwords contain both scopes");
         println!("{scope}: {}", password.expose_secret());
     }
-    println!("Passwords were saved to your login keychain.");
+    println!("Passwords were saved to the local asc-sync cache (~/.asc-sync/bundle-passwords/).");
+    println!(
+        "Save these passwords for sharing with your team and CI; they are required to unlock signing.ascbundle on other machines."
+    );
+    if interactive {
+        ensure!(
+            prompt_confirm(
+                "Have you saved the developer and release bundle passwords?",
+                false,
+            )?,
+            "save the generated bundle passwords before continuing; they are required to unlock signing.ascbundle on other machines"
+        );
+    }
+    Ok(())
 }
 
 fn print_bundle_reset_notice(workspace: &Workspace, team_id: &str, previous_team_ids: &[String]) {

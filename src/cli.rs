@@ -1236,7 +1236,7 @@ pub struct CleanArgs {
 #[derive(Debug, Args)]
 #[command(
     about = "App Store Connect auth, device, signing, and submission workflows backed by the embedded `asc` section in `orbi.json`.",
-    after_help = "More help:\n  Use `orbi asc <command> --help` for flags, arguments, and command-specific examples.\n  For example:\n    orbi asc device add --help\n    orbi asc submit --help\n    orbi asc signing merge --help\n\nCommon workflows:\n  Check the embedded ASC config:\n    orbi asc validate\n    orbi asc plan\n\n  Apply ASC-managed signing state:\n    orbi asc apply\n\n  Add the current Mac as a development device and refresh profiles:\n    orbi asc device add-local --current-mac --apply\n\n  Register an iPhone and refresh profiles:\n    orbi asc device add --name \"My iPhone\" --apply\n\n  Print Xcode-style build settings from installed profiles:\n    orbi asc signing print-build-settings\n\n  Submit an artifact directly through ASC:\n    orbi asc submit --file build/MyApp.ipa\n\n  Notarize a Developer ID artifact:\n    orbi asc notarize --file build/MyApp.dmg"
+    after_help = "More help:\n  Use `orbi asc <command> --help` for flags, arguments, and command-specific examples.\n  For example:\n    orbi asc device add --help\n    orbi asc submit --help\n    orbi asc signing merge --help\n\nCommon workflows:\n  Add embedded ASC config later:\n    orbi asc init\n\n  Check the embedded ASC config:\n    orbi asc validate\n    orbi asc plan\n\n  Apply ASC-managed signing state:\n    orbi asc apply\n\n  Add the current Mac as a development device and refresh profiles:\n    orbi asc device add-local --current-mac --apply\n\n  Register an iPhone and refresh profiles:\n    orbi asc device add --name \"My iPhone\" --apply\n\n  Print Xcode-style build settings from installed profiles:\n    orbi asc signing print-build-settings\n\n  Submit an artifact directly through ASC:\n    orbi asc submit --file build/MyApp.ipa\n\n  Notarize a Developer ID artifact:\n    orbi asc notarize --file build/MyApp.dmg"
 )]
 #[command(arg_required_else_help = true)]
 pub struct AscArgs {
@@ -1246,6 +1246,8 @@ pub struct AscArgs {
 
 #[derive(Debug, Subcommand)]
 pub enum AscCommand {
+    /// Add an embedded `asc` section to the current manifest.
+    Init,
     Auth {
         #[command(subcommand)]
         command: AscAuthCommand,

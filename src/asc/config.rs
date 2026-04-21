@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::{Context, Result};
+use anyhow::{Context, Result, ensure};
 use asc_sync::{
     config::{Config, DeviceFamily},
     sync::Workspace,
@@ -51,6 +51,22 @@ pub(crate) fn persist_from_materialized(project: &ProjectContext, asc: JsonValue
         Some(_) => persist_overlay_asc(project, asc),
         None => persist_base_asc(project, asc),
     }
+}
+
+pub(crate) fn initialize_asc(project: &ProjectContext, asc: JsonValue) -> Result<PathBuf> {
+    let manifest_path = active_manifest_path(project)?;
+    let mut manifest: JsonValue = read_json_file(&manifest_path)?;
+    let object = manifest
+        .as_object_mut()
+        .context("manifest file must contain a top-level object")?;
+    ensure!(
+        !object.contains_key("asc"),
+        "`{}` already contains an `asc` section",
+        manifest_path.display()
+    );
+    object.insert("asc".to_owned(), asc);
+    write_json_file(&manifest_path, &manifest)?;
+    Ok(manifest_path)
 }
 
 pub(crate) fn active_manifest_path(project: &ProjectContext) -> Result<PathBuf> {
@@ -163,7 +179,7 @@ mod tests {
 
     use serde_json::json;
 
-    use super::{JsonValue, persist_from_materialized};
+    use super::{JsonValue, initialize_asc, persist_from_materialized};
     use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
     use crate::manifest::{
         ApplePlatform, HooksManifest, ManifestSchema, PlatformManifest, QualityManifest,
@@ -239,6 +255,50 @@ mod tests {
                 receipts_dir,
             },
         }
+    }
+
+    #[test]
+    fn initialize_asc_writes_missing_section_once() {
+        let temp = tempfile::tempdir().unwrap();
+        let root = temp.path();
+        let project = project_with_env(root, None);
+        std::fs::write(
+            &project.manifest_path,
+            serde_json::to_vec_pretty(&json!({
+                "$schema": crate::apple::manifest::SCHEMA_URL,
+                "name": "Example",
+                "bundle_id": "dev.orbi.example",
+                "version": "1.0.0",
+                "build": 1,
+                "platforms": { "ios": "18.0" },
+                "sources": ["Sources/App"]
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+
+        let asc = json!({
+            "team_id": "BASETEAM",
+            "bundle_ids": {
+                "app": {
+                    "bundle_id": "dev.orbi.example",
+                    "name": "Example",
+                    "platform": "ios"
+                }
+            }
+        });
+
+        let manifest_path = initialize_asc(&project, asc.clone()).unwrap();
+        assert_eq!(manifest_path, project.manifest_path);
+        let manifest: JsonValue = read_json_file(&project.manifest_path).unwrap();
+        assert_eq!(manifest["asc"], asc);
+
+        let err = initialize_asc(&project, asc)
+            .expect_err("initialize_asc should not overwrite existing asc");
+        assert!(
+            err.to_string()
+                .contains("already contains an `asc` section")
+        );
     }
 
     #[test]

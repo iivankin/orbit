@@ -259,8 +259,13 @@ pub(super) struct InitAnswers {
     pub(super) name: String,
     pub(super) bundle_id: String,
     pub(super) template: InitTemplate,
-    pub(super) asc_team_id: String,
-    pub(super) asc_devices: Vec<InitAscDevice>,
+    pub(super) asc: Option<InitAscAnswers>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct InitAscAnswers {
+    pub(super) team_id: String,
+    pub(super) devices: Vec<InitAscDevice>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -360,11 +365,7 @@ fn macos_appkit_plan(
                 ),
             ),
         ],
-        next_commands: template
-            .next_commands
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        next_commands: next_commands(answers, template.next_commands),
     }
 }
 
@@ -439,17 +440,13 @@ fn app_template_plan(
                 ),
             ),
         ],
-        next_commands: template
-            .next_commands
-            .iter()
-            .map(ToString::to_string)
-            .collect(),
+        next_commands: next_commands(answers, template.next_commands),
     }
 }
 
 fn watch_companion_plan(answers: &InitAnswers, schema_reference: &str) -> ScaffoldPlan {
     let swift_name = swift_type_name(&answers.name);
-    let manifest = with_scaffolded_asc(
+    let manifest = with_optional_scaffolded_asc(
         answers,
         json!({
             "$schema": schema_reference,
@@ -513,10 +510,13 @@ fn watch_companion_plan(answers: &InitAnswers, schema_reference: &str) -> Scaffo
                 watch_extension_file_contents(),
             ),
         ],
-        next_commands: vec![
-            "orbi run --platform ios --simulator".to_owned(),
-            "orbi run --platform watchos --simulator".to_owned(),
-        ],
+        next_commands: next_commands(
+            answers,
+            &[
+                "orbi run --platform ios --simulator",
+                "orbi run --platform watchos --simulator",
+            ],
+        ),
     }
 }
 
@@ -525,7 +525,7 @@ fn app_manifest(
     schema_reference: &str,
     platforms: &[ManifestPlatform],
 ) -> JsonValue {
-    with_scaffolded_asc(
+    with_optional_scaffolded_asc(
         answers,
         json!({
             "$schema": schema_reference,
@@ -541,7 +541,11 @@ fn app_manifest(
     )
 }
 
-fn with_scaffolded_asc(answers: &InitAnswers, mut manifest: JsonValue) -> JsonValue {
+fn with_optional_scaffolded_asc(answers: &InitAnswers, mut manifest: JsonValue) -> JsonValue {
+    if answers.asc.is_none() {
+        return manifest;
+    }
+
     manifest
         .as_object_mut()
         .expect("init manifests always serialize as JSON objects")
@@ -549,7 +553,7 @@ fn with_scaffolded_asc(answers: &InitAnswers, mut manifest: JsonValue) -> JsonVa
     manifest
 }
 
-fn asc_manifest(answers: &InitAnswers) -> JsonValue {
+pub(super) fn asc_manifest(answers: &InitAnswers) -> JsonValue {
     with_asc_description(match answers.template {
         InitTemplate::Ios => ios_asc_manifest(answers),
         InitTemplate::MacosSwiftUi | InitTemplate::MacosAppKit => macos_asc_manifest(answers),
@@ -560,22 +564,40 @@ fn asc_manifest(answers: &InitAnswers) -> JsonValue {
     })
 }
 
-fn with_asc_description(mut manifest: JsonValue) -> JsonValue {
-    manifest
-        .as_object_mut()
-        .expect("init ASC manifests always serialize as JSON objects")
-        .insert(
-            "_description".to_owned(),
-            JsonValue::String(ASC_MANIFEST_DESCRIPTION.to_owned()),
-        );
-    manifest
+fn next_commands(answers: &InitAnswers, template_commands: &[&str]) -> Vec<String> {
+    let mut commands = Vec::new();
+    if answers.asc.is_some() {
+        commands.push("orbi asc apply".to_owned());
+    }
+    commands.extend(template_commands.iter().map(ToString::to_string));
+    commands
+}
+
+fn with_asc_description(manifest: JsonValue) -> JsonValue {
+    let object = manifest
+        .as_object()
+        .expect("init ASC manifests always serialize as JSON objects");
+    let mut ordered = JsonMap::new();
+    if let Some(schema) = object.get("$schema") {
+        ordered.insert("$schema".to_owned(), schema.clone());
+    }
+    ordered.insert(
+        "_description".to_owned(),
+        JsonValue::String(ASC_MANIFEST_DESCRIPTION.to_owned()),
+    );
+    for (key, value) in object {
+        if key != "$schema" && key != "_description" {
+            ordered.insert(key.clone(), value.clone());
+        }
+    }
+    JsonValue::Object(ordered)
 }
 
 fn ios_asc_manifest(answers: &InitAnswers) -> JsonValue {
     let device = required_device(answers, ASC_IOS_DEVICE_ID);
     json!({
         "$schema": asc_sync::schema::PUBLISHED_SCHEMA_URL,
-        "team_id": answers.asc_team_id,
+        "team_id": required_asc(answers).team_id,
         "bundle_ids": {
             "app": asc_bundle_id(&answers.bundle_id, &answers.name, "ios")
         },
@@ -614,7 +636,7 @@ fn tvos_asc_manifest(answers: &InitAnswers) -> JsonValue {
     let device = required_device(answers, ASC_TVOS_DEVICE_ID);
     json!({
         "$schema": asc_sync::schema::PUBLISHED_SCHEMA_URL,
-        "team_id": answers.asc_team_id,
+        "team_id": required_asc(answers).team_id,
         "bundle_ids": {
             "app": asc_bundle_id(&answers.bundle_id, &answers.name, "ios")
         },
@@ -653,7 +675,7 @@ fn macos_asc_manifest(answers: &InitAnswers) -> JsonValue {
     let device = required_device(answers, ASC_MAC_DEVICE_ID);
     json!({
         "$schema": asc_sync::schema::PUBLISHED_SCHEMA_URL,
-        "team_id": answers.asc_team_id,
+        "team_id": required_asc(answers).team_id,
         "bundle_ids": {
             "app": asc_bundle_id(&answers.bundle_id, &answers.name, "mac_os")
         },
@@ -694,7 +716,7 @@ fn multiplatform_asc_manifest(answers: &InitAnswers) -> JsonValue {
     let mac_device = required_device(answers, ASC_MAC_DEVICE_ID);
     json!({
         "$schema": asc_sync::schema::PUBLISHED_SCHEMA_URL,
-        "team_id": answers.asc_team_id,
+        "team_id": required_asc(answers).team_id,
         "bundle_ids": {
             "app": asc_bundle_id(&answers.bundle_id, &answers.name, "universal")
         },
@@ -757,7 +779,7 @@ fn watch_companion_asc_manifest(answers: &InitAnswers) -> JsonValue {
     let watch_extension_name = format!("{} Watch Extension", answers.name);
     json!({
         "$schema": asc_sync::schema::PUBLISHED_SCHEMA_URL,
-        "team_id": answers.asc_team_id,
+        "team_id": required_asc(answers).team_id,
         "bundle_ids": {
             "app": asc_bundle_id(&answers.bundle_id, &answers.name, "ios"),
             "watch-app": asc_bundle_id(
@@ -847,7 +869,7 @@ fn watch_companion_asc_manifest(answers: &InitAnswers) -> JsonValue {
 fn visionos_asc_manifest(answers: &InitAnswers) -> JsonValue {
     json!({
         "$schema": asc_sync::schema::PUBLISHED_SCHEMA_URL,
-        "team_id": answers.asc_team_id,
+        "team_id": required_asc(answers).team_id,
         "bundle_ids": {
             "app": asc_bundle_id(&answers.bundle_id, &answers.name, "ios")
         },
@@ -867,9 +889,16 @@ fn visionos_asc_manifest(answers: &InitAnswers) -> JsonValue {
     })
 }
 
-fn required_device<'a>(answers: &'a InitAnswers, logical_id: &str) -> &'a InitAscDevice {
+fn required_asc(answers: &InitAnswers) -> &InitAscAnswers {
     answers
-        .asc_devices
+        .asc
+        .as_ref()
+        .expect("init ASC manifest requires ASC answers")
+}
+
+fn required_device<'a>(answers: &'a InitAnswers, logical_id: &str) -> &'a InitAscDevice {
+    required_asc(answers)
+        .devices
         .iter()
         .find(|device| device.logical_id == logical_id)
         .unwrap_or_else(|| panic!("missing required init ASC device {logical_id}"))
@@ -1038,6 +1067,13 @@ mod tests {
         }
     }
 
+    fn test_init_asc(devices: Vec<InitAscDevice>) -> Option<InitAscAnswers> {
+        Some(InitAscAnswers {
+            team_id: TEST_ASC_TEAM_ID.to_owned(),
+            devices,
+        })
+    }
+
     #[test]
     fn gitignore_appends_bsp_entry_once() {
         let temp = tempfile::tempdir().unwrap();
@@ -1072,13 +1108,12 @@ mod tests {
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::Ios,
-                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
-                asc_devices: vec![test_init_device(
+                asc: test_init_asc(vec![test_init_device(
                     ASC_IOS_DEVICE_ID,
                     DeviceFamily::Ios,
                     TEST_IOS_UDID,
                     "Your iPhone",
-                )],
+                )]),
             },
             schema_path,
         );
@@ -1163,6 +1198,29 @@ mod tests {
         );
         assert_eq!(
             plan.next_commands,
+            vec![
+                "orbi asc apply".to_owned(),
+                "orbi run --platform ios --simulator".to_owned()
+            ]
+        );
+    }
+
+    #[test]
+    fn ios_template_can_skip_asc_manifest() {
+        let plan = scaffold_plan(
+            &InitAnswers {
+                ecosystem: InitEcosystem::Apple,
+                name: "Example App".to_owned(),
+                bundle_id: "dev.orbi.exampleapp".to_owned(),
+                template: InitTemplate::Ios,
+                asc: None,
+            },
+            "/tmp/.orbi/schemas/apple-app.v1.json",
+        );
+
+        assert!(plan.manifest.get("asc").is_none());
+        assert_eq!(
+            plan.next_commands,
             vec!["orbi run --platform ios --simulator".to_owned()]
         );
     }
@@ -1175,13 +1233,12 @@ mod tests {
                 name: "Example Mac".to_owned(),
                 bundle_id: "dev.orbi.examplemac".to_owned(),
                 template: InitTemplate::MacosAppKit,
-                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
-                asc_devices: vec![test_init_device(
+                asc: test_init_asc(vec![test_init_device(
                     ASC_MAC_DEVICE_ID,
                     DeviceFamily::Macos,
                     TEST_MAC_UDID,
                     "This Mac",
-                )],
+                )]),
             },
             "/tmp/.orbi/schemas/apple-app.v1.json",
         );
@@ -1209,7 +1266,10 @@ mod tests {
         }));
         assert_eq!(
             plan.next_commands,
-            vec!["orbi run --platform macos".to_owned()]
+            vec![
+                "orbi asc apply".to_owned(),
+                "orbi run --platform macos".to_owned()
+            ]
         );
     }
 
@@ -1222,13 +1282,12 @@ mod tests {
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::IosWatchCompanion,
-                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
-                asc_devices: vec![test_init_device(
+                asc: test_init_asc(vec![test_init_device(
                     ASC_IOS_DEVICE_ID,
                     DeviceFamily::Ios,
                     TEST_IOS_UDID,
                     "Your iPhone",
-                )],
+                )]),
             },
             schema_path,
         );
@@ -1376,8 +1435,7 @@ mod tests {
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::AppleMultiplatform,
-                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
-                asc_devices: vec![
+                asc: test_init_asc(vec![
                     test_init_device(
                         ASC_IOS_DEVICE_ID,
                         DeviceFamily::Ios,
@@ -1390,7 +1448,7 @@ mod tests {
                         TEST_MAC_UDID,
                         "This Mac",
                     ),
-                ],
+                ]),
             },
             "/tmp/.orbi/schemas/apple-app.v1.json",
         );
@@ -1425,8 +1483,7 @@ mod tests {
                 name: "Vision Example".to_owned(),
                 bundle_id: "dev.orbi.visionexample".to_owned(),
                 template: InitTemplate::Visionos,
-                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
-                asc_devices: vec![],
+                asc: test_init_asc(vec![]),
             },
             "/tmp/.orbi/schemas/apple-app.v1.json",
         );
@@ -1465,8 +1522,7 @@ mod tests {
                 name: "Example App".to_owned(),
                 bundle_id: "dev.orbi.exampleapp".to_owned(),
                 template: InitTemplate::AppleMultiplatform,
-                asc_team_id: TEST_ASC_TEAM_ID.to_owned(),
-                asc_devices: vec![
+                asc: test_init_asc(vec![
                     test_init_device(
                         ASC_IOS_DEVICE_ID,
                         DeviceFamily::Ios,
@@ -1479,12 +1535,17 @@ mod tests {
                         TEST_MAC_UDID,
                         "This Mac",
                     ),
-                ],
+                ]),
             },
             "/tmp/.orbi/schemas/apple-app.v1.json",
         );
 
         create_scaffold(manifest_path.parent().unwrap(), &manifest_path, &plan).unwrap();
+
+        let contents = std::fs::read_to_string(&manifest_path).unwrap();
+        let resources_index = contents.find("\"resources\"").unwrap();
+        let asc_index = contents.find("\"asc\"").unwrap();
+        assert!(resources_index < asc_index);
 
         let manifest: JsonValue = read_json_file(&manifest_path).unwrap();
         assert_eq!(manifest, plan.manifest);

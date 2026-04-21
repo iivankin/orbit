@@ -12,13 +12,14 @@ use asc_sync::{
 };
 
 use crate::apple;
-use crate::context::AppContext;
+use crate::context::{AppContext, ProjectContext};
+use crate::manifest::{ApplePlatform, TargetKind};
 use crate::util::{print_success, prompt_input, prompt_select, resolve_path};
 
 use self::naming::{bundle_id_suffix, looks_like_bundle_id, suggested_product_name};
 use self::plan::{
-    InitAnswers, InitAscDevice, InitDeviceSlot, InitEcosystem, InitTemplate, TemplateChoice,
-    create_scaffold, scaffold_plan,
+    InitAnswers, InitAscAnswers, InitAscDevice, InitDeviceSlot, InitEcosystem, InitTemplate,
+    TemplateChoice, create_scaffold, scaffold_plan,
 };
 
 const ECOSYSTEM_CHOICES: [EcosystemChoice; 1] = [EcosystemChoice {
@@ -29,6 +30,7 @@ const ECOSYSTEM_CHOICES: [EcosystemChoice; 1] = [EcosystemChoice {
 const ADD_NEW_ASC_AUTH_LABEL: &str = "Add new App Store Connect authorization...";
 const ADD_DEVICE_WITH_REGISTRATION_LABEL: &str = "Add a device with registration flow...";
 const ENTER_DEVICE_MANUALLY_LABEL: &str = "Enter device details manually...";
+const SKIP_ASC_LABEL: &str = "Skip App Store Connect signing for now";
 const INIT_DEVICE_REGISTRATION_TIMEOUT_SECONDS: u64 = 300;
 
 #[derive(Debug, Clone, Copy)]
@@ -87,17 +89,31 @@ fn collect_init_answers(_app: &AppContext, project_root: &Path) -> Result<InitAn
         "Enter a reverse-DNS bundle ID like `dev.orbi.exampleapp`.",
     )?;
     let template = prompt_template(ecosystem)?;
-    let asc_team_id = prompt_asc_team_id()?;
-    let asc_devices = prompt_asc_devices(template, &asc_team_id)?;
+    let asc = prompt_asc_answers(template, true)?;
 
     Ok(InitAnswers {
         ecosystem,
         name,
         bundle_id,
         template,
-        asc_team_id,
-        asc_devices,
+        asc,
     })
+}
+
+pub(crate) fn collect_asc_manifest_for_project(
+    project: &ProjectContext,
+) -> Result<serde_json::Value> {
+    let template = infer_init_template(project)?;
+    let target = default_bundle_target(project, template)?;
+    let asc = prompt_asc_answers(template, false)?.expect("ASC init does not allow skip");
+    let answers = InitAnswers {
+        ecosystem: InitEcosystem::Apple,
+        name: project.resolved_manifest.name.clone(),
+        bundle_id: target.bundle_id.clone(),
+        template,
+        asc: Some(asc),
+    };
+    Ok(plan::asc_manifest(&answers))
 }
 
 fn prompt_ecosystem() -> Result<InitEcosystem> {
@@ -123,24 +139,45 @@ fn render_template_label(choice: &TemplateChoice) -> String {
     format!("{}: {}", choice.label, choice.description)
 }
 
-fn prompt_asc_team_id() -> Result<String> {
-    let team_ids = auth_store::stored_team_ids()?;
-    if team_ids.is_empty() {
-        return auth_store::import_auth_interactively_with_team_id();
+fn prompt_asc_answers(template: InitTemplate, allow_skip: bool) -> Result<Option<InitAscAnswers>> {
+    let Some(team_id) = prompt_asc_team_id(allow_skip)? else {
+        return Ok(None);
+    };
+    let devices = prompt_asc_devices(template, &team_id)?;
+    Ok(Some(InitAscAnswers { team_id, devices }))
+}
+
+fn prompt_asc_team_id(allow_skip: bool) -> Result<Option<String>> {
+    let auth_entries = auth_store::stored_auth_entries()?;
+    if auth_entries.is_empty() {
+        return auth_store::import_auth_interactively_with_team_id(allow_skip);
     }
 
-    let mut labels = team_ids
-        .iter()
-        .map(|team_id| format!("{team_id}: stored App Store Connect authorization"))
-        .collect::<Vec<_>>();
+    let mut labels = Vec::new();
+    let skip_index = if allow_skip {
+        labels.push(SKIP_ASC_LABEL.to_owned());
+        Some(0)
+    } else {
+        None
+    };
+    let team_start_index = labels.len();
+    labels.extend(auth_entries.iter().map(|entry| {
+        format!(
+            "{}: stored App Store Connect authorization",
+            entry.selection_label(&auth_entries)
+        )
+    }));
     labels.push(ADD_NEW_ASC_AUTH_LABEL.to_owned());
 
     let index = prompt_select("App Store Connect team", &labels)?;
-    if index == team_ids.len() {
-        return auth_store::import_auth_interactively_with_team_id();
+    if Some(index) == skip_index {
+        return Ok(None);
+    }
+    if index == team_start_index + auth_entries.len() {
+        return auth_store::import_auth_interactively_with_team_id(false);
     }
 
-    Ok(team_ids[index].clone())
+    Ok(Some(auth_entries[index - team_start_index].team_id.clone()))
 }
 
 fn prompt_asc_devices(template: InitTemplate, asc_team_id: &str) -> Result<Vec<InitAscDevice>> {
@@ -333,6 +370,57 @@ fn init_device_from_registered(
 
 fn published_schema_reference(ecosystem: InitEcosystem) -> String {
     ecosystem.manifest_schema().as_str().to_owned()
+}
+
+fn infer_init_template(project: &ProjectContext) -> Result<InitTemplate> {
+    let platforms = project
+        .resolved_manifest
+        .platforms
+        .keys()
+        .copied()
+        .collect::<std::collections::BTreeSet<_>>();
+    let has_watch_targets = project
+        .resolved_manifest
+        .targets
+        .iter()
+        .any(|target| target.kind == TargetKind::WatchApp);
+
+    match (
+        platforms.contains(&ApplePlatform::Ios),
+        platforms.contains(&ApplePlatform::Macos),
+        platforms.contains(&ApplePlatform::Tvos),
+        platforms.contains(&ApplePlatform::Visionos),
+        platforms.contains(&ApplePlatform::Watchos),
+        platforms.len(),
+        has_watch_targets,
+    ) {
+        (true, false, false, false, true, 2, true) => Ok(InitTemplate::IosWatchCompanion),
+        (true, false, false, false, false, 1, _) => Ok(InitTemplate::Ios),
+        (false, true, false, false, false, 1, _) => Ok(InitTemplate::MacosSwiftUi),
+        (true, true, false, false, false, 2, _) => Ok(InitTemplate::AppleMultiplatform),
+        (false, false, true, false, false, 1, _) => Ok(InitTemplate::Tvos),
+        (false, false, false, true, false, 1, _) => Ok(InitTemplate::Visionos),
+        _ => bail!(
+            "`orbi asc init` currently supports the same platform shapes as `orbi init` templates"
+        ),
+    }
+}
+
+fn default_bundle_target(
+    project: &ProjectContext,
+    template: InitTemplate,
+) -> Result<&crate::manifest::TargetManifest> {
+    let platform = match template {
+        InitTemplate::Ios | InitTemplate::IosWatchCompanion | InitTemplate::AppleMultiplatform => {
+            ApplePlatform::Ios
+        }
+        InitTemplate::MacosSwiftUi | InitTemplate::MacosAppKit => ApplePlatform::Macos,
+        InitTemplate::Tvos => ApplePlatform::Tvos,
+        InitTemplate::Visionos => ApplePlatform::Visionos,
+    };
+    project
+        .resolved_manifest
+        .default_build_target_for_platform(platform)
 }
 
 fn prompt_non_empty(prompt: &str, default: Option<&str>) -> Result<String> {
