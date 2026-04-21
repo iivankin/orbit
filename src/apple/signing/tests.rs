@@ -5,12 +5,12 @@ use serde_json::json;
 use tempfile::TempDir;
 
 use super::entitlements::materialize_signing_entitlements;
-use super::prepare_signing;
 use super::{
     CertificateOrigin, ManagedCertificate, ManagedProfile, SigningState, clean_local_signing_state,
     identifier_name, load_state, resolve_local_team_id_if_known, save_state, target_is_app_clip,
     team_signing_paths,
 };
+use super::{SigningStrategy, prepare_signing, prepare_signing_with_strategy};
 use crate::context::{AppContext, GlobalPaths, ProjectContext, ProjectPaths};
 use crate::manifest::{
     ApplePlatform, BuildConfiguration, DistributionKind, HooksManifest, ManifestSchema,
@@ -118,6 +118,10 @@ fn test_project() -> (TempDir, ProjectContext) {
 }
 
 fn configure_project_for_macos_local_signing(project: &mut ProjectContext) {
+    configure_project_for_macos_signing(project, false);
+}
+
+fn configure_project_for_macos_signing(project: &mut ProjectContext, include_asc: bool) {
     project.resolved_manifest.platforms = BTreeMap::from([(
         ApplePlatform::Macos,
         PlatformManifest {
@@ -126,7 +130,7 @@ fn configure_project_for_macos_local_signing(project: &mut ProjectContext) {
         },
     )]);
     project.resolved_manifest.targets[0].platforms = vec![ApplePlatform::Macos];
-    let manifest = json!({
+    let mut manifest = json!({
         "$schema": crate::apple::manifest::SCHEMA_URL,
         "name": "OrbiFixture",
         "bundle_id": "dev.orbi.fixture",
@@ -135,6 +139,9 @@ fn configure_project_for_macos_local_signing(project: &mut ProjectContext) {
         "platforms": { "macos": "15.0" },
         "sources": ["Sources/App"]
     });
+    if include_asc {
+        manifest["asc"] = json!({ "team_id": "TEAM123456" });
+    }
     std::fs::write(
         &project.manifest_path,
         serde_json::to_vec_pretty(&manifest).unwrap(),
@@ -576,6 +583,30 @@ fn macos_development_signing_without_embedded_asc_uses_ad_hoc_signature() {
             .and_then(plist::Value::as_boolean),
         Some(true)
     );
+}
+
+#[test]
+fn forced_local_macos_development_signing_ignores_embedded_asc() {
+    let (_temp, mut project) = test_project();
+    configure_project_for_macos_signing(&mut project, true);
+
+    let target = project
+        .resolved_manifest
+        .resolve_target(Some("ExampleApp"))
+        .unwrap();
+    let material = prepare_signing_with_strategy(
+        &project,
+        target,
+        ApplePlatform::Macos,
+        &ProfileManifest::new(BuildConfiguration::Debug, DistributionKind::Development),
+        None,
+        SigningStrategy::LocalMacosDevelopment,
+    )
+    .unwrap();
+
+    assert_eq!(material.signing_identity, "-");
+    assert!(material.keychain_path.is_none());
+    assert!(material.provisioning_profile_path.is_none());
 }
 
 #[test]

@@ -21,6 +21,7 @@ use self::local_state::{
     SigningIdentity, delete_certificate_files, delete_file_if_exists, delete_p12_password,
     load_state, recover_system_keychain_identity, save_state,
 };
+pub(crate) use self::prepare::{SigningStrategy, prepare_signing_with_strategy};
 pub use self::prepare::{prepare_distribution_artifact_signing, prepare_signing};
 use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, TargetManifest};

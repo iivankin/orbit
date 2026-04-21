@@ -32,6 +32,7 @@ use crate::apple::runtime::{
     apple_platform_from_cli, build_target_for_platform, distribution_from_cli, profile_for_build,
     profile_for_run, resolve_build_distribution, resolve_platform,
 };
+use crate::apple::signing::SigningStrategy;
 use crate::cli::{BuildArgs, RunArgs};
 use crate::context::ProjectContext;
 use crate::manifest::{
@@ -57,6 +58,7 @@ struct BuildRequest {
     destination: DestinationKind,
     output: Option<PathBuf>,
     provisioning_udids: Option<Vec<String>>,
+    signing_strategy: SigningStrategy,
 }
 
 #[derive(Debug, Clone)]
@@ -159,6 +161,7 @@ pub fn build_artifact(project: &ProjectContext, args: &BuildArgs) -> Result<()> 
         )?,
         output: args.output.clone(),
         provisioning_udids: None,
+        signing_strategy: SigningStrategy::Automatic,
     };
     let outcome = build_project(project, &request, BuildOutputMode::UserFacing)?;
     crate::util::print_success(format!(
@@ -194,6 +197,25 @@ pub fn build_for_testing_destination(
     )
 }
 
+pub(crate) fn build_for_preview_destination(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    destination: DestinationKind,
+) -> Result<BuildOutcome> {
+    let signing_strategy = if platform == ApplePlatform::Macos {
+        SigningStrategy::LocalMacosDevelopment
+    } else {
+        SigningStrategy::Automatic
+    };
+    build_for_testing_destination_with_output_and_signing(
+        project,
+        platform,
+        destination,
+        BuildOutputMode::UserFacing,
+        signing_strategy,
+    )
+}
+
 pub fn build_for_testing_destination_silent(
     project: &ProjectContext,
     platform: ApplePlatform,
@@ -213,6 +235,22 @@ fn build_for_testing_destination_with_output(
     destination: DestinationKind,
     output_mode: BuildOutputMode,
 ) -> Result<BuildOutcome> {
+    build_for_testing_destination_with_output_and_signing(
+        project,
+        platform,
+        destination,
+        output_mode,
+        SigningStrategy::Automatic,
+    )
+}
+
+fn build_for_testing_destination_with_output_and_signing(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    destination: DestinationKind,
+    output_mode: BuildOutputMode,
+    signing_strategy: SigningStrategy,
+) -> Result<BuildOutcome> {
     let target = build_target_for_platform(project, platform)?;
     let profile = profile_for_run();
     let request = BuildRequest {
@@ -222,6 +260,7 @@ fn build_for_testing_destination_with_output(
         destination,
         output: None,
         provisioning_udids: None,
+        signing_strategy,
     };
     build_project(project, &request, output_mode)
 }
@@ -312,6 +351,7 @@ pub fn run_on_destination(project: &ProjectContext, args: &RunArgs) -> Result<()
         provisioning_udids: selected_device
             .as_ref()
             .map(|device| vec![device.provisioning_udid().to_owned()]),
+        signing_strategy: SigningStrategy::Automatic,
     };
     let outcome = build_project(project, &request, BuildOutputMode::UserFacing)?;
     crate::util::print_success(format!(
@@ -627,12 +667,13 @@ fn sign_target_graph(
         if !target.kind.is_bundle() {
             continue;
         }
-        let material = crate::apple::signing::prepare_signing(
+        let material = crate::apple::signing::prepare_signing_with_strategy(
             project,
             target,
             platform,
             profile,
             request.provisioning_udids.clone(),
+            request.signing_strategy,
         )?;
         let signing_fingerprint = cache::compute_signing_fingerprint(
             platform,

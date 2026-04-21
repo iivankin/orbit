@@ -12,6 +12,12 @@ use super::{
 use crate::context::ProjectContext;
 use crate::manifest::{ApplePlatform, DistributionKind, ProfileManifest, TargetManifest};
 
+#[derive(Debug, Clone, Copy)]
+pub(crate) enum SigningStrategy {
+    Automatic,
+    LocalMacosDevelopment,
+}
+
 pub fn prepare_signing(
     project: &ProjectContext,
     target: &TargetManifest,
@@ -19,6 +25,29 @@ pub fn prepare_signing(
     profile: &ProfileManifest,
     device_udids: Option<Vec<String>>,
 ) -> Result<SigningMaterial> {
+    prepare_signing_with_strategy(
+        project,
+        target,
+        platform,
+        profile,
+        device_udids,
+        SigningStrategy::Automatic,
+    )
+}
+
+pub(crate) fn prepare_signing_with_strategy(
+    project: &ProjectContext,
+    target: &TargetManifest,
+    platform: ApplePlatform,
+    profile: &ProfileManifest,
+    device_udids: Option<Vec<String>>,
+    strategy: SigningStrategy,
+) -> Result<SigningMaterial> {
+    if matches!(strategy, SigningStrategy::LocalMacosDevelopment) {
+        ensure_local_macos_development_strategy(platform, profile)?;
+        return prepare_local_macos_development_signing(project, target);
+    }
+
     if platform == ApplePlatform::Macos
         && profile.distribution == DistributionKind::Development
         && crate::asc::config::load_raw(project)?.is_none()
@@ -26,6 +55,16 @@ pub fn prepare_signing(
         return prepare_local_macos_development_signing(project, target);
     }
     prepare_signing_with_embedded_asc(project, target, platform, profile, device_udids)
+}
+
+fn ensure_local_macos_development_strategy(
+    platform: ApplePlatform,
+    profile: &ProfileManifest,
+) -> Result<()> {
+    if platform != ApplePlatform::Macos || profile.distribution != DistributionKind::Development {
+        bail!("local macOS development signing can only be forced for macOS development builds");
+    }
+    Ok(())
 }
 
 pub fn prepare_distribution_artifact_signing(

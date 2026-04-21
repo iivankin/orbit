@@ -1084,7 +1084,7 @@ fn appkit_app_file_contents(
     app_name: &str,
 ) -> String {
     format!(
-        "import AppKit\n\n@main\nfinal class {app_type_name}: NSObject, NSApplicationDelegate {{\n    private var window: NSWindow?\n\n    func applicationDidFinishLaunching(_ notification: Notification) {{\n        let window = NSWindow(\n            contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),\n            styleMask: [.titled, .closable, .miniaturizable, .resizable],\n            backing: .buffered,\n            defer: false\n        )\n        window.center()\n        window.title = \"{app_name}\"\n        window.contentViewController = {root_controller_name}()\n        window.makeKeyAndOrderFront(nil)\n        self.window = window\n    }}\n\n    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {{\n        true\n    }}\n}}\n"
+        "import AppKit\n\n@main\nstruct {app_type_name}Main {{\n    @MainActor\n    static func main() {{\n        let app = NSApplication.shared\n        let delegate = {app_type_name}()\n        app.delegate = delegate\n        _ = app.setActivationPolicy(.regular)\n        withExtendedLifetime(delegate) {{\n            app.run()\n        }}\n    }}\n}}\n\n@MainActor\nfinal class {app_type_name}: NSObject, NSApplicationDelegate {{\n    private var window: NSWindow?\n\n    func applicationDidFinishLaunching(_ notification: Notification) {{\n        let window = NSWindow(\n            contentRect: NSRect(x: 0, y: 0, width: 620, height: 420),\n            styleMask: [.titled, .closable, .miniaturizable, .resizable],\n            backing: .buffered,\n            defer: false\n        )\n        window.title = \"{app_name}\"\n        window.contentViewController = {root_controller_name}()\n        window.setContentSize(NSSize(width: 620, height: 420))\n        window.center()\n        window.makeKeyAndOrderFront(nil)\n        NSApplication.shared.activate()\n        self.window = window\n    }}\n\n    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {{\n        true\n    }}\n}}\n"
     )
 }
 
@@ -1370,6 +1370,11 @@ mod tests {
             file.path == Path::new("Sources/App/App.swift")
                 && file.contents.contains("import AppKit")
                 && file.contents.contains("NSApplicationDelegate")
+                && file.contents.contains("app.delegate = delegate")
+                && file.contents.contains("withExtendedLifetime(delegate)")
+                && file
+                    .contents
+                    .contains("window.setContentSize(NSSize(width: 620, height: 420))")
         }));
         assert!(plan.files.iter().any(|file| {
             file.path == Path::new("Sources/App/HomeViewController.swift")

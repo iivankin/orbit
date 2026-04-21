@@ -31,6 +31,14 @@ pub fn build_for_testing_destination(
     pipeline::build_for_testing_destination(project, platform, destination)
 }
 
+pub(crate) fn build_for_preview_destination(
+    project: &ProjectContext,
+    platform: ApplePlatform,
+    destination: DestinationKind,
+) -> Result<pipeline::BuildOutcome> {
+    pipeline::build_for_preview_destination(project, platform, destination)
+}
+
 pub fn build_for_testing_destination_silent(
     project: &ProjectContext,
     platform: ApplePlatform,

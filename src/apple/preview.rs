@@ -1196,7 +1196,7 @@ fn render_preview_shot(
     delay_ms: u64,
 ) -> Result<(PathBuf, PathBuf)> {
     let destination = preview_destination(platform);
-    let outcome = build::build_for_testing_destination(project, platform, destination)?;
+    let outcome = build::build_for_preview_destination(project, platform, destination)?;
     ensure_parent_dir(screenshot_path)?;
     let backend = preview_backend(project, platform, &outcome.receipt)?;
     backend.launch_app(&outcome.receipt.bundle_id)?;
