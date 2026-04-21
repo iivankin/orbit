@@ -8,6 +8,23 @@ toolchain is built in: lint, format, tests, SwiftUI `#Preview` screenshots, UI
 automation, trace capture, signing, and App Store Connect submission. Orbi reads
 `orbi.json` and drives the whole loop from one CLI.
 
+## Install
+
+macOS and Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/iivankin/orbit/master/install.sh | bash
+```
+
+Windows:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://raw.githubusercontent.com/iivankin/orbit/master/install.ps | iex"
+```
+
+The installer puts `orbi` under `~/.local/bin` on macOS/Linux and
+`%USERPROFILE%\.local\bin` on Windows.
+
 ## Why Orbi
 
 - **One manifest for the product.** Describe the app, platforms, resources,
